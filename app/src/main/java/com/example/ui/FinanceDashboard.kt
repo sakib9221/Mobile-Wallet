@@ -6,8 +6,12 @@ import androidx.compose.animation.core.spring
 import androidx.compose.animation.core.tween
 import androidx.compose.foundation.BorderStroke
 import androidx.compose.foundation.background
+import androidx.compose.foundation.border
+import androidx.compose.foundation.Image
 import androidx.compose.foundation.clickable
 import androidx.compose.foundation.layout.*
+import androidx.compose.ui.layout.ContentScale
+import androidx.compose.ui.res.painterResource
 import androidx.compose.foundation.lazy.LazyColumn
 import androidx.compose.foundation.lazy.items
 import androidx.compose.foundation.shape.CircleShape
@@ -83,14 +87,26 @@ fun FinanceDashboardScreen(
             topBar = {
                 CenterAlignedTopAppBar(
                     title = {
-                        Text(
-                            text = getStringResource(R.string.app_name),
-                            fontWeight = FontWeight.ExtraBold,
-                            style = MaterialTheme.typography.titleLarge.copy(
-                                letterSpacing = (-0.5).sp,
-                                color = MaterialTheme.colorScheme.onBackground
+                        Row(
+                            verticalAlignment = Alignment.CenterVertically,
+                            horizontalArrangement = Arrangement.spacedBy(8.dp)
+                        ) {
+                            Image(
+                                painter = painterResource(id = R.drawable.img_wallet_app_icon_1780038588015),
+                                contentDescription = "App Icon",
+                                modifier = Modifier
+                                    .size(32.dp)
+                                    .clip(RoundedCornerShape(8.dp))
                             )
-                        )
+                            Text(
+                                text = getStringResource(R.string.app_name),
+                                fontWeight = FontWeight.ExtraBold,
+                                style = MaterialTheme.typography.titleLarge.copy(
+                                    letterSpacing = (-0.5).sp,
+                                    color = MaterialTheme.colorScheme.onBackground
+                                )
+                            )
+                        }
                     },
                     navigationIcon = {
                         // Language Switch Glass Pill Button
@@ -1054,7 +1070,7 @@ fun CategorySummaryItem(
 }
 
 // Form logic to record new transactions
-@OptIn(ExperimentalLayoutApi::class)
+@OptIn(ExperimentalLayoutApi::class, ExperimentalMaterial3Api::class)
 @Composable
 fun AddTransactionDialog(
     onDismiss: () -> Unit,
@@ -1081,6 +1097,7 @@ fun AddTransactionDialog(
 
     var selectedCategory by remember { mutableStateOf(categories[0]) }
     var dateMillis by remember { mutableStateOf(System.currentTimeMillis()) }
+    var showDatePicker by remember { mutableStateOf(false) }
 
     var labelErrorText by remember { mutableStateOf("") }
 
@@ -1245,16 +1262,14 @@ fun AddTransactionDialog(
                     shape = RoundedCornerShape(12.dp)
                 )
 
-                // Date Picker row info (Uses current date, can tap to trigger simple update)
+                // Date Picker row info (Uses M3 DatePickerDialog to choose correct date)
                 Row(
                     modifier = Modifier
                         .fillMaxWidth()
                         .clip(RoundedCornerShape(12.dp))
                         .background(MaterialTheme.colorScheme.surfaceVariant.copy(alpha = 0.3f))
                         .clickable {
-                            // Update timestamp randomly to simulate selecting different days!
-                            val offsetDays = (1..10).random()
-                            dateMillis = System.currentTimeMillis() - (86400000L * offsetDays)
+                            showDatePicker = true
                         }
                         .padding(horizontal = 16.dp, vertical = 14.dp),
                     horizontalArrangement = Arrangement.SpaceBetween,
@@ -1280,6 +1295,32 @@ fun AddTransactionDialog(
                         fontWeight = FontWeight.Bold,
                         color = MaterialTheme.colorScheme.primary
                     )
+                }
+
+                if (showDatePicker) {
+                    val datePickerState = rememberDatePickerState(initialSelectedDateMillis = dateMillis)
+                    DatePickerDialog(
+                        onDismissRequest = { showDatePicker = false },
+                        confirmButton = {
+                            TextButton(
+                                onClick = {
+                                    datePickerState.selectedDateMillis?.let {
+                                        dateMillis = it
+                                    }
+                                    showDatePicker = false
+                                }
+                            ) {
+                                Text(if (lang == "bn") "ঠিক আছে" else "OK", fontWeight = FontWeight.Bold)
+                            }
+                        },
+                        dismissButton = {
+                            TextButton(onClick = { showDatePicker = false }) {
+                                Text(if (lang == "bn") "বাতিল" else "Cancel")
+                            }
+                        }
+                    ) {
+                        DatePicker(state = datePickerState)
+                    }
                 }
 
                 Spacer(modifier = Modifier.height(4.dp))
@@ -1716,25 +1757,23 @@ fun DeveloperCreditDialog(
                     .fillMaxWidth(),
                 horizontalAlignment = Alignment.CenterHorizontally
             ) {
-                // Large elegant profile vector header with custom person icon
-                Box(
+                // Large elegant avatar with developer's real photo
+                Image(
+                    painter = painterResource(id = R.drawable.img_developer_avatar),
+                    contentDescription = "Developer Profile Image",
+                    contentScale = ContentScale.Crop,
                     modifier = Modifier
-                        .size(72.dp)
+                        .size(100.dp)
                         .clip(CircleShape)
-                        .background(
+                        .background(MaterialTheme.colorScheme.surfaceVariant)
+                        .border(
+                            width = 2.dp,
                             brush = Brush.linearGradient(
                                 colors = listOf(Color(0xFF3B82F6), Color(0xFF8B5CF6))
-                            )
-                        ),
-                    contentAlignment = Alignment.Center
-                ) {
-                    Icon(
-                        imageVector = Icons.Default.Person,
-                        contentDescription = "Developer Symbol Icon",
-                        tint = Color.White,
-                        modifier = Modifier.size(36.dp)
-                    )
-                }
+                            ),
+                            shape = CircleShape
+                        )
+                )
 
                 Spacer(modifier = Modifier.height(16.dp))
 
