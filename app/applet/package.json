@@ -1,0 +1,7 @@
+{
+  "name": "searcher",
+  "version": "1.0.0",
+  "scripts": {
+    "start": "node robust_search.js"
+  }
+}

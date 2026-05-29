@@ -1,6 +1,8 @@
 package com.example.ui
 
 import android.app.Application
+import android.content.Context
+import android.net.Uri
 import androidx.lifecycle.AndroidViewModel
 import androidx.lifecycle.viewModelScope
 import com.example.data.AppDatabase
@@ -9,6 +11,9 @@ import com.example.data.TransactionRepository
 import kotlinx.coroutines.ExperimentalCoroutinesApi
 import kotlinx.coroutines.flow.*
 import kotlinx.coroutines.launch
+import java.io.BufferedReader
+import java.io.InputStreamReader
+import java.io.OutputStreamWriter
 
 class FinanceViewModel(application: Application) : AndroidViewModel(application) {
     private val repository: TransactionRepository
@@ -229,6 +234,70 @@ class FinanceViewModel(application: Application) : AndroidViewModel(application)
     fun seedGuestDataIfNeeded() {
         viewModelScope.launch {
             prefs.edit().putBoolean("seeded_guest", true).apply()
+        }
+    }
+
+    // Export current transactions to selected URI (Local file)
+    fun exportBackupToFile(context: Context, uri: Uri) {
+        viewModelScope.launch {
+            try {
+                val currentList = repository.getAllTransactions(activeUserId.value).first()
+                val jsonStr = googleDriveManager.serializeTransactions(currentList)
+                context.contentResolver.openOutputStream(uri)?.use { outputStream ->
+                    OutputStreamWriter(outputStream).use { writer ->
+                        writer.write(jsonStr)
+                    }
+                }
+                // Save this json local copy also to the sandbox "google_drive_prefs" SharedPreferences
+                // so if Google Drive sync restore is triggered, it has the backup payload!
+                val drivePrefs = context.getSharedPreferences("google_drive_prefs", Context.MODE_PRIVATE)
+                val nowFormatted = java.text.SimpleDateFormat("dd MMM yyyy, hh:mm a", java.util.Locale.getDefault()).format(java.util.Date())
+                drivePrefs.edit().apply {
+                    putString("cloud_store_${activeUserId.value}", jsonStr)
+                    putInt("count_${activeUserId.value}", currentList.size)
+                    putString("time_${activeUserId.value}", nowFormatted)
+                    apply()
+                }
+            } catch (e: Exception) {
+                android.util.Log.e("FinanceViewModel", "Failed to export backup file: ${e.message}")
+            }
+        }
+    }
+
+    // Import transactions from selected URI (Local file)
+    fun importBackupFromFile(context: Context, uri: Uri, onSuccess: () -> Unit = {}) {
+        viewModelScope.launch {
+            try {
+                val contentBuilder = StringBuilder()
+                context.contentResolver.openInputStream(uri)?.use { inputStream ->
+                    BufferedReader(InputStreamReader(inputStream)).use { reader ->
+                        var line: String? = reader.readLine()
+                        while (line != null) {
+                            contentBuilder.append(line)
+                            line = reader.readLine()
+                        }
+                    }
+                }
+                val jsonStr = contentBuilder.toString()
+                val restoredList = googleDriveManager.deserializeTransactions(jsonStr, activeUserId.value)
+                if (restoredList.isNotEmpty()) {
+                    repository.clearAllForUser(activeUserId.value)
+                    restoredList.forEach { repository.insert(it) }
+                    
+                    // Update our simulated "google_drive_prefs" SharedPreferences too to sync values
+                    val drivePrefs = context.getSharedPreferences("google_drive_prefs", Context.MODE_PRIVATE)
+                    val nowFormatted = java.text.SimpleDateFormat("dd MMM yyyy, hh:mm a", java.util.Locale.getDefault()).format(java.util.Date())
+                    drivePrefs.edit().apply {
+                        putString("cloud_store_${activeUserId.value}", jsonStr)
+                        putInt("count_${activeUserId.value}", restoredList.size)
+                        putString("time_${activeUserId.value}", nowFormatted)
+                        apply()
+                    }
+                    onSuccess()
+                }
+            } catch (e: Exception) {
+                android.util.Log.e("FinanceViewModel", "Failed to import backup file: ${e.message}")
+            }
         }
     }
 }

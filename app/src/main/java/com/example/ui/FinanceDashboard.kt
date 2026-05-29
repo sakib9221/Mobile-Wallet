@@ -2,6 +2,7 @@ package com.example.ui
 
 import android.widget.Toast
 import androidx.compose.animation.*
+import coil.compose.AsyncImage
 import androidx.compose.animation.core.spring
 import androidx.compose.animation.core.tween
 import androidx.compose.foundation.BorderStroke
@@ -61,12 +62,14 @@ fun FinanceDashboardScreen(
         LocaleHelper.getLocalizedContext(context, currentLanguage)
     }
 
-    // Helper functions for localized text
-    fun getStringResource(id: Int): String {
-        return try {
-            localizedContext.getString(id)
-        } catch (e: Exception) {
-            "Other"
+    // Helper functions for localized text - cached as stable lambda to avoid re-allocation on every frame recompose
+    val getStringResource = remember(localizedContext) {
+        { id: Int ->
+            try {
+                localizedContext.getString(id)
+            } catch (e: Exception) {
+                "Other"
+            }
         }
     }
 
@@ -74,6 +77,44 @@ fun FinanceDashboardScreen(
     var showAddDialog by remember { mutableStateOf(false) }
     var showAuthDialog by remember { mutableStateOf(false) }
     var showDeveloperCreditDialog by remember { mutableStateOf(false) }
+
+    // Optimize listener callbacks with remember to prevent parent-induced child recompositions at 120Hz
+    val onLanguageToggle = remember { { viewModel.toggleLanguage() } }
+    val onShowDeveloperCredit = remember { { showDeveloperCreditDialog = true } }
+    val onShowAuth = remember { { showAuthDialog = true } }
+    val onAddTransactionClick = remember { { showAddDialog = true } }
+    val onTabSelect = remember { { tab: String -> viewModel.changeTab(tab) } }
+    val onDeleteTransaction = remember(context, getStringResource) {
+        { transaction: Transaction ->
+            viewModel.deleteTransaction(transaction)
+            Toast.makeText(context, getStringResource(R.string.delete_confirm), Toast.LENGTH_SHORT).show()
+        }
+    }
+    val onDismissDeveloperCredit = remember { { showDeveloperCreditDialog = false } }
+    val onDismissAddDialog = remember { { showAddDialog = false } }
+    val onSaveAddDialog = remember(context, getStringResource) {
+        { amount: Double, categoryId: Int, type: String, note: String, dateLong: Long ->
+            viewModel.addTransaction(amount, categoryId, type, note, dateLong)
+            showAddDialog = false
+            Toast.makeText(context, getStringResource(R.string.transaction_saved), Toast.LENGTH_SHORT).show()
+        }
+    }
+    val onThemeChange = remember { { theme: String -> viewModel.setTheme(theme) } }
+    val onDismissAuthDialog = remember { { showAuthDialog = false } }
+    val onSignInSuccess = remember(context) {
+        { email: String ->
+            viewModel.loginWithGoogle(email)
+            showAuthDialog = false
+            Toast.makeText(context, "Google Signed in as $email. Synchronizing...", Toast.LENGTH_LONG).show()
+        }
+    }
+    val onSignOut = remember(context) {
+        {
+            viewModel.logout()
+            showAuthDialog = false
+            Toast.makeText(context, "Logged out. Switched to offline guest mode.", Toast.LENGTH_SHORT).show()
+        }
+    }
 
     // Ensure initial guest data are seeded for preview/starter
     LaunchedEffect(Unit) {
@@ -87,26 +128,14 @@ fun FinanceDashboardScreen(
             topBar = {
                 CenterAlignedTopAppBar(
                     title = {
-                        Row(
-                            verticalAlignment = Alignment.CenterVertically,
-                            horizontalArrangement = Arrangement.spacedBy(8.dp)
-                        ) {
-                            Image(
-                                painter = painterResource(id = R.drawable.img_wallet_app_icon_1780038588015),
-                                contentDescription = "App Icon",
-                                modifier = Modifier
-                                    .size(32.dp)
-                                    .clip(RoundedCornerShape(8.dp))
+                        Text(
+                            text = getStringResource(R.string.app_name),
+                            fontWeight = FontWeight.ExtraBold,
+                            style = MaterialTheme.typography.titleLarge.copy(
+                                letterSpacing = (-0.5).sp,
+                                color = MaterialTheme.colorScheme.onBackground
                             )
-                            Text(
-                                text = getStringResource(R.string.app_name),
-                                fontWeight = FontWeight.ExtraBold,
-                                style = MaterialTheme.typography.titleLarge.copy(
-                                    letterSpacing = (-0.5).sp,
-                                    color = MaterialTheme.colorScheme.onBackground
-                                )
-                            )
-                        }
+                        )
                     },
                     navigationIcon = {
                         // Language Switch Glass Pill Button
@@ -122,7 +151,7 @@ fun FinanceDashboardScreen(
                             shape = CircleShape,
                             modifier = Modifier
                                 .padding(start = 12.dp)
-                                .clickable { viewModel.toggleLanguage() }
+                                .clickable { onLanguageToggle() }
                                 .testTag("language_toggle_button"),
                             elevation = CardDefaults.cardElevation(defaultElevation = 0.dp)
                         ) {
@@ -155,7 +184,7 @@ fun FinanceDashboardScreen(
                                 .size(36.dp)
                                 .clip(CircleShape)
                                 .background(if (isDark) MaterialTheme.colorScheme.surfaceVariant.copy(alpha = 0.5f) else Color(0x66FFFFFF))
-                                .clickable { showDeveloperCreditDialog = true }
+                                .clickable { onShowDeveloperCredit() }
                                 .testTag("developer_credit_button"),
                             contentAlignment = Alignment.Center
                         ) {
@@ -174,21 +203,12 @@ fun FinanceDashboardScreen(
                                 .size(36.dp)
                                 .clip(CircleShape)
                                 .background(if (isDark) MaterialTheme.colorScheme.surfaceVariant.copy(alpha = 0.5f) else Color(0x66FFFFFF))
-                                .clickable { showAuthDialog = true }
+                                .clickable { onShowAuth() }
                                 .testTag("auth_profile_button"),
                             contentAlignment = Alignment.Center
                         ) {
                             if (currentUser != null) {
-                                // Avatar circle with beautiful linear gradient and white border
-                                Box(
-                                    modifier = Modifier
-                                        .fillMaxSize()
-                                        .background(
-                                            brush = Brush.linearGradient(
-                                                colors = listOf(Color(0xFF60A5FA), Color(0xFF6366F1))
-                                            )
-                                        )
-                                )
+                                GoogleAvatar(email = currentUser, sizeDp = 36.dp)
                             } else {
                                 Icon(
                                     imageVector = Icons.Outlined.AccountCircle,
@@ -206,7 +226,7 @@ fun FinanceDashboardScreen(
             },
             floatingActionButton = {
                 ExtendedFloatingActionButton(
-                    onClick = { showAddDialog = true },
+                    onClick = onAddTransactionClick,
                     icon = { Icon(Icons.Filled.Add, contentDescription = "Add transaction") },
                     text = { Text(getStringResource(R.string.add_transaction_title)) },
                     containerColor = Color(0xFF2563EB), // Rich Blue as in design HTML
@@ -226,22 +246,22 @@ fun FinanceDashboardScreen(
             // Live banner indicating Google Auth State
             UserSessionBanner(
                 currentUser = currentUser,
-                getString = ::getStringResource,
-                onSignInClick = { showAuthDialog = true }
+                getString = getStringResource,
+                onSignInClick = onShowAuth
             )
 
             // Interactive Google Drive Sync block
             GoogleDriveSyncBlock(
                 viewModel = viewModel,
                 currentUser = currentUser,
-                getString = ::getStringResource
+                getString = getStringResource
             )
 
             // Minimalist Monthly balance summary card
             DashboardSummaryCard(
                 stats = stats,
                 lang = currentLanguage,
-                getString = ::getStringResource
+                getString = getStringResource
             )
 
             Spacer(modifier = Modifier.height(8.dp))
@@ -249,8 +269,8 @@ fun FinanceDashboardScreen(
             // Navigation selector for transactions list or monthly category summary
             TabNavigationRow(
                 currentTab = currentTab,
-                onTabSelect = { viewModel.changeTab(it) },
-                getString = ::getStringResource
+                onTabSelect = onTabSelect,
+                getString = getStringResource
             )
 
             Spacer(modifier = Modifier.height(12.dp))
@@ -265,17 +285,14 @@ fun FinanceDashboardScreen(
                     TransactionsTabContent(
                         transactions = transactions,
                         currentLanguage = currentLanguage,
-                        getString = ::getStringResource,
-                        onDeleteTransaction = {
-                            viewModel.deleteTransaction(it)
-                            Toast.makeText(context, getStringResource(R.string.delete_confirm), Toast.LENGTH_SHORT).show()
-                        }
+                        getString = getStringResource,
+                        onDeleteTransaction = onDeleteTransaction
                     )
                 } else {
                     SummaryTabContent(
                         transactions = transactions,
                         currentLanguage = currentLanguage,
-                        getString = ::getStringResource
+                        getString = getStringResource
                     )
                 }
             }
@@ -286,20 +303,17 @@ fun FinanceDashboardScreen(
     // Dialog 0: Developer Credit Dialog
     if (showDeveloperCreditDialog) {
         DeveloperCreditDialog(
-            onDismiss = { showDeveloperCreditDialog = false }
+            currentUser = currentUser,
+            onDismiss = onDismissDeveloperCredit
         )
     }
 
     // Dialog 1: Add Transaction Dialog
     if (showAddDialog) {
         AddTransactionDialog(
-            onDismiss = { showAddDialog = false },
-            onSave = { amount, categoryId, type, note, dateLong ->
-                viewModel.addTransaction(amount, categoryId, type, note, dateLong)
-                showAddDialog = false
-                Toast.makeText(context, getStringResource(R.string.transaction_saved), Toast.LENGTH_SHORT).show()
-            },
-            getString = ::getStringResource,
+            onDismiss = onDismissAddDialog,
+            onSave = onSaveAddDialog,
+            getString = getStringResource,
             lang = currentLanguage
         )
     }
@@ -309,19 +323,11 @@ fun FinanceDashboardScreen(
         GoogleAuthDialog(
             currentUser = currentUser,
             selectedTheme = selectedTheme,
-            onThemeChange = { theme -> viewModel.setTheme(theme) },
-            onDismiss = { showAuthDialog = false },
-            onSignInSuccess = { email ->
-                viewModel.loginWithGoogle(email)
-                showAuthDialog = false
-                Toast.makeText(context, "Google Signed in as $email. Synchronizing...", Toast.LENGTH_LONG).show()
-            },
-            onSignOut = {
-                viewModel.logout()
-                showAuthDialog = false
-                Toast.makeText(context, "Logged out. Switched to offline guest mode.", Toast.LENGTH_SHORT).show()
-            },
-            getString = ::getStringResource
+            onThemeChange = onThemeChange,
+            onDismiss = onDismissAuthDialog,
+            onSignInSuccess = onSignInSuccess,
+            onSignOut = onSignOut,
+            getString = getStringResource
         )
     }
 }
@@ -373,12 +379,16 @@ fun UserSessionBanner(
                 verticalAlignment = Alignment.CenterVertically,
                 modifier = Modifier.weight(1f)
             ) {
-                Icon(
-                    imageVector = if (currentUser != null) Icons.Default.CloudSync else Icons.Default.CloudOff,
-                    contentDescription = "Sync state icon",
-                    tint = textColor,
-                    modifier = Modifier.size(20.dp)
-                )
+                if (currentUser != null) {
+                    GoogleAvatar(email = currentUser, sizeDp = 24.dp)
+                } else {
+                    Icon(
+                        imageVector = Icons.Default.CloudOff,
+                        contentDescription = "Sync state icon",
+                        tint = textColor,
+                        modifier = Modifier.size(20.dp)
+                    )
+                }
                 Spacer(modifier = Modifier.width(10.dp))
                 Text(
                     text = if (currentUser != null) {
@@ -416,6 +426,17 @@ fun DashboardSummaryCard(
     val isDark = MaterialTheme.colorScheme.background == Color(0xFF0F172A)
     val cardBg = if (isDark) MaterialTheme.colorScheme.surface.copy(alpha = 0.85f) else Color(0x66FFFFFF)
     val cardBorder = if (isDark) MaterialTheme.colorScheme.outlineVariant.copy(alpha = 0.5f) else Color(0x99FFFFFF)
+
+    // Cache currency formatting strings in remember block to maximize rendering performance
+    val formattedTotal = remember(stats.balance, lang) {
+        formatCurrency(stats.balance, lang)
+    }
+    val formattedIncome = remember(stats.totalIncome, lang) {
+        formatCurrency(stats.totalIncome, lang)
+    }
+    val formattedExpense = remember(stats.totalExpense, lang) {
+        formatCurrency(stats.totalExpense, lang)
+    }
 
     val incomeBorder = if (isDark) Color(0x4D34D399) else Color(0x4D10B981)
     val incomeBg = if (isDark) Color(0x1510B981) else Color(0x1A10B981)
@@ -455,7 +476,6 @@ fun DashboardSummaryCard(
             )
             Spacer(modifier = Modifier.height(4.dp))
 
-            val formattedTotal = formatCurrency(stats.balance, lang)
             val hasDecimals = formattedTotal.contains(".") && lang != "bn"
 
             Row(
@@ -534,7 +554,7 @@ fun DashboardSummaryCard(
                         }
                         Spacer(modifier = Modifier.height(4.dp))
                         Text(
-                            text = formatCurrency(stats.totalIncome, lang),
+                            text = formattedIncome,
                             style = MaterialTheme.typography.titleMedium.copy(fontWeight = FontWeight.Black),
                             color = incomeValue
                         )
@@ -572,7 +592,7 @@ fun DashboardSummaryCard(
                         }
                         Spacer(modifier = Modifier.height(4.dp))
                         Text(
-                            text = formatCurrency(stats.totalExpense, lang),
+                            text = formattedExpense,
                             style = MaterialTheme.typography.titleMedium.copy(fontWeight = FontWeight.Black),
                             color = expenseValue
                         )
@@ -731,6 +751,14 @@ fun TransactionListItem(
         if (resId != null) getString(resId) else transaction.category
     }
 
+    // Cache formatted timestamp and amount strings as stable remembered instances for butter-smooth 120Hz scrolling
+    val formattedDate = remember(transaction.dateLong, lang) {
+        formatDate(transaction.dateLong, lang)
+    }
+    val formattedAmount = remember(transaction.amount, lang, isExpense) {
+        "${if (isExpense) "-" else "+"}${formatCurrency(transaction.amount, lang)}"
+    }
+
     val isDark = MaterialTheme.colorScheme.background == Color(0xFF0F172A)
     val itemBg = if (isDark) MaterialTheme.colorScheme.surface.copy(alpha = 0.85f) else Color(0x99FFFFFF)
     val itemBorder = if (isDark) MaterialTheme.colorScheme.outlineVariant.copy(alpha = 0.5f) else Color(0x59FFFFFF)
@@ -819,7 +847,7 @@ fun TransactionListItem(
                     )
                 }
                 Text(
-                    text = formatDate(transaction.dateLong, lang),
+                    text = formattedDate,
                     style = MaterialTheme.typography.labelSmall,
                     color = dateColor,
                     fontWeight = FontWeight.Bold
@@ -834,7 +862,7 @@ fun TransactionListItem(
                 verticalArrangement = Arrangement.Center
             ) {
                 Text(
-                    text = "${if (isExpense) "-" else "+"}${formatCurrency(transaction.amount, lang)}",
+                    text = formattedAmount,
                     style = MaterialTheme.typography.titleMedium.copy(fontWeight = FontWeight.Black),
                     color = amountColor
                 )
@@ -947,7 +975,7 @@ fun SummaryTabContent(
                 contentPadding = PaddingValues(bottom = 84.dp),
                 modifier = Modifier.weight(1f)
             ) {
-                items(activeList) { (categoryResId, totalAmount) ->
+                items(activeList, key = { it.first }) { (categoryResId, totalAmount) ->
                     val percentage = if (totalSum > 0) (totalAmount / totalSum * 100) else 0.0
                     CategorySummaryItem(
                         categoryResId = categoryResId,
@@ -974,6 +1002,15 @@ fun CategorySummaryItem(
     isExpense: Boolean
 ) {
     val categoryName = getString(categoryResId)
+
+    // Cache formatting computations inside remember states to guarantee stable 120Hz scrolling frames
+    val formattedAmount = remember(amount, lang) {
+        formatCurrency(amount, lang)
+    }
+    val formattedPercentage = remember(percentage) {
+        String.format(Locale.US, "%.1f%%", percentage)
+    }
+
     val colorAccent = when (categoryResId) {
         R.string.category_salary -> Color(0xFF00C853)
         R.string.category_food -> Color(0xFFFF9100)
@@ -1025,7 +1062,7 @@ fun CategorySummaryItem(
                 }
 
                 Text(
-                    text = formatCurrency(amount, lang),
+                    text = formattedAmount,
                     fontWeight = FontWeight.Black,
                     style = MaterialTheme.typography.titleMedium,
                     color = amountColor
@@ -1057,7 +1094,7 @@ fun CategorySummaryItem(
                 }
 
                 Text(
-                    text = String.format(Locale.US, "%.1f%%", percentage),
+                    text = formattedPercentage,
                     style = MaterialTheme.typography.labelMedium,
                     color = percentTextColor,
                     fontWeight = FontWeight.Black,
@@ -1097,6 +1134,9 @@ fun AddTransactionDialog(
 
     var selectedCategory by remember { mutableStateOf(categories[0]) }
     var dateMillis by remember { mutableStateOf(System.currentTimeMillis()) }
+    val formattedDate = remember(dateMillis, lang) {
+        formatDate(dateMillis, lang)
+    }
     var showDatePicker by remember { mutableStateOf(false) }
 
     var labelErrorText by remember { mutableStateOf("") }
@@ -1290,7 +1330,7 @@ fun AddTransactionDialog(
                         )
                     }
                     Text(
-                        text = formatDate(dateMillis, lang),
+                        text = formattedDate,
                         style = MaterialTheme.typography.bodyMedium,
                         fontWeight = FontWeight.Bold,
                         color = MaterialTheme.colorScheme.primary
@@ -1511,13 +1551,27 @@ fun GoogleAuthDialog(
                                     .padding(16.dp),
                                 horizontalAlignment = Alignment.CenterHorizontally
                             ) {
-                                Icon(
-                                    imageVector = Icons.Default.TaskAlt,
-                                    contentDescription = "Success",
-                                    tint = Color(0xFF2E7D32),
-                                    modifier = Modifier.size(36.dp)
-                                )
-                                Spacer(modifier = Modifier.height(8.dp))
+                                Box(
+                                    contentAlignment = Alignment.BottomEnd,
+                                    modifier = Modifier.padding(bottom = 8.dp)
+                                ) {
+                                    GoogleAvatar(email = currentUser, sizeDp = 72.dp)
+                                    Box(
+                                        modifier = Modifier
+                                            .size(22.dp)
+                                            .clip(CircleShape)
+                                            .background(Color(0xFF2E7D32))
+                                            .border(1.5.dp, MaterialTheme.colorScheme.surface, CircleShape),
+                                        contentAlignment = Alignment.Center
+                                    ) {
+                                        Icon(
+                                            imageVector = Icons.Default.Check,
+                                            contentDescription = "Active",
+                                            tint = Color.White,
+                                            modifier = Modifier.size(12.dp)
+                                        )
+                                    }
+                                }
                                 Text(
                                     text = "Connected Successfully",
                                     fontWeight = FontWeight.Bold,
@@ -1738,9 +1792,16 @@ fun MeshBackground(content: @Composable () -> Unit) {
 // Beautiful Frosted Glass Developer Credit section
 @Composable
 fun DeveloperCreditDialog(
+    currentUser: String?,
     onDismiss: () -> Unit
 ) {
     val isDark = MaterialTheme.colorScheme.background == Color(0xFF0F172A)
+    var showContactDialog by remember { mutableStateOf(false) }
+
+    if (showContactDialog) {
+        DeveloperContactDialog(onDismiss = { showContactDialog = false })
+    }
+
     Dialog(onDismissRequest = onDismiss) {
         Card(
             modifier = Modifier
@@ -1758,21 +1819,16 @@ fun DeveloperCreditDialog(
                 horizontalAlignment = Alignment.CenterHorizontally
             ) {
                 // Large elegant avatar with developer's real photo
-                Image(
-                    painter = painterResource(id = R.drawable.img_developer_avatar),
-                    contentDescription = "Developer Profile Image",
-                    contentScale = ContentScale.Crop,
-                    modifier = Modifier
-                        .size(100.dp)
-                        .clip(CircleShape)
-                        .background(MaterialTheme.colorScheme.surfaceVariant)
-                        .border(
-                            width = 2.dp,
-                            brush = Brush.linearGradient(
-                                colors = listOf(Color(0xFF3B82F6), Color(0xFF8B5CF6))
-                            ),
-                            shape = CircleShape
-                        )
+                val emailToLoad = currentUser ?: "sakibislam94433@gmail.com"
+
+                GoogleAvatar(
+                    email = emailToLoad,
+                    modifier = Modifier.border(
+                        width = 2.dp,
+                        color = MaterialTheme.colorScheme.surface,
+                        shape = CircleShape
+                    ),
+                    sizeDp = 100.dp
                 )
 
                 Spacer(modifier = Modifier.height(16.dp))
@@ -1871,6 +1927,164 @@ fun DeveloperCreditDialog(
 
                 Spacer(modifier = Modifier.height(24.dp))
 
+                // Contact Me Button
+                Button(
+                    onClick = { showContactDialog = true },
+                    shape = RoundedCornerShape(12.dp),
+                    colors = ButtonDefaults.buttonColors(
+                        containerColor = if (isDark) MaterialTheme.colorScheme.primaryContainer else Color(0xFFEFF6FF),
+                        contentColor = if (isDark) MaterialTheme.colorScheme.onPrimaryContainer else Color(0xFF1D4ED8)
+                    ),
+                    border = BorderStroke(1.dp, if (isDark) MaterialTheme.colorScheme.primary.copy(alpha = 0.5f) else Color(0xFFBFDBFE)),
+                    modifier = Modifier.fillMaxWidth()
+                ) {
+                    Icon(
+                        imageVector = Icons.Default.Chat,
+                        contentDescription = "Contact Icon",
+                        modifier = Modifier.size(18.dp)
+                    )
+                    Spacer(modifier = Modifier.width(8.dp))
+                    Text(
+                        text = "Contact Me",
+                        style = MaterialTheme.typography.labelLarge.copy(fontWeight = FontWeight.ExtraBold)
+                    )
+                }
+
+                Spacer(modifier = Modifier.height(8.dp))
+
+                Button(
+                    onClick = onDismiss,
+                    shape = RoundedCornerShape(12.dp),
+                    colors = ButtonDefaults.buttonColors(
+                        containerColor = if (isDark) MaterialTheme.colorScheme.primary else Color(0xFF2563EB),
+                        contentColor = if (isDark) MaterialTheme.colorScheme.onPrimary else Color.White
+                    ),
+                    modifier = Modifier.fillMaxWidth()
+                ) {
+                    Text(
+                        text = "Close",
+                        style = MaterialTheme.typography.labelLarge.copy(fontWeight = FontWeight.Bold)
+                    )
+                }
+            }
+        }
+    }
+}
+
+// Beautiful Contact Dialog displaying Telegram, Facebook, and WhatsApp
+@Composable
+fun DeveloperContactDialog(
+    onDismiss: () -> Unit
+) {
+    val isDark = MaterialTheme.colorScheme.background == Color(0xFF0F172A)
+    val uriHandler = androidx.compose.ui.platform.LocalUriHandler.current
+
+    Dialog(onDismissRequest = onDismiss) {
+        Card(
+            modifier = Modifier
+                .fillMaxWidth()
+                .padding(horizontal = 8.dp)
+                .testTag("developer_contact_dialog_surface"),
+            shape = RoundedCornerShape(24.dp),
+            border = BorderStroke(1.dp, MaterialTheme.colorScheme.outlineVariant.copy(alpha = 0.5f)),
+            colors = CardDefaults.cardColors(containerColor = MaterialTheme.colorScheme.surface)
+        ) {
+            Column(
+                modifier = Modifier
+                    .padding(24.dp)
+                    .fillMaxWidth(),
+                horizontalAlignment = Alignment.CenterHorizontally
+            ) {
+                // Circular decorated message icon
+                Box(
+                    modifier = Modifier
+                        .size(64.dp)
+                        .clip(CircleShape)
+                        .background(
+                            if (isDark) MaterialTheme.colorScheme.primaryContainer.copy(alpha = 0.4f)
+                            else Color(0xFFEFF6FF)
+                        ),
+                    contentAlignment = Alignment.Center
+                ) {
+                    Icon(
+                        imageVector = Icons.Default.AlternateEmail,
+                        contentDescription = "Contact Developer Icon",
+                        tint = if (isDark) MaterialTheme.colorScheme.primary else Color(0xFF2563EB),
+                        modifier = Modifier.size(32.dp)
+                    )
+                }
+
+                Spacer(modifier = Modifier.height(16.dp))
+
+                Text(
+                    text = "Let's Connect",
+                    style = MaterialTheme.typography.titleLarge,
+                    fontWeight = FontWeight.ExtraBold,
+                    color = MaterialTheme.colorScheme.onSurface
+                )
+
+                Spacer(modifier = Modifier.height(6.dp))
+
+                Text(
+                    text = "Select any platform below to get in touch.",
+                    style = MaterialTheme.typography.bodySmall,
+                    color = MaterialTheme.colorScheme.onSurfaceVariant,
+                    textAlign = TextAlign.Center
+                )
+
+                Spacer(modifier = Modifier.height(20.dp))
+
+                // Contact list
+                Column(
+                    modifier = Modifier.fillMaxWidth(),
+                    verticalArrangement = Arrangement.spacedBy(10.dp)
+                ) {
+                    // Telegram Option
+                    ContactOptionItem(
+                        title = "Telegram",
+                        handle = "@sakib_9221",
+                        icon = Icons.Default.Send,
+                        brandColor = Color(0xFF0088CC),
+                        onClick = {
+                            try {
+                                uriHandler.openUri("https://t.me/sakib_9221")
+                            } catch (e: Exception) {
+                                // Handled gracefully
+                            }
+                        }
+                    )
+
+                    // WhatsApp Option
+                    ContactOptionItem(
+                        title = "WhatsApp",
+                        handle = "01788884161",
+                        icon = Icons.Default.Phone,
+                        brandColor = Color(0xFF25D366),
+                        onClick = {
+                            try {
+                                uriHandler.openUri("https://wa.me/8801788884161")
+                            } catch (e: Exception) {
+                            }
+                        }
+                    )
+
+                    // Facebook Option
+                    ContactOptionItem(
+                        title = "Facebook",
+                        handle = "Mohammad Sakib Sordar",
+                        icon = Icons.Default.Public,
+                        brandColor = Color(0xFF1877F2),
+                        onClick = {
+                            try {
+                                uriHandler.openUri("https://www.facebook.com/sakibislam94433")
+                            } catch (e: Exception) {
+                            }
+                        }
+                    )
+                }
+
+                Spacer(modifier = Modifier.height(24.dp))
+
                 Button(
                     onClick = onDismiss,
                     shape = RoundedCornerShape(12.dp),
@@ -1891,12 +2105,95 @@ fun DeveloperCreditDialog(
 }
 
 @Composable
+fun ContactOptionItem(
+    title: String,
+    handle: String,
+    icon: ImageVector,
+    brandColor: Color,
+    onClick: () -> Unit
+) {
+    Card(
+        modifier = Modifier
+            .fillMaxWidth()
+            .clickable(onClick = onClick),
+        shape = RoundedCornerShape(14.dp),
+        border = BorderStroke(1.dp, MaterialTheme.colorScheme.outlineVariant.copy(alpha = 0.4f)),
+        colors = CardDefaults.cardColors(containerColor = MaterialTheme.colorScheme.surfaceVariant.copy(alpha = 0.12f))
+    ) {
+        Row(
+            modifier = Modifier
+                .padding(14.dp)
+                .fillMaxWidth(),
+            verticalAlignment = Alignment.CenterVertically
+        ) {
+            Box(
+                modifier = Modifier
+                    .size(40.dp)
+                    .clip(CircleShape)
+                    .background(brandColor.copy(alpha = 0.15f)),
+                contentAlignment = Alignment.Center
+            ) {
+                Icon(
+                    imageVector = icon,
+                    contentDescription = "$title Icon",
+                    tint = brandColor,
+                    modifier = Modifier.size(20.dp)
+                )
+            }
+
+            Spacer(modifier = Modifier.width(14.dp))
+
+            Column(
+                modifier = Modifier.weight(1f)
+            ) {
+                Text(
+                    text = title,
+                    style = MaterialTheme.typography.titleSmall,
+                    fontWeight = FontWeight.Bold,
+                    color = MaterialTheme.colorScheme.onSurface
+                )
+                Text(
+                    text = handle,
+                    style = MaterialTheme.typography.bodySmall,
+                    color = MaterialTheme.colorScheme.onSurfaceVariant
+                )
+            }
+
+            Icon(
+                imageVector = Icons.Default.ArrowForward,
+                contentDescription = "Navigate to platform",
+                tint = MaterialTheme.colorScheme.onSurfaceVariant.copy(alpha = 0.6f),
+                modifier = Modifier.size(16.dp)
+            )
+        }
+    }
+}
+
+
+@Composable
 fun GoogleDriveSyncBlock(
     viewModel: FinanceViewModel,
     currentUser: String?,
     getString: (Int) -> String
 ) {
     val isDark = MaterialTheme.colorScheme.background == Color(0xFF0F172A)
+    val context = androidx.compose.ui.platform.LocalContext.current
+
+    val exportLauncher = androidx.activity.compose.rememberLauncherForActivityResult(
+        contract = androidx.activity.result.contract.ActivityResultContracts.CreateDocument("application/json")
+    ) { uri ->
+        if (uri != null) {
+            viewModel.exportBackupToFile(context, uri)
+        }
+    }
+
+    val importLauncher = androidx.activity.compose.rememberLauncherForActivityResult(
+        contract = androidx.activity.result.contract.ActivityResultContracts.OpenDocument()
+    ) { uri ->
+        if (uri != null) {
+            viewModel.importBackupFromFile(context, uri)
+        }
+    }
     
     // Standard visual feedback variables
     val syncState by viewModel.driveSyncState.collectAsStateWithLifecycle()
@@ -2236,8 +2533,151 @@ fun GoogleDriveSyncBlock(
                             }
                         }
                     }
+
+                    // Local Backup & Restore Block
+                    HorizontalDivider(
+                        color = MaterialTheme.colorScheme.onSurface.copy(alpha = 0.08f),
+                        thickness = 1.dp,
+                        modifier = Modifier.padding(vertical = 12.dp)
+                    )
+
+                    Text(
+                        text = "Offline File Backup (.json)",
+                        style = MaterialTheme.typography.labelSmall,
+                        fontWeight = FontWeight.Bold,
+                        color = MaterialTheme.colorScheme.onSurface
+                    )
+                    Spacer(modifier = Modifier.height(2.dp))
+                    Text(
+                        text = "Save details to a file or import them back later. Persists even after uninstalling the app!",
+                        style = MaterialTheme.typography.labelSmall,
+                        fontSize = 10.sp,
+                        color = MaterialTheme.colorScheme.onSurfaceVariant.copy(alpha = 0.7f),
+                        modifier = Modifier.padding(bottom = 10.dp)
+                    )
+
+                    Row(
+                        modifier = Modifier.fillMaxWidth(),
+                        horizontalArrangement = Arrangement.spacedBy(8.dp)
+                    ) {
+                        OutlinedButton(
+                            onClick = {
+                                val timestamp = java.text.SimpleDateFormat("yyyyMMdd_HHmmss", java.util.Locale.getDefault()).format(java.util.Date())
+                                exportLauncher.launch("finance_backup_$timestamp.json")
+                            },
+                            modifier = Modifier.weight(1f)
+                                .testTag("file_export_button"),
+                            contentPadding = PaddingValues(vertical = 8.dp),
+                            shape = RoundedCornerShape(10.dp),
+                            border = BorderStroke(1.dp, MaterialTheme.colorScheme.outline.copy(alpha = 0.4f))
+                        ) {
+                            Icon(
+                                imageVector = Icons.Default.CloudUpload,
+                                contentDescription = "Export File",
+                                modifier = Modifier.size(16.dp)
+                            )
+                            Spacer(modifier = Modifier.width(6.dp))
+                            Text(
+                                text = "Export File",
+                                fontWeight = FontWeight.Bold,
+                                fontSize = 12.sp
+                            )
+                        }
+
+                        OutlinedButton(
+                            onClick = {
+                                importLauncher.launch(arrayOf("application/json"))
+                            },
+                            modifier = Modifier.weight(1f)
+                                .testTag("file_import_button"),
+                            contentPadding = PaddingValues(vertical = 8.dp),
+                            shape = RoundedCornerShape(10.dp),
+                            border = BorderStroke(1.dp, MaterialTheme.colorScheme.outline.copy(alpha = 0.4f))
+                        ) {
+                            Icon(
+                                imageVector = Icons.Default.CloudDownload,
+                                contentDescription = "Import File",
+                                modifier = Modifier.size(16.dp)
+                            )
+                            Spacer(modifier = Modifier.width(6.dp))
+                            Text(
+                                text = "Import File",
+                                fontWeight = FontWeight.Bold,
+                                fontSize = 12.sp
+                            )
+                        }
+                    }
                 }
             }
         }
     }
 }
+
+@Composable
+fun GoogleAvatar(
+    email: String?,
+    modifier: Modifier = Modifier,
+    sizeDp: androidx.compose.ui.unit.Dp = 36.dp
+) {
+    if (email == null) return
+    val initial = remember(email) {
+        val trimmed = email.trim()
+        if (trimmed.isNotEmpty()) trimmed[0].uppercaseChar().toString() else "U"
+    }
+
+    // Choose a consistent high-contrast gradient based on character content
+    val gradientColors = remember(initial) {
+        val hash = (initial.hashCode() and 0x7FFFFFFF) % 5
+        when (hash) {
+            0 -> listOf(Color(0xFFEF4444), Color(0xFFF87171)) // Red
+            1 -> listOf(Color(0xFF10B981), Color(0xFF34D399)) // Green
+            2 -> listOf(Color(0xFF3B82F6), Color(0xFF60A5FA)) // Blue
+            3 -> listOf(Color(0xFFF59E0B), Color(0xFFFBBF24)) // Amber
+            else -> listOf(Color(0xFF8B5CF6), Color(0xFFA78BFA)) // Purple
+        }
+    }
+
+    Box(
+        modifier = modifier
+            .size(sizeDp)
+            .clip(CircleShape)
+            .background(Brush.linearGradient(gradientColors)),
+        contentAlignment = Alignment.Center
+    ) {
+        var isError by remember(email) { mutableStateOf(false) }
+        var isLoading by remember(email) { mutableStateOf(true) }
+
+        if (!isError) {
+            val avatarUrl = remember(email) {
+                "https://www.google.com/s2/photos/profile/${email.trim().lowercase()}?sz=250"
+            }
+            AsyncImage(
+                model = avatarUrl,
+                contentDescription = "Google profile picture",
+                contentScale = ContentScale.Crop,
+                modifier = Modifier.fillMaxSize(),
+                onError = {
+                    isError = true
+                    isLoading = false
+                },
+                onSuccess = {
+                    isLoading = false
+                    isError = false
+                }
+            )
+        }
+
+        if (isError || isLoading) {
+            Text(
+                text = initial,
+                style = MaterialTheme.typography.bodyLarge.copy(
+                    fontWeight = FontWeight.ExtraBold,
+                    color = Color.White,
+                    fontSize = (sizeDp.value * 0.45f).sp
+                ),
+                textAlign = TextAlign.Center
+            )
+        }
+    }
+}
+
