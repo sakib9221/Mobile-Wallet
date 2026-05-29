@@ -1,0 +1,6 @@
+{
+  "name": "Mobile Wallet",
+  "description": "A simple, clean, and user-friendly Mobile Wallet application with multi-language support (English and Bengali), Google Sign-In, and local database persistence.",
+  "requestFramePermissions": [],
+  "majorCapabilities": ["MAJOR_CAPABILITY_SERVER_SIDE_GEMINI_API"]
+}
