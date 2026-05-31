@@ -32,6 +32,9 @@ import androidx.compose.ui.graphics.vector.ImageVector
 import androidx.compose.ui.platform.LocalContext
 import androidx.compose.ui.platform.testTag
 import androidx.compose.ui.text.font.FontWeight
+import androidx.compose.ui.text.buildAnnotatedString
+import androidx.compose.ui.text.withStyle
+import androidx.compose.ui.text.SpanStyle
 import androidx.compose.ui.text.input.KeyboardType
 import androidx.compose.ui.text.style.TextAlign
 import androidx.compose.ui.text.style.TextOverflow
@@ -43,6 +46,14 @@ import com.example.R
 import com.example.data.Transaction
 import java.text.SimpleDateFormat
 import java.util.*
+import android.app.Activity
+import android.content.Context
+import android.content.ContextWrapper
+import com.google.android.gms.ads.AdRequest
+import com.google.android.gms.ads.LoadAdError
+import com.google.android.gms.ads.rewarded.RewardedAd
+import com.google.android.gms.ads.rewarded.RewardedAdLoadCallback
+
 
 @OptIn(ExperimentalMaterial3Api::class)
 @Composable
@@ -77,6 +88,8 @@ fun FinanceDashboardScreen(
     var showAddDialog by remember { mutableStateOf(false) }
     var showAuthDialog by remember { mutableStateOf(false) }
     var showDeveloperCreditDialog by remember { mutableStateOf(false) }
+    var showBajarListDialog by remember { mutableStateOf(false) }
+    val bItems by viewModel.bajarItems.collectAsStateWithLifecycle()
 
     // Optimize listener callbacks with remember to prevent parent-induced child recompositions at 120Hz
     val onLanguageToggle = remember { { viewModel.toggleLanguage() } }
@@ -225,17 +238,36 @@ fun FinanceDashboardScreen(
                 )
             },
             floatingActionButton = {
-                ExtendedFloatingActionButton(
-                    onClick = onAddTransactionClick,
-                    icon = { Icon(Icons.Filled.Add, contentDescription = "Add transaction") },
-                    text = { Text(getStringResource(R.string.add_transaction_title)) },
-                    containerColor = Color(0xFF2563EB), // Rich Blue as in design HTML
-                    contentColor = Color.White,
-                    shape = RoundedCornerShape(16.dp), // 2xl rounded as in design HTML
+                val bajarListButtonText = if (currentLanguage == "bn") "বাজার লিস্ট" else "Bajar List"
+                Row(
                     modifier = Modifier
                         .navigationBarsPadding()
-                        .testTag("floating_add_button")
-                )
+                        .padding(horizontal = 16.dp),
+                    horizontalArrangement = Arrangement.spacedBy(12.dp),
+                    verticalAlignment = Alignment.CenterVertically
+                ) {
+                    ExtendedFloatingActionButton(
+                        onClick = { showBajarListDialog = true },
+                        icon = { Icon(Icons.Default.ShoppingBasket, contentDescription = "Bajar List") },
+                        text = { Text(bajarListButtonText) },
+                        containerColor = Color(0xFF10B981), // Beautiful Emerald green
+                        contentColor = Color.White,
+                        shape = RoundedCornerShape(16.dp),
+                        modifier = Modifier
+                            .testTag("floating_bajar_list_button")
+                    )
+
+                    ExtendedFloatingActionButton(
+                        onClick = onAddTransactionClick,
+                        icon = { Icon(Icons.Filled.Add, contentDescription = "Add transaction") },
+                        text = { Text(getStringResource(R.string.add_transaction_title)) },
+                        containerColor = Color(0xFF2563EB), // Rich Blue as in design HTML
+                        contentColor = Color.White,
+                        shape = RoundedCornerShape(16.dp), // 2xl rounded as in design HTML
+                        modifier = Modifier
+                            .testTag("floating_add_button")
+                    )
+                }
             }
         ) { innerPadding ->
             Column(
@@ -304,6 +336,7 @@ fun FinanceDashboardScreen(
     if (showDeveloperCreditDialog) {
         DeveloperCreditDialog(
             currentUser = currentUser,
+            lang = currentLanguage,
             onDismiss = onDismissDeveloperCredit
         )
     }
@@ -328,6 +361,22 @@ fun FinanceDashboardScreen(
             onSignInSuccess = onSignInSuccess,
             onSignOut = onSignOut,
             getString = getStringResource
+        )
+    }
+
+    // Dialog 3: Bajar List Dialog
+    if (showBajarListDialog) {
+        BajarListDialog(
+            bajarItems = bItems,
+            lang = currentLanguage,
+            onAdd = { name, quantity -> viewModel.addBajarItem(name, quantity) },
+            onToggle = { item, isChecked -> viewModel.toggleBajarItemCompletion(item, isChecked) },
+            onDelete = { item -> viewModel.deleteBajarItem(item) },
+            onFinishShopping = { totalCost, completedList ->
+                viewModel.finishBajarShopping(totalCost, completedList)
+                showBajarListDialog = false
+            },
+            onDismiss = { showBajarListDialog = false }
         )
     }
 }
@@ -1790,9 +1839,19 @@ fun MeshBackground(content: @Composable () -> Unit) {
 }
 
 // Beautiful Frosted Glass Developer Credit section
+internal fun Context.findActivity(): Activity? {
+    var context = this
+    while (context is ContextWrapper) {
+        if (context is Activity) return context
+        context = context.baseContext
+    }
+    return null
+}
+
 @Composable
 fun DeveloperCreditDialog(
     currentUser: String?,
+    lang: String = "en",
     onDismiss: () -> Unit
 ) {
     val isDark = MaterialTheme.colorScheme.background == Color(0xFF0F172A)
@@ -1926,6 +1985,104 @@ fun DeveloperCreditDialog(
                 }
 
                 Spacer(modifier = Modifier.height(24.dp))
+
+                // Support Developer option
+                var isAdLoading by remember { mutableStateOf(false) }
+                val context = LocalContext.current
+
+                Button(
+                    onClick = {
+                        if (!isAdLoading) {
+                            isAdLoading = true
+                            Toast.makeText(
+                                context,
+                                if (lang == "bn") "বিজ্ঞাপন লোড হচ্ছে... অনুগ্রহ করে অপেক্ষা করুন" else "Loading ad... Please wait",
+                                Toast.LENGTH_SHORT
+                            ).show()
+
+                            try {
+                                val adRequest = AdRequest.Builder().build()
+                                RewardedAd.load(
+                                    context,
+                                    "ca-app-pub-9308365057124148/9465432252",
+                                    adRequest,
+                                    object : RewardedAdLoadCallback() {
+                                        override fun onAdFailedToLoad(loadAdError: LoadAdError) {
+                                            isAdLoading = false
+                                            Toast.makeText(
+                                                context,
+                                                if (lang == "bn") "বিজ্ঞাপন লোড হতে ব্যর্থ হয়েছে। পুনরায় চেষ্টা করুন।" else "Failed to load ad. Please try again.",
+                                                Toast.LENGTH_LONG
+                                            ).show()
+                                        }
+
+                                        override fun onAdLoaded(rewardedAd: RewardedAd) {
+                                            isAdLoading = false
+                                            val activity = context.findActivity()
+                                            if (activity != null) {
+                                                rewardedAd.show(activity) { rewardItem ->
+                                                    Toast.makeText(
+                                                        context,
+                                                        if (lang == "bn") "ধন্যবাদ! আপনি সফলভাবে ডেভেলপারকে সাপোর্ট করেছেন।" else "Thank you so much for supporting the developer!",
+                                                        Toast.LENGTH_LONG
+                                                    ).show()
+                                                }
+                                            } else {
+                                                Toast.makeText(
+                                                    context,
+                                                    "Activity context not found to show ad.",
+                                                    Toast.LENGTH_SHORT
+                                                ).show()
+                                            }
+                                        }
+                                    }
+                                )
+                            } catch (e: Throwable) {
+                                isAdLoading = false
+                                Toast.makeText(
+                                    context,
+                                    if (lang == "bn") "বিজ্ঞাপন শুরু করতে ব্যর্থ হয়েছে।" else "Failed to initialize ad system.",
+                                    Toast.LENGTH_SHORT
+                                ).show()
+                                e.printStackTrace()
+                            }
+                        }
+                    },
+                    shape = RoundedCornerShape(12.dp),
+                    colors = ButtonDefaults.buttonColors(
+                        containerColor = if (isDark) Color(0xFF10B981) else Color(0xFFD1FAE5),
+                        contentColor = if (isDark) Color.White else Color(0xFF065F46)
+                    ),
+                    border = BorderStroke(1.dp, if (isDark) Color(0xFF059669) else Color(0xFFA7F3D0)),
+                    modifier = Modifier.fillMaxWidth().testTag("support_developer_ad_button"),
+                    enabled = !isAdLoading
+                ) {
+                    Icon(
+                        imageVector = Icons.Default.Favorite,
+                        contentDescription = "Support Icon",
+                        modifier = Modifier.size(18.dp),
+                        tint = if (isDark) Color.White else Color(0xFF059669)
+                    )
+                    Spacer(modifier = Modifier.width(8.dp))
+                    Text(
+                        text = buildAnnotatedString {
+                            val mainText = if (lang == "bn") "ডেভেলপারকে সাপোর্ট করুন" else "Support Developer"
+                            val subText = if (lang == "bn") " (বিজ্ঞাপন দেখে)" else " (by Watching Ads.)"
+                            append(mainText)
+                            withStyle(
+                                style = SpanStyle(
+                                    fontSize = 11.sp,
+                                    fontWeight = FontWeight.Normal
+                                )
+                            ) {
+                                append(subText)
+                            }
+                        },
+                        style = MaterialTheme.typography.labelLarge.copy(fontWeight = FontWeight.ExtraBold)
+                    )
+                }
+
+                Spacer(modifier = Modifier.height(8.dp))
 
                 // Contact Me Button
                 Button(
@@ -2677,6 +2834,368 @@ fun GoogleAvatar(
                 ),
                 textAlign = TextAlign.Center
             )
+        }
+    }
+}
+
+@OptIn(ExperimentalMaterial3Api::class)
+@Composable
+fun BajarListDialog(
+    bajarItems: List<com.example.data.BajarItem>,
+    lang: String,
+    onAdd: (name: String, quantity: String) -> Unit,
+    onToggle: (com.example.data.BajarItem, Boolean) -> Unit,
+    onDelete: (com.example.data.BajarItem) -> Unit,
+    onFinishShopping: (totalCost: Double, completedItemsList: String) -> Unit,
+    onDismiss: () -> Unit
+) {
+    var nameInput by remember { mutableStateOf("") }
+    var qtyInput by remember { mutableStateOf("") }
+    var isFinishingShopping by remember { mutableStateOf(false) }
+    var totalCostInput by remember { mutableStateOf("") }
+
+    val isDark = MaterialTheme.colorScheme.background == Color(0xFF0F172A)
+
+    val titleText = if (lang == "bn") "বাজার তালিকা" else "Bajar (Shopping) List"
+    val itemPlaceholder = if (lang == "bn") "বাজারের নাম (যেমন: আলু)" else "Item Name (e.g., Potato)"
+    val qtyPlaceholder = if (lang == "bn") "পরিমাণ (যেমন: ২ কেজি, ৪টি)" else "Quantity (e.g., 2 kg, 4 pcs)"
+    val addButtonText = if (lang == "bn") "যোগ করুন" else "Add Item"
+    val emptyText = if (lang == "bn") "কোন বাজারের তালিকা নেই!" else "No items in Bajar list!"
+    val closeButtonText = if (lang == "bn") "বন্ধ করুন" else "Close"
+
+    val finishButtonText = if (lang == "bn") "বাজার শেষ করুন" else "Finish Shopping"
+
+    Dialog(onDismissRequest = onDismiss) {
+        Card(
+            modifier = Modifier
+                .fillMaxWidth()
+                .padding(16.dp)
+                .testTag("bajar_list_dialog_card"),
+            shape = RoundedCornerShape(20.dp),
+            colors = CardDefaults.cardColors(
+                containerColor = if (isDark) Color(0xFF1E293B) else Color.White
+            ),
+            elevation = CardDefaults.cardElevation(defaultElevation = 8.dp)
+        ) {
+            Column(
+                modifier = Modifier
+                    .padding(20.dp)
+                    .fillMaxWidth()
+            ) {
+                if (!isFinishingShopping) {
+                    // Header
+                    Row(
+                        modifier = Modifier.fillMaxWidth(),
+                        horizontalArrangement = Arrangement.SpaceBetween,
+                        verticalAlignment = Alignment.CenterVertically
+                    ) {
+                        Text(
+                            text = titleText,
+                            style = MaterialTheme.typography.titleMedium,
+                            fontWeight = FontWeight.Bold,
+                            color = MaterialTheme.colorScheme.onSurface
+                        )
+                        IconButton(onClick = onDismiss, modifier = Modifier.testTag("bajar_dismiss_icon_button")) {
+                            Icon(
+                                imageVector = Icons.Default.Close,
+                                contentDescription = "Close",
+                                tint = MaterialTheme.colorScheme.onSurfaceVariant
+                            )
+                        }
+                    }
+
+                    Spacer(modifier = Modifier.height(12.dp))
+
+                    // Input form to add a new Bajar item
+                    OutlinedTextField(
+                        value = nameInput,
+                        onValueChange = { nameInput = it },
+                        label = { Text(itemPlaceholder) },
+                        singleLine = true,
+                        modifier = Modifier.fillMaxWidth().testTag("bajar_name_input"),
+                        shape = RoundedCornerShape(12.dp)
+                    )
+
+                    Spacer(modifier = Modifier.height(8.dp))
+
+                    Row(
+                        modifier = Modifier.fillMaxWidth(),
+                        verticalAlignment = Alignment.CenterVertically,
+                        horizontalArrangement = Arrangement.spacedBy(8.dp)
+                    ) {
+                        OutlinedTextField(
+                            value = qtyInput,
+                            onValueChange = { qtyInput = it },
+                            label = { Text(qtyPlaceholder) },
+                            singleLine = true,
+                            modifier = Modifier.weight(1f).testTag("bajar_cost_input"),
+                            shape = RoundedCornerShape(12.dp)
+                        )
+
+                        Button(
+                            onClick = {
+                                val name = nameInput.trim()
+                                val qty = qtyInput.trim()
+                                if (name.isNotEmpty()) {
+                                    val finalQty = if (qty.isEmpty()) "1" else qty
+                                    onAdd(name, finalQty)
+                                    nameInput = ""
+                                    qtyInput = ""
+                                }
+                            },
+                            modifier = Modifier.testTag("bajar_add_button"),
+                            shape = RoundedCornerShape(12.dp),
+                            colors = ButtonDefaults.buttonColors(
+                                containerColor = Color(0xFF10B981),
+                                contentColor = Color.White
+                            )
+                        ) {
+                            Text(addButtonText, fontWeight = FontWeight.Bold)
+                        }
+                    }
+
+                    Spacer(modifier = Modifier.height(16.dp))
+
+                    // List of items
+                    Text(
+                        text = if (lang == "bn") "তালিকাভুক্ত পণ্যসমূহ" else "Items",
+                        style = MaterialTheme.typography.labelMedium,
+                        fontWeight = FontWeight.Bold,
+                        color = MaterialTheme.colorScheme.onSurfaceVariant
+                    )
+
+                    Spacer(modifier = Modifier.height(8.dp))
+
+                    Box(
+                        modifier = Modifier
+                            .fillMaxWidth()
+                            .heightIn(max = 240.dp)
+                    ) {
+                        if (bajarItems.isEmpty()) {
+                            Box(
+                                modifier = Modifier
+                                    .fillMaxWidth()
+                                    .padding(vertical = 32.dp),
+                                contentAlignment = Alignment.Center
+                            ) {
+                                Text(
+                                    text = emptyText,
+                                    style = MaterialTheme.typography.bodyMedium,
+                                    color = MaterialTheme.colorScheme.onSurfaceVariant.copy(alpha = 0.6f)
+                                )
+                            }
+                        } else {
+                            LazyColumn(
+                                verticalArrangement = Arrangement.spacedBy(8.dp),
+                                modifier = Modifier.fillMaxWidth()
+                            ) {
+                                items(bajarItems) { item ->
+                                    Row(
+                                        modifier = Modifier
+                                            .fillMaxWidth()
+                                            .clip(RoundedCornerShape(12.dp))
+                                            .background(
+                                                if (isDark) Color(0xFF334155).copy(alpha = 0.5f)
+                                                else Color(0xFFF1F5F9)
+                                            )
+                                            .padding(horizontal = 12.dp, vertical = 6.dp),
+                                        verticalAlignment = Alignment.CenterVertically
+                                    ) {
+                                        // Checkbox with click listener
+                                        Checkbox(
+                                            checked = item.isCompleted,
+                                            onCheckedChange = { isChecked ->
+                                                onToggle(item, isChecked)
+                                            },
+                                            modifier = Modifier.testTag("bajar_checkbox_${item.id}"),
+                                            colors = CheckboxDefaults.colors(
+                                                checkedColor = Color(0xFF10B981)
+                                            )
+                                        )
+
+                                        Column(
+                                            modifier = Modifier
+                                                .weight(1f)
+                                                .padding(horizontal = 8.dp)
+                                        ) {
+                                            Text(
+                                                text = item.name,
+                                                style = MaterialTheme.typography.bodyMedium.copy(
+                                                    textDecoration = if (item.isCompleted) androidx.compose.ui.text.style.TextDecoration.LineThrough else null
+                                                ),
+                                                fontWeight = if (item.isCompleted) FontWeight.Normal else FontWeight.Bold,
+                                                color = if (item.isCompleted) MaterialTheme.colorScheme.onSurfaceVariant.copy(alpha = 0.6f)
+                                                        else MaterialTheme.colorScheme.onSurface
+                                            )
+
+                                            Text(
+                                                text = if (lang == "bn") "পরিমাণ: ${item.quantity}" else "Qty: ${item.quantity}",
+                                                style = MaterialTheme.typography.bodySmall,
+                                                color = if (item.isCompleted) MaterialTheme.colorScheme.onSurfaceVariant.copy(alpha = 0.5f)
+                                                        else Color(0xFF10B981)
+                                            )
+                                        }
+
+                                        // Delete button
+                                        IconButton(
+                                            onClick = { onDelete(item) },
+                                            modifier = Modifier.size(36.dp).testTag("bajar_delete_button_${item.id}")
+                                        ) {
+                                            Icon(
+                                                imageVector = Icons.Default.Delete,
+                                                contentDescription = "Delete Item",
+                                                tint = MaterialTheme.colorScheme.error.copy(alpha = 0.8f),
+                                                modifier = Modifier.size(20.dp)
+                                            )
+                                        }
+                                    }
+                                }
+                            }
+                        }
+                    }
+
+                    Spacer(modifier = Modifier.height(16.dp))
+
+                    val completedItems = bajarItems.filter { it.isCompleted }
+
+                    Row(
+                        modifier = Modifier.fillMaxWidth(),
+                        horizontalArrangement = Arrangement.SpaceBetween,
+                        verticalAlignment = Alignment.CenterVertically
+                    ) {
+                        if (completedItems.isNotEmpty()) {
+                            Button(
+                                onClick = { isFinishingShopping = true },
+                                modifier = Modifier.testTag("bajar_finish_shopping_button"),
+                                colors = ButtonDefaults.buttonColors(
+                                    containerColor = Color(0xFF10B981),
+                                    contentColor = Color.White
+                                ),
+                                shape = RoundedCornerShape(12.dp)
+                            ) {
+                                Icon(
+                                    imageVector = Icons.Default.Check,
+                                    contentDescription = "Complete",
+                                    modifier = Modifier.padding(end = 4.dp).size(16.dp)
+                                )
+                                Text(finishButtonText, fontWeight = FontWeight.Bold)
+                            }
+                        } else {
+                            Spacer(modifier = Modifier.width(1.dp))
+                        }
+
+                        TextButton(
+                            onClick = onDismiss,
+                            modifier = Modifier.testTag("bajar_dialog_close_button")
+                        ) {
+                            Text(closeButtonText, fontWeight = FontWeight.Bold)
+                        }
+                    }
+                } else {
+                    // Finishing shopping session form (ask money spent)
+                    val completedItems = bajarItems.filter { it.isCompleted }
+                    val completedNames = completedItems.joinToString(", ") { it.name }
+
+                    val finishPromptTitle = if (lang == "bn") "বাজার সম্পন্ন করুন" else "Complete Shopping"
+                    val finishPromptSub = if (lang == "bn") {
+                        "নিচের সম্পন্নকৃত পণ্যগুলোর জন্য খরচ যোগ করা হবে:"
+                    } else {
+                        "The following completed items will be logged as an expense:"
+                    }
+                    val amountLabel = if (lang == "bn") "কত টাকা খরচ হলো?" else "How much money did you spend?"
+                    val doneBtnText = if (lang == "bn") "সম্পন্ন" else "Done"
+                    val backBtnText = if (lang == "bn") "পেছনে" else "Back"
+
+                    Row(
+                        modifier = Modifier.fillMaxWidth(),
+                        horizontalArrangement = Arrangement.SpaceBetween,
+                        verticalAlignment = Alignment.CenterVertically
+                    ) {
+                        Text(
+                            text = finishPromptTitle,
+                            style = MaterialTheme.typography.titleMedium,
+                            fontWeight = FontWeight.Bold,
+                            color = MaterialTheme.colorScheme.onSurface
+                        )
+                        IconButton(onClick = { isFinishingShopping = false }) {
+                            Icon(
+                                imageVector = Icons.Default.Close,
+                                contentDescription = "Close"
+                            )
+                        }
+                    }
+
+                    Spacer(modifier = Modifier.height(12.dp))
+
+                    Text(
+                        text = finishPromptSub,
+                        style = MaterialTheme.typography.bodyMedium,
+                        color = MaterialTheme.colorScheme.onSurfaceVariant
+                    )
+
+                    Spacer(modifier = Modifier.height(6.dp))
+
+                    Text(
+                        text = completedNames,
+                        style = MaterialTheme.typography.bodyMedium,
+                        fontWeight = FontWeight.Bold,
+                        color = Color(0xFF10B981),
+                        modifier = Modifier
+                            .fillMaxWidth()
+                            .clip(RoundedCornerShape(8.dp))
+                            .background(
+                                if (isDark) Color(0xFF334155).copy(alpha = 0.3f)
+                                else Color(0xFFF1F5F9)
+                            )
+                            .padding(12.dp)
+                    )
+
+                    Spacer(modifier = Modifier.height(16.dp))
+
+                    OutlinedTextField(
+                        value = totalCostInput,
+                        onValueChange = { totalCostInput = it },
+                        label = { Text(amountLabel) },
+                        singleLine = true,
+                        keyboardOptions = KeyboardOptions(keyboardType = KeyboardType.Number),
+                        modifier = Modifier.fillMaxWidth().testTag("bajar_total_cost_input"),
+                        shape = RoundedCornerShape(12.dp)
+                    )
+
+                    Spacer(modifier = Modifier.height(24.dp))
+
+                    Row(
+                        modifier = Modifier.fillMaxWidth(),
+                        horizontalArrangement = Arrangement.spacedBy(12.dp)
+                    ) {
+                        OutlinedButton(
+                            onClick = { isFinishingShopping = false },
+                            modifier = Modifier.weight(1f),
+                            shape = RoundedCornerShape(12.dp)
+                        ) {
+                            Text(backBtnText, fontWeight = FontWeight.Bold)
+                        }
+
+                        Button(
+                            onClick = {
+                                val amount = totalCostInput.trim().toDoubleOrNull()
+                                if (amount != null && amount >= 0.0) {
+                                    onFinishShopping(amount, completedNames)
+                                }
+                            },
+                            enabled = totalCostInput.trim().toDoubleOrNull() != null,
+                            modifier = Modifier.weight(1.5f).testTag("bajar_finish_shopping_confirm_button"),
+                            colors = ButtonDefaults.buttonColors(
+                                containerColor = Color(0xFF10B981),
+                                contentColor = Color.White
+                            ),
+                            shape = RoundedCornerShape(12.dp)
+                        ) {
+                            Text(doneBtnText, fontWeight = FontWeight.Bold)
+                        }
+                    }
+                }
+            }
         }
     }
 }

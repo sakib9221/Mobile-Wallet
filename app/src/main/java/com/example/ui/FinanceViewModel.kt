@@ -45,8 +45,8 @@ class FinanceViewModel(application: Application) : AndroidViewModel(application)
     val autoSyncOnChanges: StateFlow<Boolean> = _autoSyncOnChanges.asStateFlow()
 
     init {
-        val transactionDao = AppDatabase.getDatabase(application).transactionDao()
-        repository = TransactionRepository(transactionDao)
+        val db = AppDatabase.getDatabase(application)
+        repository = TransactionRepository(db.transactionDao(), db.bajarItemDao())
         _selectedLanguage.value = prefs.getString("selected_lang", "en") ?: "en"
         _selectedTheme.value = prefs.getString("selected_theme", "system") ?: "system"
         _currentUser.value = prefs.getString("selected_user", null)
@@ -72,6 +72,18 @@ class FinanceViewModel(application: Application) : AndroidViewModel(application)
     val transactions: StateFlow<List<Transaction>> = activeUserId
         .flatMapLatest { userId ->
             repository.getAllTransactions(userId)
+        }
+        .stateIn(
+            scope = viewModelScope,
+            started = SharingStarted.Eagerly,
+            initialValue = emptyList()
+        )
+
+    // Retrieve Bajar items reactively based on active user
+    @OptIn(ExperimentalCoroutinesApi::class)
+    val bajarItems: StateFlow<List<com.example.data.BajarItem>> = activeUserId
+        .flatMapLatest { userId ->
+            repository.getAllBajarItems(userId)
         }
         .stateIn(
             scope = viewModelScope,
@@ -188,6 +200,60 @@ class FinanceViewModel(application: Application) : AndroidViewModel(application)
                 val currentList = repository.getAllTransactions(activeUserId.value).first()
                 googleDriveManager.backupData(activeUserId.value, currentList)
             }
+        }
+    }
+
+    fun addBajarItem(name: String, quantity: String) {
+        viewModelScope.launch {
+            val item = com.example.data.BajarItem(
+                name = name,
+                quantity = quantity,
+                isCompleted = false,
+                userId = activeUserId.value
+            )
+            repository.insertBajarItem(item)
+        }
+    }
+
+    fun toggleBajarItemCompletion(item: com.example.data.BajarItem, isCompleted: Boolean) {
+        viewModelScope.launch {
+            val updated = item.copy(isCompleted = isCompleted)
+            repository.updateBajarItem(updated)
+        }
+    }
+
+    fun finishBajarShopping(totalCost: Double, completedItemsList: String) {
+        viewModelScope.launch {
+            val noteText = if (completedItemsList.isNotBlank()) {
+                "Bajar: $completedItemsList"
+            } else {
+                "Bajar (Shopping) Expense"
+            }
+
+            val transaction = Transaction(
+                amount = totalCost,
+                category = com.example.R.string.category_groceries.toString(),
+                type = "EXPENSE",
+                dateLong = System.currentTimeMillis(),
+                note = noteText,
+                userId = activeUserId.value
+            )
+            repository.insert(transaction)
+
+            // Auto-delete completed items from the list since we just converted them to expense
+            repository.deleteCompletedBajarItems(activeUserId.value)
+
+            // Auto-sync
+            if (_autoSyncOnChanges.value && activeUserId.value != "local_guest") {
+                val currentList = repository.getAllTransactions(activeUserId.value).first()
+                googleDriveManager.backupData(activeUserId.value, currentList)
+            }
+        }
+    }
+
+    fun deleteBajarItem(item: com.example.data.BajarItem) {
+        viewModelScope.launch {
+            repository.deleteBajarItem(item)
         }
     }
 

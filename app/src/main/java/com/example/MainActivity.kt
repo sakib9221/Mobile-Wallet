@@ -17,7 +17,13 @@ import com.example.ui.theme.MyApplicationTheme
 class MainActivity : ComponentActivity() {
     override fun onCreate(savedInstanceState: Bundle?) {
         super.onCreate(savedInstanceState)
+        try {
+            com.google.android.gms.ads.MobileAds.initialize(this) {}
+        } catch (e: Throwable) {
+            e.printStackTrace()
+        }
         enableEdgeToEdge()
+
         setContent {
             val viewModel: FinanceViewModel = viewModel()
             val themeState by viewModel.selectedTheme.collectAsStateWithLifecycle()

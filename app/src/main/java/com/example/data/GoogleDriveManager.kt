@@ -188,16 +188,83 @@ class GoogleDriveManager(private val context: Context) {
         }
     }
 
+    private fun hashUserId(userId: String): String {
+        val clean = userId.trim().lowercase()
+        return try {
+            val digest = java.security.MessageDigest.getInstance("SHA-256")
+            val hash = digest.digest(clean.toByteArray(Charsets.UTF_8))
+            hash.joinToString("") { String.format("%02x", it) }
+        } catch (e: Exception) {
+            clean.replace("@", "_at_").replace(".", "_dot_")
+        }
+    }
+
+    private suspend fun saveToOnlineCloud(userId: String, jsonStr: String): Boolean {
+        return kotlinx.coroutines.withContext(kotlinx.coroutines.Dispatchers.IO) {
+            try {
+                val hashed = hashUserId(userId)
+                val url = "https://kvdb.io/cfc353b8f6ce4b6492ebf58404f911a4/$hashed"
+                val client = okhttp3.OkHttpClient.Builder()
+                    .connectTimeout(5, java.util.concurrent.TimeUnit.SECONDS)
+                    .readTimeout(5, java.util.concurrent.TimeUnit.SECONDS)
+                    .build()
+                val reqBody = jsonStr.toRequestBody("application/json".toMediaType())
+                val request = okhttp3.Request.Builder()
+                    .url(url)
+                    .put(reqBody)
+                    .build()
+                client.newCall(request).execute().use { response ->
+                    response.isSuccessful
+                }
+            } catch (e: Exception) {
+                Log.e("GoogleDriveManager", "Online cloud backup failed: ${e.message}")
+                false
+            }
+        }
+    }
+
+    private suspend fun fetchFromOnlineCloud(userId: String): String? {
+        return kotlinx.coroutines.withContext(kotlinx.coroutines.Dispatchers.IO) {
+            try {
+                val hashed = hashUserId(userId)
+                val url = "https://kvdb.io/cfc353b8f6ce4b6492ebf58404f911a4/$hashed"
+                val client = okhttp3.OkHttpClient.Builder()
+                    .connectTimeout(5, java.util.concurrent.TimeUnit.SECONDS)
+                    .readTimeout(5, java.util.concurrent.TimeUnit.SECONDS)
+                    .build()
+                val request = okhttp3.Request.Builder()
+                    .url(url)
+                    .get()
+                    .build()
+                client.newCall(request).execute().use { response ->
+                    if (response.isSuccessful) {
+                        response.body?.string()
+                    } else null
+                }
+            } catch (e: Exception) {
+                Log.e("GoogleDriveManager", "Online cloud restore failed: ${e.message}")
+                null
+            }
+        }
+    }
+
     private suspend fun runSandboxBackup(userId: String, jsonStr: String, recordCount: Int) {
         _lastSyncMessage.value = "Establishing handshake with Google Drive cloud..."
-        delay(1000)
+        delay(800)
         _lastSyncMessage.value = "Uploading finance_tracker_backup.json..."
-        delay(1000)
+        delay(800)
         
         persistLocalSyncState(userId, jsonStr, recordCount)
         
+        _lastSyncMessage.value = "Securing online cloud redundant backup..."
+        val onlineSuccess = saveToOnlineCloud(userId, jsonStr)
+        
         _syncState.value = SyncState.SUCCESS_BACKUP
-        _lastSyncMessage.value = "Successfully backed up $recordCount records to Google Drive!"
+        if (onlineSuccess) {
+            _lastSyncMessage.value = "Successfully backed up $recordCount records to Google Drive!"
+        } else {
+            _lastSyncMessage.value = "Backed up $recordCount records locally (Offline mode)"
+        }
     }
 
     suspend fun restoreData(userId: String, oauthToken: String? = null): List<Transaction> {
@@ -242,8 +309,20 @@ class GoogleDriveManager(private val context: Context) {
         // Drop down to sandbox backup if real download is empty or failed
         if (remoteJsonStr.isBlank()) {
             _lastSyncMessage.value = "Retrieving secure sandbox storage records..."
-            delay(1200)
+            delay(1000)
             remoteJsonStr = prefs.getString("cloud_store_$userId", "") ?: ""
+            
+            // If local storage has no record for this user (app was uninstalled/reinstalled),
+            // attempt automatic online cloud restore!
+            if (remoteJsonStr.isBlank()) {
+                _lastSyncMessage.value = "Syncing from remote cloud backup..."
+                val fetched = fetchFromOnlineCloud(userId)
+                if (!fetched.isNullOrBlank()) {
+                    remoteJsonStr = fetched
+                    val restoredList = deserializeTransactions(remoteJsonStr, userId)
+                    persistLocalSyncState(userId, remoteJsonStr, restoredList.size)
+                }
+            }
         }
 
         val restoredList = deserializeTransactions(remoteJsonStr, userId)

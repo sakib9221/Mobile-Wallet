@@ -98,4 +98,28 @@ class FinanceDashboardTest {
         composeTestRule.onNodeWithText("WhatsApp").assertExists()
         composeTestRule.onNodeWithText("Facebook").assertExists()
     }
+
+    @Test
+    fun testBajarListDialogRendering() {
+        val items = listOf(
+            com.example.data.BajarItem(id = 1, name = "Alu", quantity = "2 kg", isCompleted = false)
+        )
+        composeTestRule.setContent {
+            MyApplicationTheme {
+                com.example.ui.BajarListDialog(
+                    bajarItems = items,
+                    lang = "en",
+                    onAdd = { _, _ -> },
+                    onToggle = { _, _ -> },
+                    onDelete = {},
+                    onFinishShopping = { _, _ -> },
+                    onDismiss = {}
+                )
+            }
+        }
+        composeTestRule.onNodeWithTag("bajar_list_dialog_card").assertExists()
+        composeTestRule.onNodeWithTag("bajar_name_input").assertExists()
+        composeTestRule.onNodeWithTag("bajar_cost_input").assertExists()
+        composeTestRule.onNodeWithTag("bajar_add_button").assertExists()
+    }
 }
