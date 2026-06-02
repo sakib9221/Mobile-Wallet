@@ -3,6 +3,8 @@ package com.example.ui
 import android.widget.Toast
 import androidx.compose.animation.*
 import coil.compose.AsyncImage
+import androidx.compose.foundation.Canvas
+import androidx.compose.ui.graphics.drawscope.rotate
 import androidx.compose.animation.core.spring
 import androidx.compose.animation.core.tween
 import androidx.compose.foundation.BorderStroke
@@ -60,6 +62,7 @@ import androidx.compose.foundation.LocalIndication
 import androidx.compose.animation.core.animateFloatAsState
 import androidx.compose.animation.core.Spring
 import androidx.compose.ui.graphics.graphicsLayer
+import androidx.compose.ui.composed
 
 
 @Composable
@@ -68,11 +71,10 @@ fun isAppDark(): Boolean {
     return theme == "dark" || (theme == "system" && androidx.compose.foundation.isSystemInDarkTheme())
 }
 
-@Composable
 fun Modifier.android16Clickable(
     enabled: Boolean = true,
     onClick: () -> Unit
-): Modifier {
+): Modifier = composed {
     val interactionSource = remember { MutableInteractionSource() }
     val isPressed by interactionSource.collectIsPressedAsState()
 
@@ -92,7 +94,7 @@ fun Modifier.android16Clickable(
         label = "click_alpha"
     )
 
-    return this
+    this
         .graphicsLayer {
             scaleX = scale
             scaleY = scale
@@ -104,6 +106,41 @@ fun Modifier.android16Clickable(
             enabled = enabled,
             onClick = onClick
         )
+}
+
+// Bouncy scale-up and fade entrance animation wrapper for pop-up dialogs and options dropdowns
+@Composable
+fun AnimatedDialogContent(
+    modifier: Modifier = Modifier,
+    content: @Composable () -> Unit
+) {
+    var animateTrigger by remember { mutableStateOf(false) }
+    LaunchedEffect(Unit) {
+        animateTrigger = true
+    }
+    val scale by animateFloatAsState(
+        targetValue = if (animateTrigger) 1f else 0.85f,
+        animationSpec = spring(
+            dampingRatio = 0.72f,
+            stiffness = Spring.StiffnessMediumLow
+        ),
+        label = "dialog_scale"
+    )
+    val alpha by animateFloatAsState(
+        targetValue = if (animateTrigger) 1f else 0.1f,
+        animationSpec = tween(durationMillis = 220),
+        label = "dialog_alpha"
+    )
+    Box(
+        modifier = modifier
+            .graphicsLayer {
+                scaleX = scale
+                scaleY = scale
+                this.alpha = alpha
+            }
+    ) {
+        content()
+    }
 }
 
 @OptIn(ExperimentalMaterial3Api::class)
@@ -378,13 +415,26 @@ fun FinanceDashboardScreen(
 
             Spacer(modifier = Modifier.height(12.dp))
 
-            // Content matching the active tab
-            Box(
+            // Content matching the active tab with premium horizontal swipe transition
+            AnimatedContent(
+                targetState = currentTab,
+                transitionSpec = {
+                    if (targetState == "summary") {
+                        // Slide in from right (to left), together with slide out to left
+                        slideInHorizontally { width -> width } + fadeIn() togetherWith
+                                slideOutHorizontally { width -> -width } + fadeOut()
+                    } else {
+                        // Slide in from left (to right), together with slide out to right
+                        slideInHorizontally { width -> -width } + fadeIn() togetherWith
+                                slideOutHorizontally { width -> width } + fadeOut()
+                    }
+                },
+                label = "tab_transition",
                 modifier = Modifier
                     .fillMaxWidth()
                     .weight(1f)
-            ) {
-                if (currentTab == "dashboard") {
+            ) { targetTab ->
+                if (targetTab == "dashboard") {
                     TransactionsTabContent(
                         transactions = transactions,
                         currentLanguage = currentLanguage,
@@ -749,6 +799,42 @@ fun TabNavigationRow(
     val activeTextColor = if (isDark) MaterialTheme.colorScheme.primary else Color(0xFF2563EB)
     val inactiveTextColor = if (isDark) MaterialTheme.colorScheme.onSurfaceVariant else Color(0xFF64748B)
 
+    // Smoothly animated weights for expanding the active tab
+    val dWeight by animateFloatAsState(
+        targetValue = if (currentTab == "dashboard") 1.4f else 1.0f,
+        animationSpec = spring(dampingRatio = 0.72f, stiffness = Spring.StiffnessMediumLow),
+        label = "dashboard_weight"
+    )
+    val sWeight by animateFloatAsState(
+        targetValue = if (currentTab == "summary") 1.4f else 1.0f,
+        animationSpec = spring(dampingRatio = 0.72f, stiffness = Spring.StiffnessMediumLow),
+        label = "summary_weight"
+    )
+
+    // Smoothly animated background card colors
+    val dBackGroundColor by animateColorAsState(
+        targetValue = if (currentTab == "dashboard") activePaneBg else Color.Transparent,
+        animationSpec = tween(durationMillis = 220),
+        label = "dashboard_bg"
+    )
+    val sBackGroundColor by animateColorAsState(
+        targetValue = if (currentTab == "summary") activePaneBg else Color.Transparent,
+        animationSpec = tween(durationMillis = 220),
+        label = "summary_bg"
+    )
+
+    // Smoothly animated text colors
+    val dTextColor by animateColorAsState(
+        targetValue = if (currentTab == "dashboard") activeTextColor else inactiveTextColor,
+        animationSpec = tween(durationMillis = 220),
+        label = "dashboard_text"
+    )
+    val sTextColor by animateColorAsState(
+        targetValue = if (currentTab == "summary") activeTextColor else inactiveTextColor,
+        animationSpec = tween(durationMillis = 220),
+        label = "summary_text"
+    )
+
     Card(
         modifier = Modifier
             .fillMaxWidth()
@@ -766,51 +852,41 @@ fun TabNavigationRow(
         ) {
             // Tab 1: Dashboard & Transactions list
             Box(
-                modifier = if (currentTab == "dashboard") {
-                    Modifier
-                        .weight(1.5f)
-                        .clip(RoundedCornerShape(16.dp))
-                        .background(activePaneBg)
-                        .padding(vertical = 12.dp)
-                } else {
-                    Modifier
-                        .weight(1f)
-                        .clip(RoundedCornerShape(16.dp))
-                        .android16Clickable { onTabSelect("dashboard") }
-                        .padding(vertical = 12.dp)
-                },
+                modifier = Modifier
+                    .weight(dWeight)
+                    .clip(RoundedCornerShape(16.dp))
+                    .background(dBackGroundColor)
+                    .android16Clickable(enabled = currentTab != "dashboard") { onTabSelect("dashboard") }
+                    .padding(vertical = 12.dp),
                 contentAlignment = Alignment.Center
             ) {
                 Text(
                     text = getString(R.string.recent_transactions_header),
                     fontWeight = FontWeight.Black,
                     style = MaterialTheme.typography.labelMedium.copy(letterSpacing = 0.3.sp),
-                    color = if (currentTab == "dashboard") activeTextColor else inactiveTextColor
+                    color = dTextColor,
+                    maxLines = 1,
+                    overflow = TextOverflow.Ellipsis
                 )
             }
 
             // Tab 2: Categorized Summary info
             Box(
-                modifier = if (currentTab == "summary") {
-                    Modifier
-                        .weight(1.5f)
-                        .clip(RoundedCornerShape(16.dp))
-                        .background(activePaneBg)
-                        .padding(vertical = 12.dp)
-                } else {
-                    Modifier
-                        .weight(1f)
-                        .clip(RoundedCornerShape(16.dp))
-                        .android16Clickable { onTabSelect("summary") }
-                        .padding(vertical = 12.dp)
-                },
+                modifier = Modifier
+                    .weight(sWeight)
+                    .clip(RoundedCornerShape(16.dp))
+                    .background(sBackGroundColor)
+                    .android16Clickable(enabled = currentTab != "summary") { onTabSelect("summary") }
+                    .padding(vertical = 12.dp),
                 contentAlignment = Alignment.Center
             ) {
                 Text(
                     text = getString(R.string.monthly_summary_header),
                     fontWeight = FontWeight.Black,
                     style = MaterialTheme.typography.labelMedium.copy(letterSpacing = 0.3.sp),
-                    color = if (currentTab == "summary") activeTextColor else inactiveTextColor
+                    color = sTextColor,
+                    maxLines = 1,
+                    overflow = TextOverflow.Ellipsis
                 )
             }
         }
@@ -825,6 +901,7 @@ fun TransactionsTabContent(
     getString: (Int) -> String,
     onDeleteTransaction: (Transaction) -> Unit
 ) {
+    val isDark = isAppDark()
     if (transactions.isEmpty()) {
         Box(
             modifier = Modifier
@@ -862,6 +939,7 @@ fun TransactionsTabContent(
                     transaction = transaction,
                     lang = currentLanguage,
                     getString = getString,
+                    isDark = isDark,
                     onDelete = { onDeleteTransaction(transaction) }
                 )
             }
@@ -875,8 +953,11 @@ fun TransactionListItem(
     transaction: Transaction,
     lang: String,
     getString: (Int) -> String,
+    isDark: Boolean,
     onDelete: () -> Unit
 ) {
+    var expanded by remember { mutableStateOf(false) }
+
     val isExpense = transaction.type == "EXPENSE"
     val categoryName = remember(transaction.category, lang) {
         val resId = transaction.category.toIntOrNull()
@@ -891,14 +972,12 @@ fun TransactionListItem(
         "${if (isExpense) "-" else "+"}${formatCurrency(transaction.amount, lang)}"
     }
 
-    val isDark = isAppDark()
     val itemBg = if (isDark) MaterialTheme.colorScheme.surface else Color.White
     val itemBorder = MaterialTheme.colorScheme.outlineVariant
     val titleColor = if (isDark) MaterialTheme.colorScheme.onSurface else Color(0xFF1E293B)
     val noteColor = if (isDark) MaterialTheme.colorScheme.onSurfaceVariant else Color(0xFF64748B)
     val dateColor = if (isDark) MaterialTheme.colorScheme.onSurfaceVariant.copy(alpha = 0.8f) else Color(0xFF94A3B8)
     val amountColor = if (isExpense) Color(0xFFE11D48) else { if (isDark) Color(0xFF34D399) else Color(0xFF10B981) }
-    val deleteIconTint = if (isDark) Color(0xFFF87171) else Color(0xFFFDA4AF)
 
     // Map categories to modern design colors for icons
     val categoryColor = remember(transaction.category) {
@@ -932,85 +1011,171 @@ fun TransactionListItem(
     Card(
         modifier = Modifier
             .fillMaxWidth()
-            .padding(horizontal = 16.dp),
+            .padding(horizontal = 16.dp)
+            .android16Clickable { expanded = !expanded },
         shape = RoundedCornerShape(20.dp),
         border = BorderStroke(1.dp, itemBorder), // white/40 as in design HTML
         colors = CardDefaults.cardColors(containerColor = itemBg), // white/60 backdrop glass
         elevation = CardDefaults.cardElevation(defaultElevation = 0.dp)
     ) {
-        Row(
-            modifier = Modifier
-                .fillMaxWidth()
-                .padding(16.dp),
-            verticalAlignment = Alignment.CenterVertically
-        ) {
-            // Rounded color emblem for Category
-            Box(
+        Column {
+            Row(
                 modifier = Modifier
-                    .size(48.dp)
-                    .clip(RoundedCornerShape(14.dp)) // rounded-2xl style icon backgrounds
-                    .background(categoryColor.copy(alpha = 0.15f)),
-                contentAlignment = Alignment.Center
+                    .fillMaxWidth()
+                    .padding(16.dp),
+                verticalAlignment = Alignment.CenterVertically
             ) {
-                Icon(
-                    imageVector = categoryIcon,
-                    contentDescription = categoryName,
-                    tint = categoryColor,
-                    modifier = Modifier.size(24.dp)
-                )
-            }
-
-            Spacer(modifier = Modifier.width(16.dp))
-
-            // Text section
-            Column(modifier = Modifier.weight(1f)) {
-                Text(
-                    text = categoryName,
-                    style = MaterialTheme.typography.titleMedium.copy(fontWeight = FontWeight.ExtraBold),
-                    color = titleColor
-                )
-                if (transaction.note.isNotBlank()) {
-                    Text(
-                        text = transaction.note,
-                        style = MaterialTheme.typography.bodySmall,
-                        color = noteColor,
-                        maxLines = 1,
-                        overflow = TextOverflow.Ellipsis
-                    )
-                }
-                Text(
-                    text = formattedDate,
-                    style = MaterialTheme.typography.labelSmall,
-                    color = dateColor,
-                    fontWeight = FontWeight.Bold
-                )
-            }
-
-            Spacer(modifier = Modifier.width(8.dp))
-
-            // Cost / Income badge and delete button
-            Column(
-                horizontalAlignment = Alignment.End,
-                verticalArrangement = Arrangement.Center
-            ) {
-                Text(
-                    text = formattedAmount,
-                    style = MaterialTheme.typography.titleMedium.copy(fontWeight = FontWeight.Black),
-                    color = amountColor
-                )
-                Spacer(modifier = Modifier.height(4.dp))
-                IconButton(
-                    onClick = onDelete,
+                // Rounded color emblem for Category
+                Box(
                     modifier = Modifier
-                        .size(24.dp)
-                        .testTag("delete_transaction_button")
+                        .size(48.dp)
+                        .clip(RoundedCornerShape(14.dp)) // rounded-2xl style icon backgrounds
+                        .background(categoryColor.copy(alpha = 0.15f)),
+                    contentAlignment = Alignment.Center
                 ) {
                     Icon(
-                        imageVector = Icons.Default.DeleteOutline,
-                        contentDescription = "Delete",
-                        tint = deleteIconTint,
-                        modifier = Modifier.size(20.dp)
+                        imageVector = categoryIcon,
+                        contentDescription = categoryName,
+                        tint = categoryColor,
+                        modifier = Modifier.size(24.dp)
                     )
+                }
+
+                Spacer(modifier = Modifier.width(16.dp))
+
+                // Text section
+                Column(modifier = Modifier.weight(1f)) {
+                    Text(
+                        text = categoryName,
+                        style = MaterialTheme.typography.titleMedium.copy(fontWeight = FontWeight.ExtraBold),
+                        color = titleColor
+                    )
+                    if (transaction.note.isNotBlank()) {
+                        Text(
+                            text = transaction.note,
+                            style = MaterialTheme.typography.bodySmall,
+                            color = noteColor,
+                            maxLines = 1,
+                            overflow = TextOverflow.Ellipsis
+                        )
+                    }
+                    Text(
+                        text = formattedDate,
+                        style = MaterialTheme.typography.labelSmall,
+                        color = dateColor,
+                        fontWeight = FontWeight.Bold
+                    )
+                }
+
+                Spacer(modifier = Modifier.width(8.dp))
+
+                // Cost / Income badge and delete button
+                Column(
+                    horizontalAlignment = Alignment.End,
+                    verticalArrangement = Arrangement.Center
+                ) {
+                    Text(
+                        text = formattedAmount,
+                        style = MaterialTheme.typography.titleMedium.copy(fontWeight = FontWeight.Black),
+                        color = amountColor
+                    )
+                    Spacer(modifier = Modifier.height(4.dp))
+                    IconButton(
+                        onClick = { expanded = !expanded },
+                        modifier = Modifier
+                            .size(24.dp)
+                    ) {
+                        Icon(
+                            imageVector = if (expanded) Icons.Default.ExpandLess else Icons.Default.ExpandMore,
+                            contentDescription = "Expand Options",
+                            tint = if (isDark) Color(0xFF94A3B8) else Color(0xFF475569),
+                            modifier = Modifier.size(20.dp)
+                        )
+                    }
+                }
+            }
+
+            AnimatedVisibility(
+                visible = expanded,
+                enter = expandVertically(animationSpec = spring(dampingRatio = 0.8f, stiffness = Spring.StiffnessMediumLow)) + fadeIn(),
+                exit = shrinkVertically(animationSpec = spring(dampingRatio = 0.8f, stiffness = Spring.StiffnessMediumLow)) + fadeOut()
+            ) {
+                // Expandable panel with quick options
+                Column(
+                    modifier = Modifier
+                        .fillMaxWidth()
+                        .padding(start = 16.dp, end = 16.dp, bottom = 16.dp)
+                ) {
+                    HorizontalDivider(
+                        modifier = Modifier.padding(bottom = 12.dp),
+                        color = MaterialTheme.colorScheme.outlineVariant.copy(alpha = 0.5f)
+                    )
+                    Text(
+                        text = if (lang == "bn") "লেনদেনের তথ্য ও অপশনসমূহ" else "Transaction Details & Options",
+                        style = MaterialTheme.typography.labelMedium,
+                        fontWeight = FontWeight.Bold,
+                        color = MaterialTheme.colorScheme.primary
+                    )
+                    Spacer(modifier = Modifier.height(6.dp))
+                    if (transaction.note.isNotBlank()) {
+                        Text(
+                            text = "${if (lang == "bn") "মন্তব্য / নোট:" else "Note / Description:"} ${transaction.note}",
+                            style = MaterialTheme.typography.bodySmall,
+                            color = if (isDark) MaterialTheme.colorScheme.onSurface else Color(0xFF334155)
+                        )
+                        Spacer(modifier = Modifier.height(10.dp))
+                    }
+                    Row(
+                        modifier = Modifier.fillMaxWidth(),
+                        horizontalArrangement = Arrangement.spacedBy(8.dp)
+                    ) {
+                        val context = LocalContext.current
+                        if (transaction.note.isNotBlank()) {
+                            Button(
+                                onClick = {
+                                    val clipboard = context.getSystemService(Context.CLIPBOARD_SERVICE) as android.content.ClipboardManager
+                                    val clip = android.content.ClipData.newPlainText("Transaction Note", transaction.note)
+                                    clipboard.setPrimaryClip(clip)
+                                    Toast.makeText(context, if (lang == "bn") "নোট কপি করা হয়েছে" else "Note copied to clipboard", Toast.LENGTH_SHORT).show()
+                                },
+                                colors = ButtonDefaults.buttonColors(
+                                    containerColor = MaterialTheme.colorScheme.primaryContainer.copy(alpha = 0.3f),
+                                    contentColor = MaterialTheme.colorScheme.primary
+                                ),
+                                shape = RoundedCornerShape(8.dp),
+                                contentPadding = PaddingValues(horizontal = 12.dp, vertical = 6.dp),
+                                modifier = Modifier
+                                    .height(32.dp)
+                                    .android16Clickable {
+                                        val clipboard = context.getSystemService(Context.CLIPBOARD_SERVICE) as android.content.ClipboardManager
+                                        val clip = android.content.ClipData.newPlainText("Transaction Note", transaction.note)
+                                        clipboard.setPrimaryClip(clip)
+                                        Toast.makeText(context, if (lang == "bn") "নোট কপি করা হয়েছে" else "Note copied to clipboard", Toast.LENGTH_SHORT).show()
+                                    }
+                            ) {
+                                Icon(Icons.Default.ContentCopy, contentDescription = "Copy", modifier = Modifier.size(12.dp))
+                                Spacer(modifier = Modifier.width(4.dp))
+                                Text(if (lang == "bn") "সব তথ্য কপি" else "Copy Note", fontSize = 11.sp, fontWeight = FontWeight.Bold)
+                            }
+                        }
+
+                        Button(
+                            onClick = onDelete,
+                            colors = ButtonDefaults.buttonColors(
+                                containerColor = MaterialTheme.colorScheme.errorContainer.copy(alpha = 0.8f),
+                                contentColor = MaterialTheme.colorScheme.onErrorContainer
+                            ),
+                            shape = RoundedCornerShape(8.dp),
+                            contentPadding = PaddingValues(horizontal = 12.dp, vertical = 6.dp),
+                            modifier = Modifier
+                                .height(32.dp)
+                                .android16Clickable { onDelete() }
+                        ) {
+                            Icon(Icons.Default.DeleteOutline, contentDescription = "Delete", modifier = Modifier.size(12.dp))
+                            Spacer(modifier = Modifier.width(4.dp))
+                            Text(if (lang == "bn") "মুছে ফেলুন" else "Delete Record", fontSize = 11.sp, fontWeight = FontWeight.Bold)
+                        }
+                    }
                 }
             }
         }
@@ -1024,6 +1189,7 @@ fun SummaryTabContent(
     currentLanguage: String,
     getString: (Int) -> String
 ) {
+    val isDark = isAppDark()
     // Categorize transactions and sum expenses / income
     val summaryData = remember(transactions, currentLanguage) {
         val incomeCategories = mutableMapOf<Int, Double>()
@@ -1115,6 +1281,7 @@ fun SummaryTabContent(
                         percentage = percentage,
                         lang = currentLanguage,
                         getString = getString,
+                        isDark = isDark,
                         isExpense = activeFilter == "EXPENSE"
                     )
                 }
@@ -1131,6 +1298,7 @@ fun CategorySummaryItem(
     percentage: Double,
     lang: String,
     getString: (Int) -> String,
+    isDark: Boolean,
     isExpense: Boolean
 ) {
     val categoryName = getString(categoryResId)
@@ -1154,7 +1322,6 @@ fun CategorySummaryItem(
         else -> Color(0xFF9E9E9E)
     }
 
-    val isDark = isAppDark()
     val itemBg = if (isDark) MaterialTheme.colorScheme.surface else Color.White
     val itemBorder = MaterialTheme.colorScheme.outlineVariant
     val titleColor = if (isDark) MaterialTheme.colorScheme.onSurface else Color(0xFF1E293B)
@@ -1238,6 +1405,419 @@ fun CategorySummaryItem(
     }
 }
 
+private data class CalendarDay(
+    val dayOfMonth: Int,
+    val isCurrentMonth: Boolean,
+    val isPreviousMonth: Boolean = false,
+    val isNextMonth: Boolean = false,
+    val timestamp: Long
+)
+
+@OptIn(ExperimentalAnimationApi::class)
+@Composable
+private fun BeautifulInteractiveCalendarDialog(
+    initialSelectedDateMillis: Long,
+    lang: String,
+    onDismissRequest: () -> Unit,
+    onDateSelected: (Long) -> Unit
+) {
+    var selectedDateMillis by remember { mutableStateOf(initialSelectedDateMillis) }
+    
+    val baseCalendar = java.util.Calendar.getInstance()
+    baseCalendar.timeInMillis = selectedDateMillis
+    
+    // Viewed month & year
+    var displayedMonth by remember { mutableStateOf(baseCalendar.get(java.util.Calendar.MONTH)) }
+    var displayedYear by remember { mutableStateOf(baseCalendar.get(java.util.Calendar.YEAR)) }
+    
+    // For smooth sliding animation of month & grid
+    var slideDirectionRight by remember { mutableStateOf(true) }
+    // Combined state for month and year that triggers transition in AnimatedContent
+    val displayedPeriod = remember(displayedMonth, displayedYear) { Pair(displayedMonth, displayedYear) }
+
+    val isDark = isAppDark()
+    val dialogSurfaceBg = if (isDark) MaterialTheme.colorScheme.surface else Color.White
+    val dialogBorder = MaterialTheme.colorScheme.outlineVariant
+
+    val englishMonths = remember {
+        listOf(
+            "January", "February", "March", "April", "May", "June", 
+            "July", "August", "September", "October", "November", "December"
+        )
+    }
+
+    val bengaliMonths = remember {
+        listOf(
+            "জানুয়ারি", "ফেব্রুয়ারি", "মার্চ", "এপ্রিল", "মে", "জুন", 
+            "জুলাই", "আগস্ট", "সেপ্টেম্বর", "অক্টোবর", "নভেম্বর", "ডিসেম্বর"
+        )
+    }
+
+    Dialog(onDismissRequest = onDismissRequest) {
+        AnimatedDialogContent {
+            Card(
+                modifier = Modifier
+                    .fillMaxWidth()
+                    .padding(horizontal = 8.dp, vertical = 16.dp)
+                    .testTag("custom_calendar_dialog"),
+                shape = RoundedCornerShape(24.dp),
+                border = BorderStroke(1.dp, dialogBorder),
+                colors = CardDefaults.cardColors(containerColor = dialogSurfaceBg),
+                elevation = CardDefaults.cardElevation(defaultElevation = 8.dp)
+            ) {
+                Column(
+                    modifier = Modifier.padding(20.dp)
+                ) {
+                    // --- HEADER SECTION ---
+                    Text(
+                        text = if (lang == "bn") "তারিখ নির্বাচন করুন" else "SELECT DATE",
+                        style = MaterialTheme.typography.labelSmall,
+                        color = MaterialTheme.colorScheme.onSurfaceVariant.copy(alpha = 0.8f),
+                        fontWeight = FontWeight.Bold,
+                        letterSpacing = 1.5.sp
+                    )
+                    
+                    Spacer(modifier = Modifier.height(6.dp))
+                    
+                    // Selected Date Header
+                    Text(
+                        text = formatDate(selectedDateMillis, lang),
+                        style = MaterialTheme.typography.headlineMedium,
+                        color = MaterialTheme.colorScheme.primary,
+                        fontWeight = FontWeight.ExtraBold
+                    )
+                    
+                    Spacer(modifier = Modifier.height(16.dp))
+                    HorizontalDivider(color = dialogBorder.copy(alpha = 0.7f))
+                    Spacer(modifier = Modifier.height(16.dp))
+
+                    // --- MONTH / YEAR NAVIGATION WITH Horizontally Sliding ANIMATION ---
+                    Row(
+                        modifier = Modifier.fillMaxWidth(),
+                        horizontalArrangement = Arrangement.SpaceBetween,
+                        verticalAlignment = Alignment.CenterVertically
+                    ) {
+                        // Previous Month Button
+                        IconButton(
+                            onClick = {
+                                slideDirectionRight = false
+                                if (displayedMonth == 0) {
+                                    displayedMonth = 11
+                                    displayedYear -= 1
+                                } else {
+                                    displayedMonth -= 1
+                                }
+                            },
+                            modifier = Modifier
+                                .size(40.dp)
+                                .background(
+                                    color = MaterialTheme.colorScheme.surfaceVariant.copy(alpha = 0.4f),
+                                    shape = RoundedCornerShape(12.dp)
+                                )
+                        ) {
+                            Icon(
+                                imageVector = Icons.Default.ChevronLeft,
+                                contentDescription = "Previous Month",
+                                tint = MaterialTheme.colorScheme.primary,
+                                modifier = Modifier.size(24.dp)
+                            )
+                        }
+
+                        // Month Year Text sliding content
+                        AnimatedContent(
+                            targetState = displayedPeriod,
+                            transitionSpec = {
+                                if (slideDirectionRight) {
+                                    (slideInHorizontally { w -> w } + fadeIn()).togetherWith(slideOutHorizontally { w -> -w } + fadeOut())
+                                } else {
+                                    (slideInHorizontally { w -> -w } + fadeIn()).togetherWith(slideOutHorizontally { w -> w } + fadeOut())
+                                } using SizeTransform(clip = false)
+                            },
+                            label = "month_year_animation"
+                        ) { period ->
+                            val m = period.first
+                            val y = period.second
+                            val monthName = if (lang == "bn") bengaliMonths[m] else englishMonths[m]
+                            val yearNameStr = if (lang == "bn") convertDigitsToBengali(y.toString()) else y.toString()
+                            
+                            Text(
+                                text = "$monthName $yearNameStr",
+                                style = MaterialTheme.typography.titleMedium,
+                                fontWeight = FontWeight.Bold,
+                                color = MaterialTheme.colorScheme.onSurface,
+                                textAlign = TextAlign.Center
+                            )
+                        }
+
+                        // Next Month Button
+                        IconButton(
+                            onClick = {
+                                slideDirectionRight = true
+                                if (displayedMonth == 11) {
+                                    displayedMonth = 0
+                                    displayedYear += 1
+                                } else {
+                                    displayedMonth += 1
+                                }
+                            },
+                            modifier = Modifier
+                                .size(40.dp)
+                                .background(
+                                    color = MaterialTheme.colorScheme.surfaceVariant.copy(alpha = 0.4f),
+                                    shape = RoundedCornerShape(12.dp)
+                                )
+                        ) {
+                            Icon(
+                                imageVector = Icons.Default.ChevronRight,
+                                contentDescription = "Next Month",
+                                tint = MaterialTheme.colorScheme.primary,
+                                modifier = Modifier.size(24.dp)
+                            )
+                        }
+                    }
+
+                    Spacer(modifier = Modifier.height(16.dp))
+
+                    // --- CALENDAR GRID ROWS ---
+                    // Week Days Headers
+                    Row(
+                        modifier = Modifier.fillMaxWidth(),
+                        horizontalArrangement = Arrangement.SpaceAround
+                    ) {
+                        val daysHeader = if (lang == "bn") {
+                            listOf("রবি", "সোম", "মঙ্গল", "বুধ", "বৃহঃ", "শুক্র", "শনি")
+                        } else {
+                            listOf("Su", "Mo", "Tu", "We", "Th", "Fr", "Sa")
+                        }
+                        daysHeader.forEach { header ->
+                            Box(
+                                modifier = Modifier.size(36.dp),
+                                contentAlignment = Alignment.Center
+                            ) {
+                                Text(
+                                    text = header,
+                                    style = MaterialTheme.typography.bodySmall,
+                                    fontWeight = FontWeight.ExtraBold,
+                                    color = MaterialTheme.colorScheme.onSurfaceVariant.copy(alpha = 0.6f)
+                                )
+                            }
+                        }
+                    }
+
+                    Spacer(modifier = Modifier.height(8.dp))
+
+                    // Days Grid within AnimatedContent to simulate elegant swipe transition
+                    AnimatedContent(
+                        targetState = displayedPeriod,
+                        transitionSpec = {
+                            if (slideDirectionRight) {
+                                (slideInHorizontally { w -> w } + fadeIn()).togetherWith(slideOutHorizontally { w -> -w } + fadeOut())
+                            } else {
+                                (slideInHorizontally { w -> -w } + fadeIn()).togetherWith(slideOutHorizontally { w -> w } + fadeOut())
+                            } using SizeTransform(clip = false)
+                        },
+                        label = "calendar_days_animation"
+                    ) { period ->
+                        val m = period.first
+                        val y = period.second
+                        
+                        val tempCal = java.util.Calendar.getInstance().apply {
+                            clear()
+                            set(java.util.Calendar.DAY_OF_MONTH, 1)
+                            set(java.util.Calendar.MONTH, m)
+                            set(java.util.Calendar.YEAR, y)
+                        }
+                        val firstDayOfWeek = tempCal.get(java.util.Calendar.DAY_OF_WEEK)
+                        val maxDaysInMonth = tempCal.getActualMaximum(java.util.Calendar.DAY_OF_MONTH)
+                        
+                        val prevMonthCal = java.util.Calendar.getInstance().apply {
+                            clear()
+                            set(java.util.Calendar.DAY_OF_MONTH, 1)
+                            set(java.util.Calendar.MONTH, if (m == 0) 11 else m - 1)
+                            set(java.util.Calendar.YEAR, if (m == 0) y - 1 else y)
+                        }
+                        val maxDaysInPrevMonth = prevMonthCal.getActualMaximum(java.util.Calendar.DAY_OF_MONTH)
+                        
+                        val emptyPreSlots = firstDayOfWeek - 1
+                        val daysList = mutableListOf<CalendarDay>()
+                        val cellCal = java.util.Calendar.getInstance().apply {
+                            clear()
+                            set(java.util.Calendar.HOUR_OF_DAY, 12)
+                            set(java.util.Calendar.MINUTE, 0)
+                            set(java.util.Calendar.SECOND, 0)
+                            set(java.util.Calendar.MILLISECOND, 0)
+                        }
+
+                        // Fill previous month trailing days
+                        for (i in emptyPreSlots - 1 downTo 0) {
+                            val d = maxDaysInPrevMonth - i
+                            val pm = if (m == 0) 11 else m - 1
+                            val py = if (m == 0) y - 1 else y
+                            cellCal.set(py, pm, d)
+                            daysList.add(CalendarDay(d, isCurrentMonth = false, isPreviousMonth = true, timestamp = cellCal.timeInMillis))
+                        }
+
+                        // Fill current month days
+                        for (d in 1..maxDaysInMonth) {
+                            cellCal.set(y, m, d)
+                            daysList.add(CalendarDay(d, isCurrentMonth = true, timestamp = cellCal.timeInMillis))
+                        }
+
+                        // Fill next month leading days
+                        val remaining = 42 - daysList.size
+                        for (d in 1..remaining) {
+                            val nm = if (m == 11) 0 else m + 1
+                            val ny = if (m == 11) y + 1 else y
+                            cellCal.set(ny, nm, d)
+                            daysList.add(CalendarDay(d, isCurrentMonth = false, isNextMonth = true, timestamp = cellCal.timeInMillis))
+                        }
+
+                        Column(verticalArrangement = Arrangement.spacedBy(6.dp)) {
+                            for (row in 0 until 6) {
+                                Row(
+                                    modifier = Modifier.fillMaxWidth(),
+                                    horizontalArrangement = Arrangement.SpaceAround
+                                ) {
+                                    for (col in 0 until 7) {
+                                        val index = row * 7 + col
+                                        val day = daysList[index]
+                                        
+                                        val isSelected = isSameDay(day.timestamp, selectedDateMillis)
+                                        val isToday = isSameDay(day.timestamp, System.currentTimeMillis())
+                                        
+                                        val scaleFactor by animateFloatAsState(
+                                            targetValue = if (isSelected) 1.15f else 1.0f,
+                                            animationSpec = spring(
+                                                dampingRatio = 0.6f,
+                                                stiffness = Spring.StiffnessMediumLow
+                                            ),
+                                            label = "day_cell_scale"
+                                        )
+
+                                        Box(
+                                            modifier = Modifier
+                                                .size(38.dp)
+                                                .graphicsLayer {
+                                                    scaleX = scaleFactor
+                                                    scaleY = scaleFactor
+                                                }
+                                                .background(
+                                                    color = when {
+                                                        isSelected -> MaterialTheme.colorScheme.primary
+                                                        isToday -> MaterialTheme.colorScheme.primaryContainer.copy(alpha = 0.4f)
+                                                        else -> Color.Transparent
+                                                    },
+                                                    shape = RoundedCornerShape(10.dp)
+                                                )
+                                                .border(
+                                                    width = if (isToday && !isSelected) 1.5.dp else 0.dp,
+                                                    color = if (isToday && !isSelected) MaterialTheme.colorScheme.primary else Color.Transparent,
+                                                    shape = RoundedCornerShape(10.dp)
+                                                )
+                                                .android16Clickable {
+                                                    selectedDateMillis = day.timestamp
+                                                    val clickedCal = java.util.Calendar.getInstance().apply {
+                                                        timeInMillis = day.timestamp
+                                                    }
+                                                    displayedMonth = clickedCal.get(java.util.Calendar.MONTH)
+                                                    displayedYear = clickedCal.get(java.util.Calendar.YEAR)
+                                                },
+                                            contentAlignment = Alignment.Center
+                                        ) {
+                                            val dayStr = if (lang == "bn") convertDigitsToBengali(day.dayOfMonth.toString()) else day.dayOfMonth.toString()
+                                            
+                                            Column(horizontalAlignment = Alignment.CenterHorizontally) {
+                                                Text(
+                                                    text = dayStr,
+                                                    style = MaterialTheme.typography.bodyMedium,
+                                                    fontWeight = if (isSelected || isToday) FontWeight.Bold else FontWeight.Medium,
+                                                    color = when {
+                                                        isSelected -> MaterialTheme.colorScheme.onPrimary
+                                                        !day.isCurrentMonth -> MaterialTheme.colorScheme.onSurfaceVariant.copy(alpha = 0.3f)
+                                                        isToday -> MaterialTheme.colorScheme.primary
+                                                        else -> MaterialTheme.colorScheme.onSurface
+                                                    }
+                                                )
+                                                if (isToday && isSelected) {
+                                                    Spacer(modifier = Modifier.height(1.dp))
+                                                    Box(
+                                                        modifier = Modifier
+                                                            .size(4.dp)
+                                                            .background(MaterialTheme.colorScheme.onPrimary, RoundedCornerShape(50))
+                                                    )
+                                                }
+                                            }
+                                        }
+                                    }
+                                }
+                            }
+                        }
+                    }
+
+                    Spacer(modifier = Modifier.height(24.dp))
+
+                    // --- ACTION FOOTER BUTTONS ---
+                    Row(
+                        modifier = Modifier.fillMaxWidth(),
+                        horizontalArrangement = Arrangement.End,
+                        verticalAlignment = Alignment.CenterVertically
+                    ) {
+                        TextButton(
+                            onClick = onDismissRequest,
+                            colors = ButtonDefaults.textButtonColors(contentColor = MaterialTheme.colorScheme.onSurfaceVariant)
+                        ) {
+                            Text(
+                                text = if (lang == "bn") "বাতিল" else "Cancel",
+                                fontWeight = FontWeight.SemiBold
+                            )
+                        }
+                        
+                        Spacer(modifier = Modifier.width(12.dp))
+                        
+                        Button(
+                            onClick = {
+                                onDateSelected(selectedDateMillis)
+                                onDismissRequest()
+                            },
+                            colors = ButtonDefaults.buttonColors(
+                                containerColor = MaterialTheme.colorScheme.primary,
+                                contentColor = MaterialTheme.colorScheme.onPrimary
+                            ),
+                            shape = RoundedCornerShape(12.dp)
+                        ) {
+                            Text(
+                                text = if (lang == "bn") "ঠিক আছে" else "OK",
+                                fontWeight = FontWeight.Bold
+                            )
+                        }
+                    }
+                }
+            }
+        }
+    }
+}
+
+private fun isSameDay(millis1: Long, millis2: Long): Boolean {
+    val cal1 = java.util.Calendar.getInstance().apply { timeInMillis = millis1 }
+    val cal2 = java.util.Calendar.getInstance().apply { timeInMillis = millis2 }
+    return cal1.get(java.util.Calendar.YEAR) == cal2.get(java.util.Calendar.YEAR) &&
+           cal1.get(java.util.Calendar.MONTH) == cal2.get(java.util.Calendar.MONTH) &&
+           cal1.get(java.util.Calendar.DAY_OF_MONTH) == cal2.get(java.util.Calendar.DAY_OF_MONTH)
+}
+
+private fun convertDigitsToBengali(input: String): String {
+    val sb = java.lang.StringBuilder()
+    for (i in 0 until input.length) {
+        val char = input[i]
+        if (char in '0'..'9') {
+            sb.append(bengaliDigits[char - '0'])
+        } else {
+            sb.append(char)
+        }
+    }
+    return sb.toString()
+}
+
 // Form logic to record new transactions
 @OptIn(ExperimentalLayoutApi::class, ExperimentalMaterial3Api::class)
 @Composable
@@ -1274,14 +1854,15 @@ fun AddTransactionDialog(
     var labelErrorText by remember { mutableStateOf("") }
 
     Dialog(onDismissRequest = onDismiss) {
-        val isDark = isAppDark()
-        val dialogSurfaceBg = if (isDark) MaterialTheme.colorScheme.surface else Color.White
-        val dialogBorder = MaterialTheme.colorScheme.outlineVariant
-        Card(
-            modifier = Modifier
-                .fillMaxWidth()
-                .padding(horizontal = 8.dp)
-                .testTag("add_transaction_dialog_surface"),
+        AnimatedDialogContent {
+            val isDark = isAppDark()
+            val dialogSurfaceBg = if (isDark) MaterialTheme.colorScheme.surface else Color.White
+            val dialogBorder = MaterialTheme.colorScheme.outlineVariant
+            Card(
+                modifier = Modifier
+                    .fillMaxWidth()
+                    .padding(horizontal = 8.dp)
+                    .testTag("add_transaction_dialog_surface"),
             shape = RoundedCornerShape(24.dp),
             border = BorderStroke(1.dp, dialogBorder),
             colors = CardDefaults.cardColors(containerColor = dialogSurfaceBg)
@@ -1474,29 +2055,14 @@ fun AddTransactionDialog(
                 }
 
                 if (showDatePicker) {
-                    val datePickerState = rememberDatePickerState(initialSelectedDateMillis = dateMillis)
-                    DatePickerDialog(
+                    BeautifulInteractiveCalendarDialog(
+                        initialSelectedDateMillis = dateMillis,
+                        lang = lang,
                         onDismissRequest = { showDatePicker = false },
-                        confirmButton = {
-                            TextButton(
-                                onClick = {
-                                    datePickerState.selectedDateMillis?.let {
-                                        dateMillis = it
-                                    }
-                                    showDatePicker = false
-                                }
-                            ) {
-                                Text(if (lang == "bn") "ঠিক আছে" else "OK", fontWeight = FontWeight.Bold)
-                            }
-                        },
-                        dismissButton = {
-                            TextButton(onClick = { showDatePicker = false }) {
-                                Text(if (lang == "bn") "বাতিল" else "Cancel")
-                            }
+                        onDateSelected = { selectedDate ->
+                            dateMillis = selectedDate
                         }
-                    ) {
-                        DatePicker(state = datePickerState)
-                    }
+                    )
                 }
 
                 Spacer(modifier = Modifier.height(4.dp))
@@ -1534,6 +2100,7 @@ fun AddTransactionDialog(
         }
     }
 }
+}
 
 // Google Authentication Flow Simulator (Provides immersive Interactive syncing)
 @Composable
@@ -1560,14 +2127,15 @@ fun GoogleAuthDialog(
     }
 
     Dialog(onDismissRequest = onDismiss) {
-        val isDark = isAppDark()
-        val dialogSurfaceBg = if (isDark) MaterialTheme.colorScheme.surface else Color.White
-        val dialogBorder = MaterialTheme.colorScheme.outlineVariant
-        Card(
-            modifier = Modifier
-                .fillMaxWidth()
-                .padding(horizontal = 8.dp)
-                .testTag("google_auth_dialog_surface"),
+        AnimatedDialogContent {
+            val isDark = isAppDark()
+            val dialogSurfaceBg = if (isDark) MaterialTheme.colorScheme.surface else Color.White
+            val dialogBorder = MaterialTheme.colorScheme.outlineVariant
+            Card(
+                modifier = Modifier
+                    .fillMaxWidth()
+                    .padding(horizontal = 8.dp)
+                    .testTag("google_auth_dialog_surface"),
             shape = RoundedCornerShape(24.dp),
             border = BorderStroke(1.dp, dialogBorder),
             colors = CardDefaults.cardColors(containerColor = dialogSurfaceBg)
@@ -1822,27 +2390,32 @@ fun GoogleAuthDialog(
         }
     }
 }
+}
+
+private val bnLocale = Locale("bn", "BD")
+private val enLocale = Locale.ENGLISH
+private val sdfMap = java.util.concurrent.ConcurrentHashMap<String, SimpleDateFormat>()
+private val bengaliDigits = charArrayOf('০', '১', '২', '৩', '৪', '৫', '৬', '৭', '৮', '৯')
 
 // Decimal and date formatters helper
 fun formatDate(timestamp: Long, lang: String): String {
     val date = Date(timestamp)
-    val pattern = "dd MMM, yyyy"
-    val locale = if (lang == "bn") Locale("bn", "BD") else Locale.ENGLISH
-    val sdf = SimpleDateFormat(pattern, locale)
+    val sdf = sdfMap.getOrPut(lang) {
+        val locale = if (lang == "bn") bnLocale else enLocale
+        SimpleDateFormat("dd MMM, yyyy", locale)
+    }
     return sdf.format(date)
 }
 
 fun formatCurrency(amount: Double, lang: String): String {
     val formatted = String.format(Locale.US, "%,.2f", amount)
     if (lang == "bn") {
-        val englishDigits = listOf('0', '1', '2', '3', '4', '5', '6', '7', '8', '9')
-        val bengaliDigits = listOf('০', '১', '২', '৩', '৪', '৫', '৬', '৭', '৮', '৯')
-        val sb = StringBuilder()
+        val sb = StringBuilder(formatted.length + 2)
         sb.append("৳")
-        for (char in formatted) {
-            val idx = englishDigits.indexOf(char)
-            if (idx != -1) {
-                sb.append(bengaliDigits[idx])
+        for (i in 0 until formatted.length) {
+            val char = formatted[i]
+            if (char in '0'..'9') {
+                sb.append(bengaliDigits[char - '0'])
             } else {
                 sb.append(char)
             }
@@ -1911,6 +2484,424 @@ internal fun Context.findActivity(): Activity? {
     return null
 }
 
+private data class ConfettiParticle(
+    val x: Float,
+    val y: Float,
+    val vx: Float,
+    val vy: Float,
+    val color: Color,
+    val size: Float,
+    val shapeType: Int,
+    val rotation: Float,
+    val vr: Float,
+    val alpha: Float = 1.0f
+)
+
+@Composable
+private fun ConfettiShower(
+    modifier: Modifier = Modifier,
+    trigger: Boolean,
+    durationMs: Long = 4000
+) {
+    if (!trigger) return
+
+    val particles = remember { mutableStateListOf<ConfettiParticle>() }
+    val random = remember { java.util.Random() }
+    val density = androidx.compose.ui.platform.LocalDensity.current
+
+    // Colors representing celebration including bKash Pink and Nagad Orange
+    val particleColors = remember {
+        listOf(
+            Color(0xFFE2125B), // bKash Pink
+            Color(0xFFF35F22), // Nagad Orange
+            Color(0xFFFFD700), // Gold
+            Color(0xFF00E5FF), // Cyan
+            Color(0xFF00FF87), // Bright Green
+            Color(0xFFFF007F)  // Pink/Magneta
+        )
+    }
+
+    LaunchedEffect(trigger) {
+        particles.clear()
+        val count = 90
+        val tempParticles = mutableListOf<ConfettiParticle>()
+        
+        // Spawn particles with shooting-up forces from bottom-left & bottom-right
+        for (i in 0 until count) {
+            val fromLeft = i % 2 == 0
+            val startX = if (fromLeft) 50f else 950f // will adjust dynamically on canvas draw
+            val startY = 1600f
+
+            // Vector angle towards center-up
+            val angleDeg = if (fromLeft) {
+                -35f - random.nextFloat() * 45f // SHOOT UP RIGHT
+            } else {
+                -100f - random.nextFloat() * 45f // SHOOT UP LEFT
+            }
+            val angleRad = Math.toRadians(angleDeg.toDouble())
+            val speed = 30f + random.nextFloat() * 25f
+
+            val vx = (Math.cos(angleRad) * speed).toFloat()
+            val vy = (Math.sin(angleRad) * speed).toFloat()
+
+            tempParticles.add(
+                ConfettiParticle(
+                    x = startX,
+                    y = startY,
+                    vx = vx,
+                    vy = vy,
+                    color = particleColors[random.nextInt(particleColors.size)],
+                    size = 14f + random.nextFloat() * 18f,
+                    shapeType = random.nextInt(3),
+                    rotation = random.nextFloat() * 360f,
+                    vr = -12f + random.nextFloat() * 24f
+                )
+            )
+        }
+        particles.addAll(tempParticles)
+
+        val startTime = System.currentTimeMillis()
+        while (System.currentTimeMillis() - startTime < durationMs) {
+            val elapsed = System.currentTimeMillis() - startTime
+            val progress = elapsed.toFloat() / durationMs
+            
+            for (index in particles.indices) {
+                val p = particles[index]
+                val newX = p.x + p.vx
+                val newY = p.y + p.vy
+                val newVy = p.vy + 1.1f // Gravity pull
+                val newVx = p.vx * 0.96f // Wind drag
+                val newRotation = p.rotation + p.vr
+                val newAlpha = (1.0f - progress).coerceIn(0f, 1f)
+                
+                particles[index] = p.copy(
+                    x = newX,
+                    y = newY,
+                    vx = newVx,
+                    vy = newVy,
+                    rotation = newRotation,
+                    alpha = newAlpha
+                )
+            }
+            kotlinx.coroutines.delay(16)
+        }
+        particles.clear()
+    }
+
+    BoxWithConstraints(modifier = modifier) {
+        val width = constraints.maxWidth.toFloat()
+        val height = constraints.maxHeight.toFloat()
+
+        // Re-align starting position once actual screen bounds are verified
+        LaunchedEffect(width, height) {
+            if (particles.isNotEmpty()) {
+                for (index in particles.indices) {
+                    val p = particles[index]
+                    // If left side, spawn from near 5-10% of screen width. If right side, spawn from near 90-95%
+                    val sideLeft = index % 2 == 0
+                    val originalSpawnPointX = if (sideLeft) width * 0.1f else width * 0.9f
+                    val originalSpawnPointY = height * 0.9f
+                    
+                    // Simple adjustment to give the relative initial offset
+                    if (p.y > height) {
+                        particles[index] = p.copy(x = originalSpawnPointX, y = originalSpawnPointY)
+                    }
+                }
+            }
+        }
+
+        Canvas(modifier = Modifier.fillMaxSize()) {
+            particles.forEach { p ->
+                if (p.alpha > 0f) {
+                    rotate(p.rotation, pivot = androidx.compose.ui.geometry.Offset(p.x, p.y)) {
+                        val paintColor = p.color.copy(alpha = p.alpha)
+                        when (p.shapeType) {
+                            0 -> { // Premium rectangle streamer
+                                drawRect(
+                                    color = paintColor,
+                                    topLeft = androidx.compose.ui.geometry.Offset(p.x - p.size / 2, p.y - p.size / 4),
+                                    size = androidx.compose.ui.geometry.Size(p.size, p.size / 2)
+                                )
+                            }
+                            1 -> { // Shiny circle dot
+                                drawCircle(
+                                    color = paintColor,
+                                    radius = p.size / 2.5f,
+                                    center = androidx.compose.ui.geometry.Offset(p.x, p.y)
+                                )
+                            }
+                            else -> { // Stylish Square paper
+                                drawRect(
+                                    color = paintColor,
+                                    topLeft = androidx.compose.ui.geometry.Offset(p.x - p.size / 2.5f, p.y - p.size / 2.5f),
+                                    size = androidx.compose.ui.geometry.Size(p.size, p.size)
+                                )
+                            }
+                        }
+                    }
+                }
+            }
+        }
+    }
+}
+
+@Composable
+fun SupportDeveloperDonationDialog(
+    lang: String,
+    onDismiss: () -> Unit
+) {
+    val isDark = isAppDark()
+    val context = LocalContext.current
+    val clipboardManager = androidx.compose.ui.platform.LocalClipboardManager.current
+    
+    var triggerConfetti by remember { mutableStateOf(false) }
+    LaunchedEffect(Unit) {
+        triggerConfetti = true
+    }
+
+    var copiedBkash by remember { mutableStateOf(false) }
+    var copiedNagad by remember { mutableStateOf(false) }
+
+    Dialog(onDismissRequest = onDismiss) {
+        Box(
+            modifier = Modifier.fillMaxSize(),
+            contentAlignment = Alignment.Center
+        ) {
+            ConfettiShower(
+                modifier = Modifier.fillMaxSize(),
+                trigger = triggerConfetti,
+                durationMs = 4500
+            )
+
+            AnimatedDialogContent {
+                val dialogSurfaceBg = if (isDark) MaterialTheme.colorScheme.surface else Color.White
+                val dialogBorder = MaterialTheme.colorScheme.outlineVariant
+                Card(
+                    modifier = Modifier
+                        .fillMaxWidth()
+                        .padding(horizontal = 8.dp)
+                        .testTag("support_donation_dialog_surface"),
+                    shape = RoundedCornerShape(28.dp),
+                    border = BorderStroke(1.dp, dialogBorder),
+                    colors = CardDefaults.cardColors(containerColor = dialogSurfaceBg),
+                    elevation = CardDefaults.cardElevation(defaultElevation = 12.dp)
+                ) {
+                    Column(
+                        modifier = Modifier
+                            .padding(24.dp)
+                            .fillMaxWidth(),
+                        horizontalAlignment = Alignment.CenterHorizontally
+                    ) {
+                        var iconAnimate by remember { mutableStateOf(false) }
+                        LaunchedEffect(Unit) {
+                            iconAnimate = true
+                        }
+                        val animatedScale by animateFloatAsState(
+                            targetValue = if (iconAnimate) 1.2f else 0.8f,
+                            animationSpec = spring(dampingRatio = 0.5f, stiffness = Spring.StiffnessMediumLow),
+                            label = "gift_icon_scale"
+                        )
+
+                        Box(
+                            modifier = Modifier
+                                .graphicsLayer {
+                                    scaleX = animatedScale
+                                    scaleY = animatedScale
+                                }
+                                .size(68.dp)
+                                .background(
+                                    color = if (isDark) Color(0x33FCD34D) else Color(0xFFFEF3C7),
+                                    shape = CircleShape
+                                ),
+                            contentAlignment = Alignment.Center
+                        ) {
+                            Text(
+                                text = "🎉",
+                                style = MaterialTheme.typography.headlineMedium
+                            )
+                        }
+
+                        Spacer(modifier = Modifier.height(16.dp))
+
+                        Text(
+                            text = if (lang == "bn") "ডেভেলপারকে সাপোর্ট করুন" else "Support the Developer",
+                            style = MaterialTheme.typography.titleLarge,
+                            fontWeight = FontWeight.ExtraBold,
+                            color = MaterialTheme.colorScheme.onSurface,
+                            textAlign = TextAlign.Center
+                        )
+
+                        Spacer(modifier = Modifier.height(6.dp))
+
+                        Text(
+                            text = if (lang == "bn") {
+                                "অ্যাপটিকে নিয়মিত উন্নত করার জন্য আপনার যেকোনো সহযোগিতা বা উপহার সাদরে গ্রহণ করা হবে। নিচে বিকাশ ও নগদ নম্বর দেওয়া হলো:"
+                            } else {
+                                "To support continuous updates and premium features, any donation is deeply appreciated. Copy details below:"
+                            },
+                            style = MaterialTheme.typography.bodySmall,
+                            color = MaterialTheme.colorScheme.onSurfaceVariant,
+                            textAlign = TextAlign.Center,
+                            lineHeight = 18.sp
+                        )
+
+                        Spacer(modifier = Modifier.height(20.dp))
+
+                        // BKASH SELECTION CARD
+                        Card(
+                            modifier = Modifier
+                                .fillMaxWidth()
+                                .android16Clickable {
+                                    clipboardManager.setText(androidx.compose.ui.text.AnnotatedString("+8801788-884161"))
+                                    copiedBkash = true
+                                    copiedNagad = false
+                                    Toast.makeText(context, if (lang == "bn") "বিকাশ নম্বর কপি করা হয়েছে!" else "bKash number copied!", Toast.LENGTH_SHORT).show()
+                                },
+                            shape = RoundedCornerShape(16.dp),
+                            border = BorderStroke(1.5.dp, Color(0xFFE2125B).copy(alpha = 0.4f)),
+                            colors = CardDefaults.cardColors(
+                                containerColor = if (isDark) Color(0xFF221116) else Color(0xFFFFF0F5)
+                            )
+                        ) {
+                            Row(
+                                modifier = Modifier
+                                    .padding(14.dp)
+                                    .fillMaxWidth(),
+                                verticalAlignment = Alignment.CenterVertically,
+                                horizontalArrangement = Arrangement.SpaceBetween
+                            ) {
+                                Row(verticalAlignment = Alignment.CenterVertically) {
+                                    Box(
+                                        modifier = Modifier
+                                            .size(40.dp)
+                                            .background(Color(0xFFE2125B), CircleShape),
+                                        contentAlignment = Alignment.Center
+                                    ) {
+                                        Text("ব", color = Color.White, fontWeight = FontWeight.Bold, style = MaterialTheme.typography.titleMedium)
+                                    }
+                                    Spacer(modifier = Modifier.width(12.dp))
+                                    Column {
+                                        Text(
+                                            text = if (lang == "bn") "বিকাশ (Personal)" else "bKash (Personal)",
+                                            style = MaterialTheme.typography.bodyMedium,
+                                            fontWeight = FontWeight.Bold,
+                                            color = Color(0xFFE2125B)
+                                        )
+                                        Text(
+                                            text = if (lang == "bn") convertDigitsToBengali("+8801788-884161") else "+8801788-884161",
+                                            style = MaterialTheme.typography.titleMedium,
+                                            fontWeight = FontWeight.ExtraBold,
+                                            color = MaterialTheme.colorScheme.onSurface
+                                        )
+                                    }
+                                }
+                                IconButton(
+                                    onClick = {
+                                        clipboardManager.setText(androidx.compose.ui.text.AnnotatedString("+8801788-884161"))
+                                        copiedBkash = true
+                                        copiedNagad = false
+                                        Toast.makeText(context, if (lang == "bn") "বিকাশ নম্বর কপি করা হয়েছে!" else "bKash number copied!", Toast.LENGTH_SHORT).show()
+                                    }
+                                ) {
+                                    Icon(
+                                        imageVector = if (copiedBkash) Icons.Default.Check else Icons.Default.ContentCopy,
+                                        contentDescription = "Copy bKash Number",
+                                        tint = if (copiedBkash) Color(0xFF10B981) else Color(0xFFE2125B)
+                                    )
+                                }
+                            }
+                        }
+
+                        Spacer(modifier = Modifier.height(12.dp))
+
+                        // NAGAD SELECTION CARD
+                        Card(
+                            modifier = Modifier
+                                .fillMaxWidth()
+                                .android16Clickable {
+                                    clipboardManager.setText(androidx.compose.ui.text.AnnotatedString("+8801788-884161"))
+                                    copiedNagad = true
+                                    copiedBkash = false
+                                    Toast.makeText(context, if (lang == "bn") "নগদ নম্বর কপি করা হয়েছে!" else "Nagad number copied!", Toast.LENGTH_SHORT).show()
+                                },
+                            shape = RoundedCornerShape(16.dp),
+                            border = BorderStroke(1.5.dp, Color(0xFFF35F22).copy(alpha = 0.4f)),
+                            colors = CardDefaults.cardColors(
+                                containerColor = if (isDark) Color(0xFF221411) else Color(0xFFFFF2EE)
+                            )
+                        ) {
+                            Row(
+                                modifier = Modifier
+                                    .padding(14.dp)
+                                    .fillMaxWidth(),
+                                verticalAlignment = Alignment.CenterVertically,
+                                horizontalArrangement = Arrangement.SpaceBetween
+                            ) {
+                                Row(verticalAlignment = Alignment.CenterVertically) {
+                                    Box(
+                                        modifier = Modifier
+                                            .size(40.dp)
+                                            .background(Color(0xFFF35F22), CircleShape),
+                                        contentAlignment = Alignment.Center
+                                    ) {
+                                        Text("ন", color = Color.White, fontWeight = FontWeight.Bold, style = MaterialTheme.typography.titleMedium)
+                                    }
+                                    Spacer(modifier = Modifier.width(12.dp))
+                                    Column {
+                                        Text(
+                                            text = if (lang == "bn") "নগদ (Personal)" else "Nagad (Personal)",
+                                            style = MaterialTheme.typography.bodyMedium,
+                                            fontWeight = FontWeight.Bold,
+                                            color = Color(0xFFF35F22)
+                                        )
+                                        Text(
+                                            text = if (lang == "bn") convertDigitsToBengali("+8801788-884161") else "+8801788-884161",
+                                            style = MaterialTheme.typography.titleMedium,
+                                            fontWeight = FontWeight.ExtraBold,
+                                            color = MaterialTheme.colorScheme.onSurface
+                                        )
+                                    }
+                                }
+                                IconButton(
+                                    onClick = {
+                                        clipboardManager.setText(androidx.compose.ui.text.AnnotatedString("+8801788-884161"))
+                                        copiedNagad = true
+                                        copiedBkash = false
+                                        Toast.makeText(context, if (lang == "bn") "নগদ নম্বর কপি করা হয়েছে!" else "Nagad number copied!", Toast.LENGTH_SHORT).show()
+                                    }
+                                ) {
+                                    Icon(
+                                        imageVector = if (copiedNagad) Icons.Default.Check else Icons.Default.ContentCopy,
+                                        contentDescription = "Copy Nagad Number",
+                                        tint = if (copiedNagad) Color(0xFF10B981) else Color(0xFFF35F22)
+                                    )
+                                }
+                            }
+                        }
+
+                        Spacer(modifier = Modifier.height(24.dp))
+
+                        Button(
+                            onClick = onDismiss,
+                            shape = RoundedCornerShape(12.dp),
+                            colors = ButtonDefaults.buttonColors(
+                                containerColor = MaterialTheme.colorScheme.primary,
+                                contentColor = MaterialTheme.colorScheme.onPrimary
+                            ),
+                            modifier = Modifier.fillMaxWidth().testTag("close_support_button")
+                        ) {
+                            Text(
+                                text = if (lang == "bn") "বন্ধ করুন" else "Close",
+                                style = MaterialTheme.typography.labelLarge.copy(fontWeight = FontWeight.Bold)
+                            )
+                        }
+                    }
+                }
+            }
+        }
+    }
+}
+
 @Composable
 fun DeveloperCreditDialog(
     currentUser: String?,
@@ -1925,13 +2916,14 @@ fun DeveloperCreditDialog(
     }
 
     Dialog(onDismissRequest = onDismiss) {
-        val dialogSurfaceBg = if (isDark) MaterialTheme.colorScheme.surface else Color.White
-        val dialogBorder = MaterialTheme.colorScheme.outlineVariant
-        Card(
-            modifier = Modifier
-                .fillMaxWidth()
-                .padding(horizontal = 8.dp)
-                .testTag("developer_credit_dialog_surface"),
+        AnimatedDialogContent {
+            val dialogSurfaceBg = if (isDark) MaterialTheme.colorScheme.surface else Color.White
+            val dialogBorder = MaterialTheme.colorScheme.outlineVariant
+            Card(
+                modifier = Modifier
+                    .fillMaxWidth()
+                    .padding(horizontal = 8.dp)
+                    .testTag("developer_credit_dialog_surface"),
             shape = RoundedCornerShape(28.dp),
             border = BorderStroke(1.dp, dialogBorder),
             colors = CardDefaults.cardColors(containerColor = dialogSurfaceBg)
@@ -2147,193 +3139,39 @@ fun DeveloperCreditDialog(
                 Spacer(modifier = Modifier.height(24.dp))
 
                 // Support Developer options
-                var isAdLoading by remember { mutableStateOf(false) }
-                val context = LocalContext.current
+                var showDonationDialog by remember { mutableStateOf(false) }
 
-                // Button 1: Interstitial Ad (by Watching Ads. with custom Ad ID)
+                if (showDonationDialog) {
+                    SupportDeveloperDonationDialog(
+                        lang = lang,
+                        onDismiss = { showDonationDialog = false }
+                    )
+                }
+
+                // New Premium Single Support Button
                 Button(
-                    onClick = {
-                        if (!isAdLoading) {
-                            isAdLoading = true
-                            Toast.makeText(
-                                context,
-                                if (lang == "bn") "বিজ্ঞাপন লোড হচ্ছে... অনুগ্রহ করে অপেক্ষা করুন" else "Loading ad... Please wait",
-                                Toast.LENGTH_SHORT
-                            ).show()
-
-                            try {
-                                val adRequest = AdRequest.Builder().build()
-                                com.google.android.gms.ads.interstitial.InterstitialAd.load(
-                                    context,
-                                    "ca-app-pub-9308365057124148/6395048802",
-                                    adRequest,
-                                    object : com.google.android.gms.ads.interstitial.InterstitialAdLoadCallback() {
-                                        override fun onAdFailedToLoad(loadAdError: LoadAdError) {
-                                            isAdLoading = false
-                                            Toast.makeText(
-                                                context,
-                                                if (lang == "bn") "বিজ্ঞাপন লোড হতে ব্যর্থ হয়েছে। পুনরায় চেষ্টা করুন।" else "Failed to load ad. Please try again.",
-                                                Toast.LENGTH_LONG
-                                            ).show()
-                                        }
-
-                                        override fun onAdLoaded(interstitialAd: com.google.android.gms.ads.interstitial.InterstitialAd) {
-                                            isAdLoading = false
-                                            val activity = context.findActivity()
-                                            if (activity != null) {
-                                                interstitialAd.show(activity)
-                                                Toast.makeText(
-                                                    context,
-                                                    if (lang == "bn") "ধন্যবাদ! আপনি সফলভাবে ডেভেলপারকে সাপোর্ট করেছেন।" else "Thank you so much for supporting the developer!",
-                                                    Toast.LENGTH_LONG
-                                                ).show()
-                                            } else {
-                                                Toast.makeText(
-                                                    context,
-                                                    "Activity context not found to show ad.",
-                                                    Toast.LENGTH_SHORT
-                                                ).show()
-                                            }
-                                        }
-                                    }
-                                )
-                            } catch (e: Throwable) {
-                                isAdLoading = false
-                                Toast.makeText(
-                                    context,
-                                    if (lang == "bn") "বিজ্ঞাপন শুরু করতে ব্যর্থ হয়েছে।" else "Failed to initialize ad system.",
-                                    Toast.LENGTH_SHORT
-                                ).show()
-                                e.printStackTrace()
-                            }
-                        }
-                    },
-                    shape = RoundedCornerShape(12.dp),
+                    onClick = { showDonationDialog = true },
+                    shape = RoundedCornerShape(14.dp),
                     colors = ButtonDefaults.buttonColors(
-                        containerColor = if (isDark) Color(0xFF10B981) else Color(0xFFD1FAE5),
-                        contentColor = if (isDark) Color.White else Color(0xFF065F46)
+                        containerColor = if (isDark) Color(0xFFEC4899) else Color(0xFFFCE7F3),
+                        contentColor = if (isDark) Color.White else Color(0xFF9D174D)
                     ),
-                    border = BorderStroke(1.dp, if (isDark) Color(0xFF059669) else Color(0xFFA7F3D0)),
-                    modifier = Modifier.fillMaxWidth().testTag("support_developer_interstitial_ad_button"),
-                    enabled = !isAdLoading
+                    border = BorderStroke(1.5.dp, if (isDark) Color(0xFFDB2777) else Color(0xFFFBCFE8)),
+                    modifier = Modifier
+                        .fillMaxWidth()
+                        .height(54.dp)
+                        .testTag("support_developer_donation_button")
                 ) {
                     Icon(
                         imageVector = Icons.Default.Favorite,
                         contentDescription = "Support Icon",
-                        modifier = Modifier.size(18.dp),
-                        tint = if (isDark) Color.White else Color(0xFF059669)
+                        modifier = Modifier.size(20.dp),
+                        tint = if (isDark) Color.White else Color(0xFFDB2777)
                     )
-                    Spacer(modifier = Modifier.width(8.dp))
+                    Spacer(modifier = Modifier.width(10.dp))
                     Text(
-                        text = buildAnnotatedString {
-                            val mainText = if (lang == "bn") "ডেভেলপারকে সাপোর্ট করুন" else "Support Developer"
-                            val subText = if (lang == "bn") " (বিজ্ঞাপন দেখে)" else " (by Watching Ads.)"
-                            append(mainText)
-                            withStyle(
-                                style = SpanStyle(
-                                    fontSize = 11.sp,
-                                    fontWeight = FontWeight.Normal
-                                )
-                            ) {
-                                append(subText)
-                            }
-                        },
-                        style = MaterialTheme.typography.labelLarge.copy(fontWeight = FontWeight.ExtraBold)
-                    )
-                }
-
-                Spacer(modifier = Modifier.height(10.dp))
-
-                // Button 2: Rewarded Ad
-                Button(
-                    onClick = {
-                        if (!isAdLoading) {
-                            isAdLoading = true
-                            Toast.makeText(
-                                context,
-                                if (lang == "bn") "বিজ্ঞাপন লোড হচ্ছে... অনুগ্রহ করে অপেক্ষা করুন" else "Loading ad... Please wait",
-                                Toast.LENGTH_SHORT
-                            ).show()
-
-                            try {
-                                val adRequest = AdRequest.Builder().build()
-                                RewardedAd.load(
-                                    context,
-                                    "ca-app-pub-9308365057124148/9465432252",
-                                    adRequest,
-                                    object : RewardedAdLoadCallback() {
-                                        override fun onAdFailedToLoad(loadAdError: LoadAdError) {
-                                            isAdLoading = false
-                                            Toast.makeText(
-                                                context,
-                                                if (lang == "bn") "বিজ্ঞাপন লোড হতে ব্যর্থ হয়েছে। পুনরায় চেষ্টা করুন।" else "Failed to load ad. Please try again.",
-                                                Toast.LENGTH_LONG
-                                            ).show()
-                                        }
-
-                                        override fun onAdLoaded(rewardedAd: RewardedAd) {
-                                            isAdLoading = false
-                                            val activity = context.findActivity()
-                                            if (activity != null) {
-                                                rewardedAd.show(activity) { rewardItem ->
-                                                    Toast.makeText(
-                                                        context,
-                                                        if (lang == "bn") "ধন্যবাদ! আপনি সফলভাবে ডেভেলপারকে সাপোর্ট করেছেন।" else "Thank you so much for supporting the developer!",
-                                                        Toast.LENGTH_LONG
-                                                    ).show()
-                                                }
-                                            } else {
-                                                Toast.makeText(
-                                                    context,
-                                                    "Activity context not found to show ad.",
-                                                    Toast.LENGTH_SHORT
-                                                ).show()
-                                            }
-                                        }
-                                    }
-                                )
-                            } catch (e: Throwable) {
-                                isAdLoading = false
-                                Toast.makeText(
-                                    context,
-                                    if (lang == "bn") "বিজ্ঞাপন শুরু করতে ব্যর্থ হয়েছে।" else "Failed to initialize ad system.",
-                                    Toast.LENGTH_SHORT
-                                ).show()
-                                e.printStackTrace()
-                            }
-                        }
-                    },
-                    shape = RoundedCornerShape(12.dp),
-                    colors = ButtonDefaults.buttonColors(
-                        containerColor = if (isDark) Color(0xFF3B82F6) else Color(0xFFDBEAFE),
-                        contentColor = if (isDark) Color.White else Color(0xFF1E40AF)
-                    ),
-                    border = BorderStroke(1.dp, if (isDark) Color(0xFF2563EB) else Color(0xFFBFDBFE)),
-                    modifier = Modifier.fillMaxWidth().testTag("support_developer_rewarded_ad_button"),
-                    enabled = !isAdLoading
-                ) {
-                    Icon(
-                        imageVector = Icons.Default.FavoriteBorder,
-                        contentDescription = "Support Icon",
-                        modifier = Modifier.size(18.dp),
-                        tint = if (isDark) Color.White else Color(0xFF2563EB)
-                    )
-                    Spacer(modifier = Modifier.width(8.dp))
-                    Text(
-                        text = buildAnnotatedString {
-                            val mainText = if (lang == "bn") "ডেভেলপারকে সাপোর্ট করুন" else "Support Developer"
-                            val subText = if (lang == "bn") " (রিওয়ার্ডেড বিজ্ঞাপন)" else " (Rewarded Ad)"
-                            append(mainText)
-                            withStyle(
-                                style = SpanStyle(
-                                    fontSize = 11.sp,
-                                    fontWeight = FontWeight.Normal
-                                )
-                            ) {
-                                append(subText)
-                            }
-                        },
-                        style = MaterialTheme.typography.labelLarge.copy(fontWeight = FontWeight.ExtraBold)
+                        text = if (lang == "bn") "ডেভেলপারকে সাপোর্ট করুন (বিকাশ / নগদ)" else "Support Developer (bKash / Nagad)",
+                        style = MaterialTheme.typography.labelLarge.copy(fontSize = 14.sp, fontWeight = FontWeight.ExtraBold)
                     )
                 }
 
@@ -2382,6 +3220,7 @@ fun DeveloperCreditDialog(
         }
     }
 }
+}
 
 // Beautiful Contact Dialog displaying Telegram, Facebook, and WhatsApp
 @Composable
@@ -2392,13 +3231,14 @@ fun DeveloperContactDialog(
     val uriHandler = androidx.compose.ui.platform.LocalUriHandler.current
 
     Dialog(onDismissRequest = onDismiss) {
-        val dialogSurfaceBg = if (isDark) MaterialTheme.colorScheme.surface else Color.White
-        val dialogBorder = MaterialTheme.colorScheme.outlineVariant
-        Card(
-            modifier = Modifier
-                .fillMaxWidth()
-                .padding(horizontal = 8.dp)
-                .testTag("developer_contact_dialog_surface"),
+        AnimatedDialogContent {
+            val dialogSurfaceBg = if (isDark) MaterialTheme.colorScheme.surface else Color.White
+            val dialogBorder = MaterialTheme.colorScheme.outlineVariant
+            Card(
+                modifier = Modifier
+                    .fillMaxWidth()
+                    .padding(horizontal = 8.dp)
+                    .testTag("developer_contact_dialog_surface"),
             shape = RoundedCornerShape(24.dp),
             border = BorderStroke(1.dp, dialogBorder),
             colors = CardDefaults.cardColors(containerColor = dialogSurfaceBg)
@@ -2516,6 +3356,7 @@ fun DeveloperContactDialog(
             }
         }
     }
+}
 }
 
 @Composable
@@ -3123,13 +3964,14 @@ fun BajarListDialog(
     val finishButtonText = if (lang == "bn") "বাজার শেষ করুন" else "Finish Shopping"
 
     Dialog(onDismissRequest = onDismiss) {
-        val dialogSurfaceBg = if (isDark) MaterialTheme.colorScheme.surface else Color.White
-        val dialogBorder = MaterialTheme.colorScheme.outlineVariant
-        Card(
-            modifier = Modifier
-                .fillMaxWidth()
-                .padding(16.dp)
-                .testTag("bajar_list_dialog_card"),
+        AnimatedDialogContent {
+            val dialogSurfaceBg = if (isDark) MaterialTheme.colorScheme.surface else Color.White
+            val dialogBorder = MaterialTheme.colorScheme.outlineVariant
+            Card(
+                modifier = Modifier
+                    .fillMaxWidth()
+                    .padding(16.dp)
+                    .testTag("bajar_list_dialog_card"),
             shape = RoundedCornerShape(20.dp),
             border = BorderStroke(1.dp, dialogBorder),
             colors = CardDefaults.cardColors(containerColor = dialogSurfaceBg),
@@ -3247,7 +4089,7 @@ fun BajarListDialog(
                                 verticalArrangement = Arrangement.spacedBy(8.dp),
                                 modifier = Modifier.fillMaxWidth()
                             ) {
-                                items(bajarItems) { item ->
+                                items(bajarItems, key = { it.id }) { item ->
                                     Row(
                                         modifier = Modifier
                                             .fillMaxWidth()
@@ -3457,6 +4299,7 @@ fun BajarListDialog(
         }
     }
 }
+}
 
 // Dialog 4: Debts & Lending Tracker Dialog
 @OptIn(ExperimentalMaterial3Api::class)
@@ -3484,13 +4327,14 @@ fun DebtListDialog(
     val emptyText = if (lang == "bn") "কোনো দেন-পাওনার রেকর্ড নেই" else "No active debt records"
 
     Dialog(onDismissRequest = onDismiss) {
-        val dialogSurfaceBg = if (isDark) MaterialTheme.colorScheme.surface else Color.White
-        val dialogBorder = MaterialTheme.colorScheme.outlineVariant
-        Card(
-            modifier = Modifier
-                .fillMaxWidth()
-                .padding(16.dp)
-                .testTag("debt_list_dialog_card"),
+        AnimatedDialogContent {
+            val dialogSurfaceBg = if (isDark) MaterialTheme.colorScheme.surface else Color.White
+            val dialogBorder = MaterialTheme.colorScheme.outlineVariant
+            Card(
+                modifier = Modifier
+                    .fillMaxWidth()
+                    .padding(16.dp)
+                    .testTag("debt_list_dialog_card"),
             shape = RoundedCornerShape(20.dp),
             border = BorderStroke(1.dp, dialogBorder),
             colors = CardDefaults.cardColors(containerColor = dialogSurfaceBg),
@@ -3657,7 +4501,7 @@ fun DebtListDialog(
                             verticalArrangement = Arrangement.spacedBy(8.dp),
                             modifier = Modifier.fillMaxWidth()
                         ) {
-                            items(activeDebts) { item ->
+                            items(activeDebts, key = { it.id }) { item ->
                                 Row(
                                     modifier = Modifier
                                         .fillMaxWidth()
@@ -3779,5 +4623,6 @@ fun DebtListDialog(
             }
         }
     }
+}
 }
 
