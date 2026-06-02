@@ -4,6 +4,8 @@ import android.widget.Toast
 import androidx.compose.animation.*
 import coil.compose.AsyncImage
 import androidx.compose.foundation.Canvas
+import androidx.compose.foundation.rememberScrollState
+import androidx.compose.foundation.verticalScroll
 import androidx.compose.ui.graphics.drawscope.rotate
 import androidx.compose.animation.core.spring
 import androidx.compose.animation.core.tween
@@ -2903,6 +2905,263 @@ fun SupportDeveloperDonationDialog(
 }
 
 @Composable
+fun AboutAppDialog(
+    lang: String = "en",
+    onDismiss: () -> Unit
+) {
+    val isDark = isAppDark()
+    val scrollState = rememberScrollState()
+
+    Dialog(onDismissRequest = onDismiss) {
+        AnimatedDialogContent {
+            val dialogSurfaceBg = if (isDark) MaterialTheme.colorScheme.surface else Color.White
+            val dialogBorder = MaterialTheme.colorScheme.outlineVariant
+            Card(
+                modifier = Modifier
+                    .fillMaxWidth()
+                    .fillMaxHeight(0.85f)
+                    .padding(horizontal = 4.dp)
+                    .testTag("about_app_dialog_surface"),
+                shape = RoundedCornerShape(24.dp),
+                border = BorderStroke(1.dp, dialogBorder),
+                colors = CardDefaults.cardColors(containerColor = dialogSurfaceBg),
+                elevation = CardDefaults.cardElevation(defaultElevation = 10.dp)
+            ) {
+                Column(
+                    modifier = Modifier
+                        .fillMaxSize()
+                        .padding(20.dp)
+                ) {
+                    // Header Row
+                    Row(
+                        modifier = Modifier.fillMaxWidth(),
+                        verticalAlignment = Alignment.CenterVertically
+                    ) {
+                        Box(
+                            modifier = Modifier
+                                .size(48.dp)
+                                .background(
+                                    color = if (isDark) Color(0x2210B981) else Color(0x112563EB),
+                                    shape = CircleShape
+                                ),
+                            contentAlignment = Alignment.Center
+                        ) {
+                            Icon(
+                                imageVector = Icons.Default.Info,
+                                contentDescription = null,
+                                tint = if (isDark) Color(0xFF10B981) else Color(0xFF2563EB),
+                                modifier = Modifier.size(24.dp)
+                            )
+                        }
+                        Spacer(modifier = Modifier.width(12.dp))
+                        Column(modifier = Modifier.weight(1f)) {
+                            Text(
+                                text = if (lang == "bn") "অ্যাপ্লিকেশন সম্পর্কে" else "About Application",
+                                style = MaterialTheme.typography.titleMedium,
+                                fontWeight = FontWeight.ExtraBold,
+                                color = MaterialTheme.colorScheme.onSurface
+                            )
+                            Text(
+                                text = "Mobile Wallet v1.4.0",
+                                style = MaterialTheme.typography.labelSmall,
+                                color = MaterialTheme.colorScheme.onSurfaceVariant.copy(alpha = 0.7f),
+                                fontWeight = FontWeight.Bold
+                            )
+                        }
+                    }
+
+                    Spacer(modifier = Modifier.height(14.dp))
+                    HorizontalDivider(color = MaterialTheme.colorScheme.outlineVariant.copy(alpha = 0.5f))
+                    Spacer(modifier = Modifier.height(14.dp))
+
+                    // Scrollable content
+                    Column(
+                        modifier = Modifier
+                            .weight(1f)
+                            .verticalScroll(scrollState)
+                            .padding(end = 4.dp)
+                    ) {
+                        // Why use this app card
+                        Card(
+                            modifier = Modifier.fillMaxWidth(),
+                            shape = RoundedCornerShape(16.dp),
+                            colors = CardDefaults.cardColors(
+                                containerColor = if (isDark) Color(0x1210B981) else Color(0x0A2563EB)
+                            ),
+                            border = BorderStroke(
+                                width = 1.dp,
+                                color = if (isDark) Color(0x3310B981) else Color(0x222563EB)
+                            )
+                        ) {
+                            Column(modifier = Modifier.padding(14.dp)) {
+                                Text(
+                                    text = if (lang == "bn") "কেন এই অ্যাপটি ব্যবহার করবেন?" else "Why Use This App?",
+                                    style = MaterialTheme.typography.titleSmall,
+                                    fontWeight = FontWeight.ExtraBold,
+                                    color = if (isDark) Color(0xFF10B981) else Color(0xFF2563EB)
+                                )
+                                Spacer(modifier = Modifier.height(6.dp))
+                                Text(
+                                    text = if (lang == "bn") {
+                                        "আমাদের প্রতিদিনের আয়ের হিসাব, ব্যয়ের হিসাব, দেনা-পাওনা এবং বাজারের ফর্দ মনে রাখা অত্যন্ত কঠিন। \"Mobile Wallet\" এই সকল হিসাব জটমুক্ত ও সহজ করতে একটি সামগ্রিক অফলাইন সমাধান। এটি আপনার সম্পূর্ণ ব্যক্তিগত ফাইন্যান্স ম্যানেজার হিসেবে দ্বিমুখী ভাষা সুরক্ষাসহ কাজ করে।"
+                                    } else {
+                                        "Tracking earnings, personal spending, debts, and grocery lists dynamically can be overwhelming. \"Mobile Wallet\" is a comprehensive local-first toolkit that simplifies financial tracking under beautiful modern layouts."
+                                    },
+                                    style = MaterialTheme.typography.bodySmall,
+                                    color = MaterialTheme.colorScheme.onSurfaceVariant,
+                                    lineHeight = 18.sp
+                                )
+                            }
+                        }
+
+                        Spacer(modifier = Modifier.height(16.dp))
+
+                        // Features Header
+                        Text(
+                            text = if (lang == "bn") "প্রধান জাদুকরী ফিচারসমূহ" else "Core Premium Features",
+                            style = MaterialTheme.typography.titleSmall,
+                            fontWeight = FontWeight.ExtraBold,
+                            color = MaterialTheme.colorScheme.onSurface
+                        )
+
+                        Spacer(modifier = Modifier.height(10.dp))
+
+                        // Features List
+                        val features = listOf(
+                            FeatureItem(
+                                emoji = "💸",
+                                titleBn = "দৈনিক আয়-ব্যয় ট্র্যাকার",
+                                titleEn = "Income & Expense Ledger",
+                                descBn = "প্রতিদিনের আয় এবং ব্যয় সহজে ক্যাটাগরি, নোট ও সঠিক তারিখ সহ সংরক্ষণ করুন। কোন ঝামেলা ছাড়াই নিখুঁত বাজেট বজায় রাখুন।",
+                                descEn = "Effortlessly catalog daily cash flow with customized categories, remarks, and custom transaction dates."
+                            ),
+                            FeatureItem(
+                                emoji = "📊",
+                                titleBn = "বিশদ পরিসংখ্যান ও চার্ট",
+                                titleEn = "Visual Financial Analytics",
+                                descBn = "রিয়েল-টাইম সুন্দর পাই-চার্ট ও পরিমাণের উপর ভিত্তি করে ক্যাটাগরি অনুযায়ী খরচের পার্সেন্টেজ ও তুলনামূলক গ্রাফস দেখুন।",
+                                descEn = "Examine budget patterns instantly using graphical distribution cards, and real-time category ratios."
+                            ),
+                            FeatureItem(
+                                emoji = "🛒",
+                                titleBn = "ডিজিটাল বাজার তালিকা",
+                                titleEn = "Shopping List (Bajar)",
+                                descBn = "বাজারে যাওয়ার আগে ফর্দ তৈরি করুন, প্রয়োজনীয় পরিমাণ লিখে রাখুন। কেনা সম্পন্ন হলে টিক দিয়ে দিন বা ট্র্যাশে পাঠান।",
+                                descEn = "Frame future market needs by registering items with quantities, checking items of interest off as you shopping."
+                            ),
+                            FeatureItem(
+                                emoji = "🤝",
+                                titleBn = "দেনা-পাওনা (Debt) ট্র্যাকার",
+                                titleEn = "Debts & Loans Tracker",
+                                descBn = "বন্ধুবান্ধব ও পরিবারের সাথে লেনদেনের বিস্তারিত হিসাব রাখুন। পরিশোধিত হলে এক ক্লিকে 'Settle' করে সম্পূর্ণ রেকর্ড সংরক্ষণ করুন।",
+                                descEn = "Identify exact balances owed to or by you in a clear dashboard. Finish historical loans in a single tap."
+                            ),
+                            FeatureItem(
+                                emoji = "🌐",
+                                titleBn = "অফলাইন ফার্স্ট ও ক্লাউড সিঙ্ক",
+                                titleEn = "Offline First & Sync Engine",
+                                descBn = "আপনার সকল ডেটা ফোনেই সুরক্ষিত থাকে, তাই ইন্টারনেট ছাড়াই চলে। আবার ডেটা হারানোর ভয় এড়াতে ক্লাউড ব্যাকআপ নেওয়ার চমৎকার সুবিধা আছে।",
+                                descEn = "Operates completely internet-free for high security, with automated triggers to backup/restore securely anytime."
+                            ),
+                            FeatureItem(
+                                emoji = "🌍",
+                                titleBn = "সম্পূর্ণ দ্বি-ভাষিক সুবিধা",
+                                titleEn = "Dual Language Experience",
+                                descBn = "বাঙালিদের জন্য শতভাগ খাঁটি বাংলা ভাষা এবং বৈশ্বিক ব্যবহারের জন্য ইংরেজি ভাষায় সহজেই এক ক্লিকে পরিবর্তন যোগ্য ইন্টারফেস।",
+                                descEn = "Instantly toggle between authentic Bengali and professional English language templates from the app header."
+                            ),
+                            FeatureItem(
+                                emoji = "🎨",
+                                titleBn = "চোখধাঁধানো গ্লাস-ইউআই ও ডার্ক মোড",
+                                titleEn = "Premium Theme & Dark Mode",
+                                descBn = "চোখের সুরক্ষার জন্য আরামদায়ক অন্ধকার ডার্ক থিম বা পরিচ্ছন্ন লাইট থিম। সাথে প্রিমিয়াম গ্লাস-মরফিজম ভিজ্যুয়াল ফিনিশ!",
+                                descEn = "Dive into seamless, distraction-free modern UI styled elegantly with rich dark theme aesthetics."
+                            )
+                        )
+
+                        features.forEach { item ->
+                            FeatureItemRow(item = item, lang = lang, isDark = isDark)
+                            Spacer(modifier = Modifier.height(10.dp))
+                        }
+                    }
+
+                    Spacer(modifier = Modifier.height(14.dp))
+
+                    Button(
+                        onClick = onDismiss,
+                        shape = RoundedCornerShape(12.dp),
+                        modifier = Modifier.fillMaxWidth()
+                    ) {
+                        Text(
+                            text = if (lang == "bn") "পড়া হয়েছে" else "Got It",
+                            fontWeight = FontWeight.Bold
+                        )
+                    }
+                }
+            }
+        }
+    }
+}
+
+private data class FeatureItem(
+    val emoji: String,
+    val titleBn: String,
+    val titleEn: String,
+    val descBn: String,
+    val descEn: String
+)
+
+@Composable
+private fun FeatureItemRow(
+    item: FeatureItem,
+    lang: String,
+    isDark: Boolean
+) {
+    val cardBg = if (isDark) MaterialTheme.colorScheme.surfaceVariant.copy(alpha = 0.15f) else Color(0xFFF1F5F9)
+    val cardBorder = BorderStroke(1.dp, MaterialTheme.colorScheme.outlineVariant.copy(alpha = 0.25f))
+
+    Card(
+        modifier = Modifier.fillMaxWidth(),
+        shape = RoundedCornerShape(12.dp),
+        colors = CardDefaults.cardColors(containerColor = cardBg),
+        border = cardBorder
+    ) {
+        Row(
+            modifier = Modifier.padding(12.dp),
+            verticalAlignment = Alignment.Top
+        ) {
+            Box(
+                modifier = Modifier
+                    .size(36.dp)
+                    .background(
+                        color = if (isDark) Color(0x1F94A3B8) else Color(0x0F475569),
+                        shape = CircleShape
+                    ),
+                contentAlignment = Alignment.Center
+            ) {
+                Text(text = item.emoji, style = MaterialTheme.typography.titleMedium)
+            }
+            Spacer(modifier = Modifier.width(12.dp))
+            Column {
+                Text(
+                    text = if (lang == "bn") item.titleBn else item.titleEn,
+                    style = MaterialTheme.typography.labelMedium,
+                    fontWeight = FontWeight.ExtraBold,
+                    color = MaterialTheme.colorScheme.onSurface
+                )
+                Spacer(modifier = Modifier.height(3.dp))
+                Text(
+                    text = if (lang == "bn") item.descBn else item.descEn,
+                    style = MaterialTheme.typography.bodySmall,
+                    color = MaterialTheme.colorScheme.onSurfaceVariant.copy(alpha = 0.85f),
+                    lineHeight = 16.sp
+                )
+            }
+        }
+    }
+}
+
+@Composable
 fun DeveloperCreditDialog(
     currentUser: String?,
     lang: String = "en",
@@ -2910,9 +3169,14 @@ fun DeveloperCreditDialog(
 ) {
     val isDark = isAppDark()
     var showContactDialog by remember { mutableStateOf(false) }
+    var showAboutAppDialog by remember { mutableStateOf(false) }
 
     if (showContactDialog) {
         DeveloperContactDialog(onDismiss = { showContactDialog = false })
+    }
+
+    if (showAboutAppDialog) {
+        AboutAppDialog(lang = lang, onDismiss = { showAboutAppDialog = false })
     }
 
     Dialog(onDismissRequest = onDismiss) {
@@ -3195,7 +3459,32 @@ fun DeveloperCreditDialog(
                     )
                     Spacer(modifier = Modifier.width(8.dp))
                     Text(
-                        text = "Contact Me",
+                        text = if (lang == "bn") "যোগাযোগ করুন" else "Contact Me",
+                        style = MaterialTheme.typography.labelLarge.copy(fontWeight = FontWeight.ExtraBold)
+                    )
+                }
+
+                Spacer(modifier = Modifier.height(8.dp))
+
+                // About App Button
+                Button(
+                    onClick = { showAboutAppDialog = true },
+                    shape = RoundedCornerShape(12.dp),
+                    colors = ButtonDefaults.buttonColors(
+                        containerColor = if (isDark) MaterialTheme.colorScheme.secondaryContainer else Color(0xFFF1F5F9),
+                        contentColor = if (isDark) MaterialTheme.colorScheme.onSecondaryContainer else Color(0xFF475569)
+                    ),
+                    border = BorderStroke(1.dp, if (isDark) MaterialTheme.colorScheme.secondary.copy(alpha = 0.5f) else Color(0xFFCBD5E1)),
+                    modifier = Modifier.fillMaxWidth()
+                ) {
+                    Icon(
+                        imageVector = Icons.Default.Info,
+                        contentDescription = "About App Icon",
+                        modifier = Modifier.size(18.dp)
+                    )
+                    Spacer(modifier = Modifier.width(8.dp))
+                    Text(
+                        text = if (lang == "bn") "অ্যাপ সম্পর্কে জানুন" else "About App & Features",
                         style = MaterialTheme.typography.labelLarge.copy(fontWeight = FontWeight.ExtraBold)
                     )
                 }
@@ -3212,7 +3501,7 @@ fun DeveloperCreditDialog(
                     modifier = Modifier.fillMaxWidth()
                 ) {
                     Text(
-                        text = "Close",
+                        text = if (lang == "bn") "বন্ধ করুন" else "Close",
                         style = MaterialTheme.typography.labelLarge.copy(fontWeight = FontWeight.Bold)
                     )
                 }
