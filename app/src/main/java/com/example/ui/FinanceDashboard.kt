@@ -44,6 +44,7 @@ import androidx.compose.ui.window.Dialog
 import androidx.lifecycle.compose.collectAsStateWithLifecycle
 import com.example.R
 import com.example.data.Transaction
+import com.example.ui.theme.LocalThemeState
 import java.text.SimpleDateFormat
 import java.util.*
 import android.app.Activity
@@ -53,7 +54,57 @@ import com.google.android.gms.ads.AdRequest
 import com.google.android.gms.ads.LoadAdError
 import com.google.android.gms.ads.rewarded.RewardedAd
 import com.google.android.gms.ads.rewarded.RewardedAdLoadCallback
+import androidx.compose.foundation.interaction.MutableInteractionSource
+import androidx.compose.foundation.interaction.collectIsPressedAsState
+import androidx.compose.foundation.LocalIndication
+import androidx.compose.animation.core.animateFloatAsState
+import androidx.compose.animation.core.Spring
+import androidx.compose.ui.graphics.graphicsLayer
 
+
+@Composable
+fun isAppDark(): Boolean {
+    val theme = LocalThemeState.current
+    return theme == "dark" || (theme == "system" && androidx.compose.foundation.isSystemInDarkTheme())
+}
+
+@Composable
+fun Modifier.android16Clickable(
+    enabled: Boolean = true,
+    onClick: () -> Unit
+): Modifier {
+    val interactionSource = remember { MutableInteractionSource() }
+    val isPressed by interactionSource.collectIsPressedAsState()
+
+    val scale by animateFloatAsState(
+        targetValue = if (isPressed) 0.90f else 1.0f,
+        animationSpec = spring(
+            dampingRatio = 0.45f,
+            stiffness = Spring.StiffnessMedium
+        ),
+        label = "click_scale"
+    )
+    val alpha by animateFloatAsState(
+        targetValue = if (isPressed) 0.82f else 1.0f,
+        animationSpec = spring(
+            stiffness = Spring.StiffnessHigh
+        ),
+        label = "click_alpha"
+    )
+
+    return this
+        .graphicsLayer {
+            scaleX = scale
+            scaleY = scale
+            this.alpha = alpha
+        }
+        .clickable(
+            interactionSource = interactionSource,
+            indication = LocalIndication.current,
+            enabled = enabled,
+            onClick = onClick
+        )
+}
 
 @OptIn(ExperimentalMaterial3Api::class)
 @Composable
@@ -89,7 +140,9 @@ fun FinanceDashboardScreen(
     var showAuthDialog by remember { mutableStateOf(false) }
     var showDeveloperCreditDialog by remember { mutableStateOf(false) }
     var showBajarListDialog by remember { mutableStateOf(false) }
+    var showDebtListDialog by remember { mutableStateOf(false) }
     val bItems by viewModel.bajarItems.collectAsStateWithLifecycle()
+    val debtRecords by viewModel.debtRecords.collectAsStateWithLifecycle()
 
     // Optimize listener callbacks with remember to prevent parent-induced child recompositions at 120Hz
     val onLanguageToggle = remember { { viewModel.toggleLanguage() } }
@@ -152,7 +205,7 @@ fun FinanceDashboardScreen(
                     },
                     navigationIcon = {
                         // Language Switch Glass Pill Button
-                        val isDark = MaterialTheme.colorScheme.background == Color(0xFF0F172A)
+                        val isDark = isAppDark()
                         Card(
                             colors = CardDefaults.cardColors(
                                 containerColor = if (isDark) MaterialTheme.colorScheme.surfaceVariant.copy(alpha = 0.5f) else Color(0x66FFFFFF)
@@ -164,7 +217,7 @@ fun FinanceDashboardScreen(
                             shape = CircleShape,
                             modifier = Modifier
                                 .padding(start = 12.dp)
-                                .clickable { onLanguageToggle() }
+                                .android16Clickable { onLanguageToggle() }
                                 .testTag("language_toggle_button"),
                             elevation = CardDefaults.cardElevation(defaultElevation = 0.dp)
                         ) {
@@ -190,14 +243,14 @@ fun FinanceDashboardScreen(
                     },
                     actions = {
                         // Developer Credit/About App info button
-                        val isDark = MaterialTheme.colorScheme.background == Color(0xFF0F172A)
+                        val isDark = isAppDark()
                         Box(
                             modifier = Modifier
                                 .padding(end = 8.dp)
                                 .size(36.dp)
                                 .clip(CircleShape)
                                 .background(if (isDark) MaterialTheme.colorScheme.surfaceVariant.copy(alpha = 0.5f) else Color(0x66FFFFFF))
-                                .clickable { onShowDeveloperCredit() }
+                                .android16Clickable { onShowDeveloperCredit() }
                                 .testTag("developer_credit_button"),
                             contentAlignment = Alignment.Center
                         ) {
@@ -216,7 +269,7 @@ fun FinanceDashboardScreen(
                                 .size(36.dp)
                                 .clip(CircleShape)
                                 .background(if (isDark) MaterialTheme.colorScheme.surfaceVariant.copy(alpha = 0.5f) else Color(0x66FFFFFF))
-                                .clickable { onShowAuth() }
+                                .android16Clickable { onShowAuth() }
                                 .testTag("auth_profile_button"),
                             contentAlignment = Alignment.Center
                         ) {
@@ -238,34 +291,52 @@ fun FinanceDashboardScreen(
                 )
             },
             floatingActionButton = {
-                val bajarListButtonText = if (currentLanguage == "bn") "বাজার লিস্ট" else "Bajar List"
+                val debtsButtonText = if (currentLanguage == "bn") "দেন-পাওনা" else "Debts"
+                val bajarListButtonText = if (currentLanguage == "bn") "বাজার" else "Bajar"
                 Row(
                     modifier = Modifier
                         .navigationBarsPadding()
-                        .padding(horizontal = 16.dp),
-                    horizontalArrangement = Arrangement.spacedBy(12.dp),
+                        .padding(horizontal = 8.dp),
+                    horizontalArrangement = Arrangement.spacedBy(8.dp),
                     verticalAlignment = Alignment.CenterVertically
                 ) {
-                    ExtendedFloatingActionButton(
-                        onClick = { showBajarListDialog = true },
-                        icon = { Icon(Icons.Default.ShoppingBasket, contentDescription = "Bajar List") },
-                        text = { Text(bajarListButtonText) },
-                        containerColor = Color(0xFF10B981), // Beautiful Emerald green
+                    FloatingActionButton(
+                        onClick = { showDebtListDialog = true },
+                        containerColor = Color(0xFFF59E0B),
                         contentColor = Color.White,
                         shape = RoundedCornerShape(16.dp),
                         modifier = Modifier
+                            .size(52.dp)
+                            .testTag("floating_debt_list_button")
+                            .android16Clickable { showDebtListDialog = true }
+                    ) {
+                        Icon(Icons.Default.People, contentDescription = "Debts")
+                    }
+
+                    FloatingActionButton(
+                        onClick = { showBajarListDialog = true },
+                        containerColor = Color(0xFF10B981),
+                        contentColor = Color.White,
+                        shape = RoundedCornerShape(16.dp),
+                        modifier = Modifier
+                            .size(52.dp)
                             .testTag("floating_bajar_list_button")
-                    )
+                            .android16Clickable { showBajarListDialog = true }
+                    ) {
+                        Icon(Icons.Default.ShoppingBasket, contentDescription = "Bajar List")
+                    }
 
                     ExtendedFloatingActionButton(
                         onClick = onAddTransactionClick,
                         icon = { Icon(Icons.Filled.Add, contentDescription = "Add transaction") },
                         text = { Text(getStringResource(R.string.add_transaction_title)) },
-                        containerColor = Color(0xFF2563EB), // Rich Blue as in design HTML
+                        containerColor = Color(0xFF2563EB),
                         contentColor = Color.White,
-                        shape = RoundedCornerShape(16.dp), // 2xl rounded as in design HTML
+                        shape = RoundedCornerShape(16.dp),
                         modifier = Modifier
+                            .height(52.dp)
                             .testTag("floating_add_button")
+                            .android16Clickable(onClick = onAddTransactionClick)
                     )
                 }
             }
@@ -379,6 +450,18 @@ fun FinanceDashboardScreen(
             onDismiss = { showBajarListDialog = false }
         )
     }
+
+    // Dialog 4: Debts & Lending Tracker Dialog
+    if (showDebtListDialog) {
+        DebtListDialog(
+            debtRecords = debtRecords,
+            lang = currentLanguage,
+            onAddDebt = { name, amt, dir, note -> viewModel.addDebtRecord(name, amt, dir, note) },
+            onSettleDebt = { record -> viewModel.settleDebtRecord(record) },
+            onDeleteDebt = { record -> viewModel.deleteDebtRecord(record) },
+            onDismiss = { showDebtListDialog = false }
+        )
+    }
 }
 
 // User sign-in status indicator banner with a beautiful glass style
@@ -388,7 +471,7 @@ fun UserSessionBanner(
     getString: (Int) -> String,
     onSignInClick: () -> Unit
 ) {
-    val isDark = MaterialTheme.colorScheme.background == Color(0xFF0F172A)
+    val isDark = isAppDark()
     val containerBg = if (currentUser != null) {
         if (isDark) Color(0x2660A5FA) else Color(0x5993C5FD) // Light blue glass 35%
     } else {
@@ -411,7 +494,7 @@ fun UserSessionBanner(
         modifier = Modifier
             .fillMaxWidth()
             .padding(horizontal = 16.dp, vertical = 6.dp)
-            .clickable { onSignInClick() },
+            .android16Clickable { onSignInClick() },
         shape = RoundedCornerShape(16.dp),
         border = BorderStroke(1.dp, borderColor),
         colors = CardDefaults.cardColors(containerColor = containerBg),
@@ -472,9 +555,9 @@ fun DashboardSummaryCard(
     lang: String,
     getString: (Int) -> String
 ) {
-    val isDark = MaterialTheme.colorScheme.background == Color(0xFF0F172A)
-    val cardBg = if (isDark) MaterialTheme.colorScheme.surface.copy(alpha = 0.85f) else Color(0x66FFFFFF)
-    val cardBorder = if (isDark) MaterialTheme.colorScheme.outlineVariant.copy(alpha = 0.5f) else Color(0x99FFFFFF)
+    val isDark = isAppDark()
+    val cardBg = if (isDark) MaterialTheme.colorScheme.surface else Color.White
+    val cardBorder = MaterialTheme.colorScheme.outlineVariant
 
     // Cache currency formatting strings in remember block to maximize rendering performance
     val formattedTotal = remember(stats.balance, lang) {
@@ -659,7 +742,7 @@ fun TabNavigationRow(
     onTabSelect: (String) -> Unit,
     getString: (Int) -> String
 ) {
-    val isDark = MaterialTheme.colorScheme.background == Color(0xFF0F172A)
+    val isDark = isAppDark()
     val tabRowBg = if (isDark) MaterialTheme.colorScheme.surface.copy(alpha = 0.5f) else Color(0x33FFFFFF)
     val tabRowBorder = if (isDark) MaterialTheme.colorScheme.outlineVariant.copy(alpha = 0.5f) else Color(0x66FFFFFF)
     val activePaneBg = if (isDark) MaterialTheme.colorScheme.surfaceVariant else Color(0xE6FFFFFF)
@@ -681,33 +764,21 @@ fun TabNavigationRow(
                 .padding(4.dp),
             horizontalArrangement = Arrangement.spacedBy(4.dp)
         ) {
-            val activeModifier = Modifier
-                .weight(1.5f)
-                .clip(RoundedCornerShape(16.dp))
-                .background(activePaneBg) // Crisp glass white active pane
-                .padding(vertical = 12.dp)
-            
-            val inactiveModifier = Modifier
-                .weight(1f)
-                .clip(RoundedCornerShape(16.dp))
-                .clickable { onTabSelect("dashboard") }
-                .padding(vertical = 12.dp)
-
-            val activeModifierSummary = Modifier
-                .weight(1.5f)
-                .clip(RoundedCornerShape(16.dp))
-                .background(activePaneBg)
-                .padding(vertical = 12.dp)
-
-            val inactiveModifierSummary = Modifier
-                .weight(1f)
-                .clip(RoundedCornerShape(16.dp))
-                .clickable { onTabSelect("summary") }
-                .padding(vertical = 12.dp)
-
             // Tab 1: Dashboard & Transactions list
             Box(
-                modifier = if (currentTab == "dashboard") activeModifier else inactiveModifier,
+                modifier = if (currentTab == "dashboard") {
+                    Modifier
+                        .weight(1.5f)
+                        .clip(RoundedCornerShape(16.dp))
+                        .background(activePaneBg)
+                        .padding(vertical = 12.dp)
+                } else {
+                    Modifier
+                        .weight(1f)
+                        .clip(RoundedCornerShape(16.dp))
+                        .android16Clickable { onTabSelect("dashboard") }
+                        .padding(vertical = 12.dp)
+                },
                 contentAlignment = Alignment.Center
             ) {
                 Text(
@@ -720,7 +791,19 @@ fun TabNavigationRow(
 
             // Tab 2: Categorized Summary info
             Box(
-                modifier = if (currentTab == "summary") activeModifierSummary else inactiveModifierSummary,
+                modifier = if (currentTab == "summary") {
+                    Modifier
+                        .weight(1.5f)
+                        .clip(RoundedCornerShape(16.dp))
+                        .background(activePaneBg)
+                        .padding(vertical = 12.dp)
+                } else {
+                    Modifier
+                        .weight(1f)
+                        .clip(RoundedCornerShape(16.dp))
+                        .android16Clickable { onTabSelect("summary") }
+                        .padding(vertical = 12.dp)
+                },
                 contentAlignment = Alignment.Center
             ) {
                 Text(
@@ -808,9 +891,9 @@ fun TransactionListItem(
         "${if (isExpense) "-" else "+"}${formatCurrency(transaction.amount, lang)}"
     }
 
-    val isDark = MaterialTheme.colorScheme.background == Color(0xFF0F172A)
-    val itemBg = if (isDark) MaterialTheme.colorScheme.surface.copy(alpha = 0.85f) else Color(0x99FFFFFF)
-    val itemBorder = if (isDark) MaterialTheme.colorScheme.outlineVariant.copy(alpha = 0.5f) else Color(0x59FFFFFF)
+    val isDark = isAppDark()
+    val itemBg = if (isDark) MaterialTheme.colorScheme.surface else Color.White
+    val itemBorder = MaterialTheme.colorScheme.outlineVariant
     val titleColor = if (isDark) MaterialTheme.colorScheme.onSurface else Color(0xFF1E293B)
     val noteColor = if (isDark) MaterialTheme.colorScheme.onSurfaceVariant else Color(0xFF64748B)
     val dateColor = if (isDark) MaterialTheme.colorScheme.onSurfaceVariant.copy(alpha = 0.8f) else Color(0xFF94A3B8)
@@ -1071,9 +1154,9 @@ fun CategorySummaryItem(
         else -> Color(0xFF9E9E9E)
     }
 
-    val isDark = MaterialTheme.colorScheme.background == Color(0xFF0F172A)
-    val itemBg = if (isDark) MaterialTheme.colorScheme.surface.copy(alpha = 0.85f) else Color(0x99FFFFFF)
-    val itemBorder = if (isDark) MaterialTheme.colorScheme.outlineVariant.copy(alpha = 0.5f) else Color(0x59FFFFFF)
+    val isDark = isAppDark()
+    val itemBg = if (isDark) MaterialTheme.colorScheme.surface else Color.White
+    val itemBorder = MaterialTheme.colorScheme.outlineVariant
     val titleColor = if (isDark) MaterialTheme.colorScheme.onSurface else Color(0xFF1E293B)
     val amountColor = if (isExpense) Color(0xFFE11D48) else { if (isDark) Color(0xFF34D399) else Color(0xFF10B981) }
     val progressTrackBg = if (isDark) MaterialTheme.colorScheme.onSurface.copy(alpha = 0.12f) else Color(0x14000000)
@@ -1191,13 +1274,17 @@ fun AddTransactionDialog(
     var labelErrorText by remember { mutableStateOf("") }
 
     Dialog(onDismissRequest = onDismiss) {
+        val isDark = isAppDark()
+        val dialogSurfaceBg = if (isDark) MaterialTheme.colorScheme.surface else Color.White
+        val dialogBorder = MaterialTheme.colorScheme.outlineVariant
         Card(
             modifier = Modifier
                 .fillMaxWidth()
                 .padding(horizontal = 8.dp)
                 .testTag("add_transaction_dialog_surface"),
             shape = RoundedCornerShape(24.dp),
-            colors = CardDefaults.cardColors(containerColor = MaterialTheme.colorScheme.surface)
+            border = BorderStroke(1.dp, dialogBorder),
+            colors = CardDefaults.cardColors(containerColor = dialogSurfaceBg)
         ) {
             Column(
                 modifier = Modifier
@@ -1222,7 +1309,7 @@ fun AddTransactionDialog(
                         .padding(4.dp)
                 ) {
                     val expenseSelected = selectedType == "EXPENSE"
-                    val isDark = MaterialTheme.colorScheme.background == Color(0xFF0F172A)
+                    val isDark = isAppDark()
                     
                     val expenseColor = if (expenseSelected) {
                         ButtonDefaults.buttonColors(
@@ -1357,7 +1444,7 @@ fun AddTransactionDialog(
                         .fillMaxWidth()
                         .clip(RoundedCornerShape(12.dp))
                         .background(MaterialTheme.colorScheme.surfaceVariant.copy(alpha = 0.3f))
-                        .clickable {
+                        .android16Clickable {
                             showDatePicker = true
                         }
                         .padding(horizontal = 16.dp, vertical = 14.dp),
@@ -1473,13 +1560,17 @@ fun GoogleAuthDialog(
     }
 
     Dialog(onDismissRequest = onDismiss) {
+        val isDark = isAppDark()
+        val dialogSurfaceBg = if (isDark) MaterialTheme.colorScheme.surface else Color.White
+        val dialogBorder = MaterialTheme.colorScheme.outlineVariant
         Card(
             modifier = Modifier
                 .fillMaxWidth()
                 .padding(horizontal = 8.dp)
                 .testTag("google_auth_dialog_surface"),
             shape = RoundedCornerShape(24.dp),
-            colors = CardDefaults.cardColors(containerColor = MaterialTheme.colorScheme.surface)
+            border = BorderStroke(1.dp, dialogBorder),
+            colors = CardDefaults.cardColors(containerColor = dialogSurfaceBg)
         ) {
             Column(
                 modifier = Modifier
@@ -1666,7 +1757,7 @@ fun GoogleAuthDialog(
 
                 Row(
                     modifier = Modifier.fillMaxWidth(),
-                    horizontalArrangement = Arrangement.spacedBy(8.dp)
+                    horizontalArrangement = Arrangement.spacedBy(4.dp)
                 ) {
                     val themes = listOf(
                         Triple("system", getString(R.string.theme_system), Icons.Default.Settings),
@@ -1679,7 +1770,7 @@ fun GoogleAuthDialog(
                         Card(
                             modifier = Modifier
                                 .weight(1f)
-                                .clickable { onThemeChange(themeId) }
+                                .android16Clickable { onThemeChange(themeId) }
                                 .testTag("theme_option_$themeId"),
                             shape = RoundedCornerShape(12.dp),
                             border = BorderStroke(
@@ -1776,69 +1867,41 @@ fun Color.Companion.fromHex(hex: String): Color {
 // Visual layout support for even padding density
 fun symmetricPadding(horizontal: androidx.compose.ui.unit.Dp, vertical: androidx.compose.ui.unit.Dp) = PaddingValues(horizontal, vertical, horizontal, vertical)
 
-// Soft fuzzy and performant Ambient Mesh Background
+// Soft, beautiful and highly performant background
 @Composable
 fun MeshBackground(content: @Composable () -> Unit) {
+    val isDark = isAppDark()
+
+    val bgModifier = if (isDark) {
+        Modifier.background(
+            brush = Brush.verticalGradient(
+                colors = listOf(
+                    Color(0xFF0F172A), // Slate 900
+                    Color(0xFF020617)  // Slate 950
+                )
+            )
+        )
+    } else {
+        Modifier.background(
+            brush = Brush.verticalGradient(
+                colors = listOf(
+                    Color(0xFFF8FAFC), // Slate 50
+                    Color(0xFFF1F5F9)  // Slate 100
+                )
+            )
+        )
+    }
+
     Box(
         modifier = Modifier
             .fillMaxSize()
-            .background(MaterialTheme.colorScheme.background) // Base canvas tint matching HTML
+            .then(bgModifier)
     ) {
-        // Top-left fuzzy pastel blue bubble (blue-200/40)
-        Box(
-            modifier = Modifier
-                .offset(x = (-60).dp, y = (-60).dp)
-                .size(280.dp)
-                .background(
-                    brush = Brush.radialGradient(
-                        colors = listOf(
-                            Color(0x2E60A5FA), // light pastel blue a bit stronger than 40% for visual flavor
-                            Color.Transparent
-                        )
-                    ),
-                    shape = CircleShape
-                )
-        )
-
-        // Middle-right fuzzy pastel purple/pink bubble (purple-200/30)
-        Box(
-            modifier = Modifier
-                .align(Alignment.CenterEnd)
-                .offset(x = 80.dp, y = (-40).dp)
-                .size(340.dp)
-                .background(
-                    brush = Brush.radialGradient(
-                        colors = listOf(
-                            Color(0x24C084FC), // light pastel purple
-                            Color.Transparent
-                        )
-                    ),
-                    shape = CircleShape
-                )
-        )
-
-        // Bottom-left subtle soft aura
-        Box(
-            modifier = Modifier
-                .align(Alignment.BottomStart)
-                .offset(x = (-40).dp, y = 100.dp)
-                .size(240.dp)
-                .background(
-                    brush = Brush.radialGradient(
-                        colors = listOf(
-                            Color(0x1B818CF8), // indigo aspect
-                            Color.Transparent
-                        )
-                    ),
-                    shape = CircleShape
-                )
-        )
-
         content()
     }
 }
 
-// Beautiful Frosted Glass Developer Credit section
+// Beautiful Solid Dialogue / Card Developer Credit section
 internal fun Context.findActivity(): Activity? {
     var context = this
     while (context is ContextWrapper) {
@@ -1854,7 +1917,7 @@ fun DeveloperCreditDialog(
     lang: String = "en",
     onDismiss: () -> Unit
 ) {
-    val isDark = MaterialTheme.colorScheme.background == Color(0xFF0F172A)
+    val isDark = isAppDark()
     var showContactDialog by remember { mutableStateOf(false) }
 
     if (showContactDialog) {
@@ -1862,14 +1925,16 @@ fun DeveloperCreditDialog(
     }
 
     Dialog(onDismissRequest = onDismiss) {
+        val dialogSurfaceBg = if (isDark) MaterialTheme.colorScheme.surface else Color.White
+        val dialogBorder = MaterialTheme.colorScheme.outlineVariant
         Card(
             modifier = Modifier
                 .fillMaxWidth()
                 .padding(horizontal = 8.dp)
                 .testTag("developer_credit_dialog_surface"),
             shape = RoundedCornerShape(28.dp),
-            border = BorderStroke(1.dp, MaterialTheme.colorScheme.outlineVariant.copy(alpha = 0.5f)),
-            colors = CardDefaults.cardColors(containerColor = MaterialTheme.colorScheme.surface)
+            border = BorderStroke(1.dp, dialogBorder),
+            colors = CardDefaults.cardColors(containerColor = dialogSurfaceBg)
         ) {
             Column(
                 modifier = Modifier
@@ -1877,31 +1942,60 @@ fun DeveloperCreditDialog(
                     .fillMaxWidth(),
                 horizontalAlignment = Alignment.CenterHorizontally
             ) {
-                // Large elegant avatar with developer's real photo
-                val emailToLoad = currentUser ?: "sakibislam94433@gmail.com"
+                // Glowing Code symbol container
+                Box(
+                    modifier = Modifier
+                        .size(72.dp)
+                        .background(
+                            brush = Brush.radialGradient(
+                                colors = if (isDark) listOf(Color(0x3310B981), Color.Transparent) else listOf(Color(0x223B82F6), Color.Transparent)
+                            ),
+                            shape = CircleShape
+                        ),
+                    contentAlignment = Alignment.Center
+                ) {
+                    Box(
+                        modifier = Modifier
+                            .size(56.dp)
+                            .background(
+                                color = if (isDark) Color(0x1F10B981) else Color(0x123B82F6),
+                                shape = CircleShape
+                            )
+                            .border(
+                                width = 1.dp,
+                                color = if (isDark) Color(0x5010B981) else Color(0x403B82F6),
+                                shape = CircleShape
+                            ),
+                        contentAlignment = Alignment.Center
+                    ) {
+                        Icon(
+                            imageVector = Icons.Default.Code,
+                            contentDescription = "Code badge",
+                            tint = if (isDark) Color(0xFF10B981) else Color(0xFF2563EB),
+                            modifier = Modifier.size(28.dp)
+                        )
+                    }
+                }
 
-                GoogleAvatar(
-                    email = emailToLoad,
-                    modifier = Modifier.border(
-                        width = 2.dp,
-                        color = MaterialTheme.colorScheme.surface,
-                        shape = CircleShape
-                    ),
-                    sizeDp = 100.dp
-                )
-
-                Spacer(modifier = Modifier.height(16.dp))
+                Spacer(modifier = Modifier.height(12.dp))
 
                 Text(
                     text = "Developer Credit",
-                    style = MaterialTheme.typography.titleMedium.copy(letterSpacing = 2.sp),
-                    fontWeight = FontWeight.Black,
-                    color = if (isDark) MaterialTheme.colorScheme.primary else Color(0xFF2563EB)
+                    style = MaterialTheme.typography.titleLarge.copy(letterSpacing = 1.5.sp),
+                    fontWeight = FontWeight.ExtraBold,
+                    color = if (isDark) MaterialTheme.colorScheme.onSurface else Color(0xFF0F172A)
                 )
 
-                Spacer(modifier = Modifier.height(20.dp))
+                Text(
+                    text = "Application Architect & Creator",
+                    style = MaterialTheme.typography.labelMedium.copy(letterSpacing = 0.5.sp),
+                    fontWeight = FontWeight.Bold,
+                    color = if (isDark) Color(0xFF10B981) else Color(0xFF2563EB)
+                )
 
-                // Detail display list cards
+                Spacer(modifier = Modifier.height(24.dp))
+
+                // Detail display list cards with elegant layout and representative icons
                 Column(
                     modifier = Modifier.fillMaxWidth(),
                     verticalArrangement = Arrangement.spacedBy(10.dp)
@@ -1914,82 +2008,243 @@ fun DeveloperCreditDialog(
                     // Name Info block
                     Card(
                         modifier = Modifier.fillMaxWidth(),
-                        shape = RoundedCornerShape(14.dp),
+                        shape = RoundedCornerShape(16.dp),
                         border = blockBorder,
                         colors = blockBg
                     ) {
-                        Column(modifier = Modifier.padding(14.dp)) {
-                            Text(
-                                text = "NAME",
-                                style = MaterialTheme.typography.labelSmall.copy(letterSpacing = 1.sp),
-                                fontWeight = FontWeight.Bold,
-                                color = labelColor
-                            )
-                            Spacer(modifier = Modifier.height(2.dp))
-                            Text(
-                                text = "Md. Robiul Islam Sakib",
-                                style = MaterialTheme.typography.titleMedium,
-                                fontWeight = FontWeight.ExtraBold,
-                                color = valueColor
-                            )
+                        Row(
+                            modifier = Modifier.padding(14.dp),
+                            verticalAlignment = Alignment.CenterVertically
+                        ) {
+                            Box(
+                                modifier = Modifier
+                                    .size(42.dp)
+                                    .background(
+                                        color = if (isDark) Color(0x2910B981) else Color(0x1A2563EB),
+                                        shape = CircleShape
+                                    ),
+                                contentAlignment = Alignment.Center
+                            ) {
+                                Icon(
+                                    imageVector = Icons.Default.Person,
+                                    contentDescription = null,
+                                    tint = if (isDark) Color(0xFF10B981) else Color(0xFF2563EB),
+                                    modifier = Modifier.size(22.dp)
+                                )
+                            }
+                            Spacer(modifier = Modifier.width(14.dp))
+                            Column {
+                                Text(
+                                    text = "NAME",
+                                    style = MaterialTheme.typography.labelSmall.copy(letterSpacing = 1.sp),
+                                    fontWeight = FontWeight.Bold,
+                                    color = labelColor
+                                )
+                                Spacer(modifier = Modifier.height(2.dp))
+                                Text(
+                                    text = "Md. Robiul Islam Sakib",
+                                    style = MaterialTheme.typography.titleMedium,
+                                    fontWeight = FontWeight.ExtraBold,
+                                    color = valueColor
+                                )
+                            }
                         }
                     }
 
                     // Department Info block
                     Card(
                         modifier = Modifier.fillMaxWidth(),
-                        shape = RoundedCornerShape(14.dp),
+                        shape = RoundedCornerShape(16.dp),
                         border = blockBorder,
                         colors = blockBg
                     ) {
-                        Column(modifier = Modifier.padding(14.dp)) {
-                            Text(
-                                text = "DEPARTMENT",
-                                style = MaterialTheme.typography.labelSmall.copy(letterSpacing = 1.sp),
-                                fontWeight = FontWeight.Bold,
-                                color = labelColor
-                            )
-                            Spacer(modifier = Modifier.height(2.dp))
-                            Text(
-                                text = "Computer Science and Technology",
-                                style = MaterialTheme.typography.titleMedium,
-                                fontWeight = FontWeight.ExtraBold,
-                                color = valueColor
-                            )
+                        Row(
+                            modifier = Modifier.padding(14.dp),
+                            verticalAlignment = Alignment.CenterVertically
+                        ) {
+                            Box(
+                                modifier = Modifier
+                                    .size(42.dp)
+                                    .background(
+                                        color = if (isDark) Color(0x24A855F7) else Color(0x16A855F7),
+                                        shape = CircleShape
+                                    ),
+                                contentAlignment = Alignment.Center
+                            ) {
+                                Icon(
+                                    imageVector = Icons.Default.Computer,
+                                    contentDescription = null,
+                                    tint = if (isDark) Color(0xFFA855F7) else Color(0xFF9333EA),
+                                    modifier = Modifier.size(22.dp)
+                                )
+                            }
+                            Spacer(modifier = Modifier.width(14.dp))
+                            Column {
+                                Text(
+                                    text = "DEPARTMENT",
+                                    style = MaterialTheme.typography.labelSmall.copy(letterSpacing = 1.sp),
+                                    fontWeight = FontWeight.Bold,
+                                    color = labelColor
+                                )
+                                Spacer(modifier = Modifier.height(2.dp))
+                                Text(
+                                    text = "Computer Science and Technology",
+                                    style = MaterialTheme.typography.titleMedium,
+                                    fontWeight = FontWeight.ExtraBold,
+                                    color = valueColor
+                                )
+                            }
                         }
                     }
 
                     // Institute Info block
                     Card(
                         modifier = Modifier.fillMaxWidth(),
-                        shape = RoundedCornerShape(14.dp),
+                        shape = RoundedCornerShape(16.dp),
                         border = blockBorder,
                         colors = blockBg
                     ) {
-                        Column(modifier = Modifier.padding(14.dp)) {
-                            Text(
-                                text = "INSTITUTE",
-                                style = MaterialTheme.typography.labelSmall.copy(letterSpacing = 1.sp),
-                                fontWeight = FontWeight.Bold,
-                                color = labelColor
-                            )
-                            Spacer(modifier = Modifier.height(2.dp))
-                            Text(
-                                text = "Park Polytechnic Institute",
-                                style = MaterialTheme.typography.titleMedium,
-                                fontWeight = FontWeight.ExtraBold,
-                                color = valueColor
-                            )
+                        Row(
+                            modifier = Modifier.padding(14.dp),
+                            verticalAlignment = Alignment.CenterVertically
+                        ) {
+                            Box(
+                                modifier = Modifier
+                                    .size(42.dp)
+                                    .background(
+                                        color = if (isDark) Color(0x243B82F6) else Color(0x163B82F6),
+                                        shape = CircleShape
+                                    ),
+                                contentAlignment = Alignment.Center
+                            ) {
+                                Icon(
+                                    imageVector = Icons.Default.School,
+                                    contentDescription = null,
+                                    tint = if (isDark) Color(0xFF3B82F6) else Color(0xFF1D4ED8),
+                                    modifier = Modifier.size(22.dp)
+                                )
+                            }
+                            Spacer(modifier = Modifier.width(14.dp))
+                            Column {
+                                Text(
+                                    text = "INSTITUTE",
+                                    style = MaterialTheme.typography.labelSmall.copy(letterSpacing = 1.sp),
+                                    fontWeight = FontWeight.Bold,
+                                    color = labelColor
+                                )
+                                Spacer(modifier = Modifier.height(2.dp))
+                                Text(
+                                    text = "Park Polytechnic Institute",
+                                    style = MaterialTheme.typography.titleMedium,
+                                    fontWeight = FontWeight.ExtraBold,
+                                    color = valueColor
+                                )
+                            }
                         }
                     }
                 }
 
                 Spacer(modifier = Modifier.height(24.dp))
 
-                // Support Developer option
+                // Support Developer options
                 var isAdLoading by remember { mutableStateOf(false) }
                 val context = LocalContext.current
 
+                // Button 1: Interstitial Ad (by Watching Ads. with custom Ad ID)
+                Button(
+                    onClick = {
+                        if (!isAdLoading) {
+                            isAdLoading = true
+                            Toast.makeText(
+                                context,
+                                if (lang == "bn") "বিজ্ঞাপন লোড হচ্ছে... অনুগ্রহ করে অপেক্ষা করুন" else "Loading ad... Please wait",
+                                Toast.LENGTH_SHORT
+                            ).show()
+
+                            try {
+                                val adRequest = AdRequest.Builder().build()
+                                com.google.android.gms.ads.interstitial.InterstitialAd.load(
+                                    context,
+                                    "ca-app-pub-9308365057124148/6395048802",
+                                    adRequest,
+                                    object : com.google.android.gms.ads.interstitial.InterstitialAdLoadCallback() {
+                                        override fun onAdFailedToLoad(loadAdError: LoadAdError) {
+                                            isAdLoading = false
+                                            Toast.makeText(
+                                                context,
+                                                if (lang == "bn") "বিজ্ঞাপন লোড হতে ব্যর্থ হয়েছে। পুনরায় চেষ্টা করুন।" else "Failed to load ad. Please try again.",
+                                                Toast.LENGTH_LONG
+                                            ).show()
+                                        }
+
+                                        override fun onAdLoaded(interstitialAd: com.google.android.gms.ads.interstitial.InterstitialAd) {
+                                            isAdLoading = false
+                                            val activity = context.findActivity()
+                                            if (activity != null) {
+                                                interstitialAd.show(activity)
+                                                Toast.makeText(
+                                                    context,
+                                                    if (lang == "bn") "ধন্যবাদ! আপনি সফলভাবে ডেভেলপারকে সাপোর্ট করেছেন।" else "Thank you so much for supporting the developer!",
+                                                    Toast.LENGTH_LONG
+                                                ).show()
+                                            } else {
+                                                Toast.makeText(
+                                                    context,
+                                                    "Activity context not found to show ad.",
+                                                    Toast.LENGTH_SHORT
+                                                ).show()
+                                            }
+                                        }
+                                    }
+                                )
+                            } catch (e: Throwable) {
+                                isAdLoading = false
+                                Toast.makeText(
+                                    context,
+                                    if (lang == "bn") "বিজ্ঞাপন শুরু করতে ব্যর্থ হয়েছে।" else "Failed to initialize ad system.",
+                                    Toast.LENGTH_SHORT
+                                ).show()
+                                e.printStackTrace()
+                            }
+                        }
+                    },
+                    shape = RoundedCornerShape(12.dp),
+                    colors = ButtonDefaults.buttonColors(
+                        containerColor = if (isDark) Color(0xFF10B981) else Color(0xFFD1FAE5),
+                        contentColor = if (isDark) Color.White else Color(0xFF065F46)
+                    ),
+                    border = BorderStroke(1.dp, if (isDark) Color(0xFF059669) else Color(0xFFA7F3D0)),
+                    modifier = Modifier.fillMaxWidth().testTag("support_developer_interstitial_ad_button"),
+                    enabled = !isAdLoading
+                ) {
+                    Icon(
+                        imageVector = Icons.Default.Favorite,
+                        contentDescription = "Support Icon",
+                        modifier = Modifier.size(18.dp),
+                        tint = if (isDark) Color.White else Color(0xFF059669)
+                    )
+                    Spacer(modifier = Modifier.width(8.dp))
+                    Text(
+                        text = buildAnnotatedString {
+                            val mainText = if (lang == "bn") "ডেভেলপারকে সাপোর্ট করুন" else "Support Developer"
+                            val subText = if (lang == "bn") " (বিজ্ঞাপন দেখে)" else " (by Watching Ads.)"
+                            append(mainText)
+                            withStyle(
+                                style = SpanStyle(
+                                    fontSize = 11.sp,
+                                    fontWeight = FontWeight.Normal
+                                )
+                            ) {
+                                append(subText)
+                            }
+                        },
+                        style = MaterialTheme.typography.labelLarge.copy(fontWeight = FontWeight.ExtraBold)
+                    )
+                }
+
+                Spacer(modifier = Modifier.height(10.dp))
+
+                // Button 2: Rewarded Ad
                 Button(
                     onClick = {
                         if (!isAdLoading) {
@@ -2050,24 +2305,24 @@ fun DeveloperCreditDialog(
                     },
                     shape = RoundedCornerShape(12.dp),
                     colors = ButtonDefaults.buttonColors(
-                        containerColor = if (isDark) Color(0xFF10B981) else Color(0xFFD1FAE5),
-                        contentColor = if (isDark) Color.White else Color(0xFF065F46)
+                        containerColor = if (isDark) Color(0xFF3B82F6) else Color(0xFFDBEAFE),
+                        contentColor = if (isDark) Color.White else Color(0xFF1E40AF)
                     ),
-                    border = BorderStroke(1.dp, if (isDark) Color(0xFF059669) else Color(0xFFA7F3D0)),
-                    modifier = Modifier.fillMaxWidth().testTag("support_developer_ad_button"),
+                    border = BorderStroke(1.dp, if (isDark) Color(0xFF2563EB) else Color(0xFFBFDBFE)),
+                    modifier = Modifier.fillMaxWidth().testTag("support_developer_rewarded_ad_button"),
                     enabled = !isAdLoading
                 ) {
                     Icon(
-                        imageVector = Icons.Default.Favorite,
+                        imageVector = Icons.Default.FavoriteBorder,
                         contentDescription = "Support Icon",
                         modifier = Modifier.size(18.dp),
-                        tint = if (isDark) Color.White else Color(0xFF059669)
+                        tint = if (isDark) Color.White else Color(0xFF2563EB)
                     )
                     Spacer(modifier = Modifier.width(8.dp))
                     Text(
                         text = buildAnnotatedString {
                             val mainText = if (lang == "bn") "ডেভেলপারকে সাপোর্ট করুন" else "Support Developer"
-                            val subText = if (lang == "bn") " (বিজ্ঞাপন দেখে)" else " (by Watching Ads.)"
+                            val subText = if (lang == "bn") " (রিওয়ার্ডেড বিজ্ঞাপন)" else " (Rewarded Ad)"
                             append(mainText)
                             withStyle(
                                 style = SpanStyle(
@@ -2133,18 +2388,20 @@ fun DeveloperCreditDialog(
 fun DeveloperContactDialog(
     onDismiss: () -> Unit
 ) {
-    val isDark = MaterialTheme.colorScheme.background == Color(0xFF0F172A)
+    val isDark = isAppDark()
     val uriHandler = androidx.compose.ui.platform.LocalUriHandler.current
 
     Dialog(onDismissRequest = onDismiss) {
+        val dialogSurfaceBg = if (isDark) MaterialTheme.colorScheme.surface else Color.White
+        val dialogBorder = MaterialTheme.colorScheme.outlineVariant
         Card(
             modifier = Modifier
                 .fillMaxWidth()
                 .padding(horizontal = 8.dp)
                 .testTag("developer_contact_dialog_surface"),
             shape = RoundedCornerShape(24.dp),
-            border = BorderStroke(1.dp, MaterialTheme.colorScheme.outlineVariant.copy(alpha = 0.5f)),
-            colors = CardDefaults.cardColors(containerColor = MaterialTheme.colorScheme.surface)
+            border = BorderStroke(1.dp, dialogBorder),
+            colors = CardDefaults.cardColors(containerColor = dialogSurfaceBg)
         ) {
             Column(
                 modifier = Modifier
@@ -2272,7 +2529,7 @@ fun ContactOptionItem(
     Card(
         modifier = Modifier
             .fillMaxWidth()
-            .clickable(onClick = onClick),
+            .android16Clickable(onClick = onClick),
         shape = RoundedCornerShape(14.dp),
         border = BorderStroke(1.dp, MaterialTheme.colorScheme.outlineVariant.copy(alpha = 0.4f)),
         colors = CardDefaults.cardColors(containerColor = MaterialTheme.colorScheme.surfaceVariant.copy(alpha = 0.12f))
@@ -2333,7 +2590,7 @@ fun GoogleDriveSyncBlock(
     currentUser: String?,
     getString: (Int) -> String
 ) {
-    val isDark = MaterialTheme.colorScheme.background == Color(0xFF0F172A)
+    val isDark = isAppDark()
     val context = androidx.compose.ui.platform.LocalContext.current
 
     val exportLauncher = androidx.activity.compose.rememberLauncherForActivityResult(
@@ -2399,8 +2656,8 @@ fun GoogleDriveSyncBlock(
             // Header Row: Expandable controls
             Row(
                 modifier = Modifier
-                    .fillMaxWidth()
-                    .clickable { isExpanded = !isExpanded },
+                     .fillMaxWidth()
+                     .android16Clickable { isExpanded = !isExpanded },
                 verticalAlignment = Alignment.CenterVertically,
                 horizontalArrangement = Arrangement.SpaceBetween
             ) {
@@ -2597,7 +2854,7 @@ fun GoogleDriveSyncBlock(
                                 modifier = Modifier
                                     .fillMaxWidth()
                                     .clip(RoundedCornerShape(8.dp))
-                                    .clickable { viewModel.toggleAutoSync() }
+                                    .android16Clickable { viewModel.toggleAutoSync() }
                                     .padding(vertical = 6.dp),
                                 horizontalArrangement = Arrangement.SpaceBetween,
                                 verticalAlignment = Alignment.CenterVertically
@@ -2854,7 +3111,7 @@ fun BajarListDialog(
     var isFinishingShopping by remember { mutableStateOf(false) }
     var totalCostInput by remember { mutableStateOf("") }
 
-    val isDark = MaterialTheme.colorScheme.background == Color(0xFF0F172A)
+    val isDark = isAppDark()
 
     val titleText = if (lang == "bn") "বাজার তালিকা" else "Bajar (Shopping) List"
     val itemPlaceholder = if (lang == "bn") "বাজারের নাম (যেমন: আলু)" else "Item Name (e.g., Potato)"
@@ -2866,15 +3123,16 @@ fun BajarListDialog(
     val finishButtonText = if (lang == "bn") "বাজার শেষ করুন" else "Finish Shopping"
 
     Dialog(onDismissRequest = onDismiss) {
+        val dialogSurfaceBg = if (isDark) MaterialTheme.colorScheme.surface else Color.White
+        val dialogBorder = MaterialTheme.colorScheme.outlineVariant
         Card(
             modifier = Modifier
                 .fillMaxWidth()
                 .padding(16.dp)
                 .testTag("bajar_list_dialog_card"),
             shape = RoundedCornerShape(20.dp),
-            colors = CardDefaults.cardColors(
-                containerColor = if (isDark) Color(0xFF1E293B) else Color.White
-            ),
+            border = BorderStroke(1.dp, dialogBorder),
+            colors = CardDefaults.cardColors(containerColor = dialogSurfaceBg),
             elevation = CardDefaults.cardElevation(defaultElevation = 8.dp)
         ) {
             Column(
@@ -3192,6 +3450,329 @@ fun BajarListDialog(
                             shape = RoundedCornerShape(12.dp)
                         ) {
                             Text(doneBtnText, fontWeight = FontWeight.Bold)
+                        }
+                    }
+                }
+            }
+        }
+    }
+}
+
+// Dialog 4: Debts & Lending Tracker Dialog
+@OptIn(ExperimentalMaterial3Api::class)
+@Composable
+fun DebtListDialog(
+    debtRecords: List<com.example.data.DebtRecord>,
+    lang: String,
+    onAddDebt: (personName: String, amount: Double, direction: String, note: String) -> Unit,
+    onSettleDebt: (com.example.data.DebtRecord) -> Unit,
+    onDeleteDebt: (com.example.data.DebtRecord) -> Unit,
+    onDismiss: () -> Unit
+) {
+    var nameInput by remember { mutableStateOf("") }
+    var amountInput by remember { mutableStateOf("") }
+    var noteInput by remember { mutableStateOf("") }
+    var selectedDirection by remember { mutableStateOf("PAYABLE") } // "PAYABLE" or "RECEIVABLE"
+
+    val isDark = isAppDark()
+
+    val titleText = if (lang == "bn") "দেন-পাওনা ট্র্যাকার" else "Debts & Loans Tracker"
+    val namePlaceholder = if (lang == "bn") "নাম (যেমন: আবির)" else "Name (e.g., Abir)"
+    val amountPlaceholder = if (lang == "bn") "টাকা (যেমন: ৫০০)" else "Amount (e.g., 500)"
+    val notePlaceholder = if (lang == "bn") "নোট / কেন দেয়া হয়েছিল (ঐচ্ছিক)" else "Note (Optional)"
+    val addButtonText = if (lang == "bn") "যোগ করুন" else "Add Record"
+    val emptyText = if (lang == "bn") "কোনো দেন-পাওনার রেকর্ড নেই" else "No active debt records"
+
+    Dialog(onDismissRequest = onDismiss) {
+        val dialogSurfaceBg = if (isDark) MaterialTheme.colorScheme.surface else Color.White
+        val dialogBorder = MaterialTheme.colorScheme.outlineVariant
+        Card(
+            modifier = Modifier
+                .fillMaxWidth()
+                .padding(16.dp)
+                .testTag("debt_list_dialog_card"),
+            shape = RoundedCornerShape(20.dp),
+            border = BorderStroke(1.dp, dialogBorder),
+            colors = CardDefaults.cardColors(containerColor = dialogSurfaceBg),
+            elevation = CardDefaults.cardElevation(defaultElevation = 8.dp)
+        ) {
+            Column(
+                modifier = Modifier
+                    .padding(20.dp)
+                    .fillMaxWidth()
+            ) {
+                // Header
+                Row(
+                    modifier = Modifier.fillMaxWidth(),
+                    horizontalArrangement = Arrangement.SpaceBetween,
+                    verticalAlignment = Alignment.CenterVertically
+                ) {
+                    Text(
+                        text = titleText,
+                        style = MaterialTheme.typography.titleMedium,
+                        fontWeight = FontWeight.Bold,
+                        color = MaterialTheme.colorScheme.onSurface
+                    )
+                    IconButton(onClick = onDismiss, modifier = Modifier.testTag("debt_dismiss_icon_button")) {
+                        Icon(
+                            imageVector = Icons.Default.Close,
+                            contentDescription = "Close",
+                            tint = MaterialTheme.colorScheme.onSurfaceVariant
+                        )
+                    }
+                }
+
+                Spacer(modifier = Modifier.height(12.dp))
+
+                // Input form to add a new Debt record
+                OutlinedTextField(
+                    value = nameInput,
+                    onValueChange = { nameInput = it },
+                    label = { Text(namePlaceholder) },
+                    singleLine = true,
+                    modifier = Modifier.fillMaxWidth().testTag("debt_name_input"),
+                    shape = RoundedCornerShape(12.dp)
+                )
+
+                Spacer(modifier = Modifier.height(8.dp))
+
+                Row(
+                    modifier = Modifier.fillMaxWidth(),
+                    horizontalArrangement = Arrangement.spacedBy(8.dp),
+                    verticalAlignment = Alignment.CenterVertically
+                ) {
+                    OutlinedTextField(
+                        value = amountInput,
+                        onValueChange = { amountInput = it },
+                        label = { Text(amountPlaceholder) },
+                        singleLine = true,
+                        keyboardOptions = androidx.compose.foundation.text.KeyboardOptions(
+                            keyboardType = androidx.compose.ui.text.input.KeyboardType.Number
+                        ),
+                        modifier = Modifier.weight(1f).testTag("debt_amount_input"),
+                        shape = RoundedCornerShape(12.dp)
+                    )
+
+                    // Direction Selector Button
+                    Button(
+                        onClick = {
+                            selectedDirection = if (selectedDirection == "PAYABLE") "RECEIVABLE" else "PAYABLE"
+                        },
+                        colors = ButtonDefaults.buttonColors(
+                            containerColor = if (selectedDirection == "PAYABLE") Color(0xFFEF4444) else Color(0xFF10B981)
+                        ),
+                        shape = RoundedCornerShape(12.dp),
+                        modifier = Modifier.android16Clickable {
+                            selectedDirection = if (selectedDirection == "PAYABLE") "RECEIVABLE" else "PAYABLE"
+                        }
+                    ) {
+                        Text(
+                            text = if (selectedDirection == "PAYABLE") {
+                                if (lang == "bn") "আমি দেবো" else "I owe"
+                            } else {
+                                if (lang == "bn") "আমি পাবো" else "I get"
+                            },
+                            fontWeight = FontWeight.Bold,
+                            color = Color.White
+                        )
+                    }
+                }
+
+                Spacer(modifier = Modifier.height(8.dp))
+
+                OutlinedTextField(
+                    value = noteInput,
+                    onValueChange = { noteInput = it },
+                    label = { Text(notePlaceholder) },
+                    singleLine = true,
+                    modifier = Modifier.fillMaxWidth().testTag("debt_note_input"),
+                    shape = RoundedCornerShape(12.dp)
+                )
+
+                Spacer(modifier = Modifier.height(12.dp))
+
+                Button(
+                    onClick = {
+                        val name = nameInput.trim()
+                        val amt = amountInput.toDoubleOrNull()
+                        if (name.isNotEmpty() && amt != null && amt > 0.0) {
+                            onAddDebt(name, amt, selectedDirection, noteInput.trim())
+                            nameInput = ""
+                            amountInput = ""
+                            noteInput = ""
+                        }
+                    },
+                    modifier = Modifier.fillMaxWidth().android16Clickable {
+                        val name = nameInput.trim()
+                        val amt = amountInput.toDoubleOrNull()
+                        if (name.isNotEmpty() && amt != null && amt > 0.0) {
+                            onAddDebt(name, amt, selectedDirection, noteInput.trim())
+                            nameInput = ""
+                            amountInput = ""
+                            noteInput = ""
+                        }
+                    },
+                    shape = RoundedCornerShape(12.dp),
+                    colors = ButtonDefaults.buttonColors(
+                        containerColor = MaterialTheme.colorScheme.primary,
+                        contentColor = MaterialTheme.colorScheme.onPrimary
+                    )
+                ) {
+                    Text(addButtonText, fontWeight = FontWeight.Bold)
+                }
+
+                Spacer(modifier = Modifier.height(16.dp))
+
+                // List of items
+                Text(
+                    text = if (lang == "bn") "সক্রিয় দেন-পাওনা সমূহ" else "Active Debt Records",
+                    style = MaterialTheme.typography.labelMedium,
+                    fontWeight = FontWeight.Bold,
+                    color = MaterialTheme.colorScheme.onSurfaceVariant
+                )
+
+                Spacer(modifier = Modifier.height(8.dp))
+
+                Box(
+                    modifier = Modifier
+                        .fillMaxWidth()
+                        .heightIn(max = 240.dp)
+                ) {
+                    val activeDebts = debtRecords.filter { !it.isSettled }
+                    if (activeDebts.isEmpty()) {
+                        Box(
+                            modifier = Modifier
+                                .fillMaxWidth()
+                                .padding(vertical = 32.dp),
+                            contentAlignment = Alignment.Center
+                        ) {
+                            Text(
+                                text = emptyText,
+                                style = MaterialTheme.typography.bodyMedium,
+                                color = MaterialTheme.colorScheme.onSurfaceVariant.copy(alpha = 0.6f)
+                            )
+                        }
+                    } else {
+                        LazyColumn(
+                            verticalArrangement = Arrangement.spacedBy(8.dp),
+                            modifier = Modifier.fillMaxWidth()
+                        ) {
+                            items(activeDebts) { item ->
+                                Row(
+                                    modifier = Modifier
+                                        .fillMaxWidth()
+                                        .clip(RoundedCornerShape(12.dp))
+                                        .background(
+                                            if (isDark) Color(0xFF334155).copy(alpha = 0.5f)
+                                            else Color(0xFFF1F5F9)
+                                        )
+                                        .padding(horizontal = 12.dp, vertical = 8.dp),
+                                    verticalAlignment = Alignment.CenterVertically
+                                ) {
+                                    Column(
+                                        modifier = Modifier
+                                            .weight(1f)
+                                            .padding(end = 8.dp)
+                                    ) {
+                                        Row(
+                                            verticalAlignment = Alignment.CenterVertically,
+                                            horizontalArrangement = Arrangement.spacedBy(6.dp)
+                                        ) {
+                                            Text(
+                                                text = item.personName,
+                                                style = MaterialTheme.typography.bodyMedium,
+                                                fontWeight = FontWeight.Bold,
+                                                color = MaterialTheme.colorScheme.onSurface
+                                            )
+                                            
+                                            // Badge for direction
+                                            Box(
+                                                modifier = Modifier
+                                                    .clip(RoundedCornerShape(6.dp))
+                                                    .background(
+                                                        if (item.direction == "PAYABLE") Color(0x22EF4444) else Color(0x2210B981)
+                                                    )
+                                                    .padding(horizontal = 6.dp, vertical = 2.dp)
+                                            ) {
+                                                Text(
+                                                    text = if (item.direction == "PAYABLE") {
+                                                        if (lang == "bn") "আমি দেবো" else "I Owe"
+                                                    } else {
+                                                        if (lang == "bn") "পাবো" else "Get"
+                                                    },
+                                                    style = MaterialTheme.typography.labelSmall,
+                                                    fontWeight = FontWeight.Bold,
+                                                    color = if (item.direction == "PAYABLE") Color(0xFFEF4444) else Color(0xFF10B981)
+                                                )
+                                            }
+                                        }
+
+                                        if (item.note.isNotEmpty()) {
+                                            Text(
+                                                text = item.note,
+                                                style = MaterialTheme.typography.bodySmall,
+                                                color = MaterialTheme.colorScheme.onSurfaceVariant
+                                            )
+                                        }
+
+                                        Text(
+                                            text = formatDate(item.timestamp, lang),
+                                            style = MaterialTheme.typography.labelSmall,
+                                            color = MaterialTheme.colorScheme.onSurfaceVariant.copy(alpha = 0.5f)
+                                        )
+                                    }
+
+                                    Column(
+                                        horizontalAlignment = Alignment.End,
+                                        verticalArrangement = Arrangement.spacedBy(4.dp)
+                                    ) {
+                                        Text(
+                                            text = formatCurrency(item.amount, lang),
+                                            style = MaterialTheme.typography.bodyMedium,
+                                            fontWeight = FontWeight.Bold,
+                                            color = if (item.direction == "PAYABLE") Color(0xFFEF4444) else Color(0xFF10B981)
+                                        )
+
+                                        Row(
+                                            horizontalArrangement = Arrangement.spacedBy(4.dp),
+                                            verticalAlignment = Alignment.CenterVertically
+                                        ) {
+                                            // Settle button
+                                            Button(
+                                                onClick = { onSettleDebt(item) },
+                                                contentPadding = PaddingValues(horizontal = 8.dp, vertical = 4.dp),
+                                                colors = ButtonDefaults.buttonColors(
+                                                    containerColor = if (item.direction == "PAYABLE") Color(0xFFEF4444) else Color(0xFF10B981)
+                                                ),
+                                                shape = RoundedCornerShape(8.dp),
+                                                modifier = Modifier
+                                                    .height(28.dp)
+                                                    .android16Clickable { onSettleDebt(item) }
+                                            ) {
+                                                Text(
+                                                    text = if (lang == "bn") "শোধ" else "Settle",
+                                                    style = MaterialTheme.typography.labelSmall.copy(fontSize = 10.sp),
+                                                    fontWeight = FontWeight.Bold,
+                                                    color = Color.White
+                                                )
+                                            }
+
+                                            // Delete icon button
+                                            IconButton(
+                                                onClick = { onDeleteDebt(item) },
+                                                modifier = Modifier.size(28.dp).android16Clickable { onDeleteDebt(item) }
+                                            ) {
+                                                Icon(
+                                                    imageVector = Icons.Default.Delete,
+                                                    contentDescription = "Delete record",
+                                                    tint = MaterialTheme.colorScheme.error,
+                                                    modifier = Modifier.size(16.dp)
+                                                )
+                                            }
+                                        }
+                                    }
+                                }
+                            }
                         }
                     }
                 }

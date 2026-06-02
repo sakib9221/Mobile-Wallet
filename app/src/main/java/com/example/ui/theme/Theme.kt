@@ -47,25 +47,28 @@ private val LightColorScheme = lightColorScheme(
     onError = Color.White
 )
 
+val LocalThemeState = androidx.compose.runtime.staticCompositionLocalOf { "system" }
+
 @Composable
 fun MyApplicationTheme(
+    selectedTheme: String = "system",
     darkTheme: Boolean = isSystemInDarkTheme(),
     // Set default dynamicColor to false to maintain cohesive brand identity on all devices
     dynamicColor: Boolean = false,
     content: @Composable () -> Unit,
 ) {
-    val colorScheme = when {
-        dynamicColor && Build.VERSION.SDK_INT >= Build.VERSION_CODES.S -> {
-            val context = LocalContext.current
-            if (darkTheme) dynamicDarkColorScheme(context) else dynamicLightColorScheme(context)
-        }
-        darkTheme -> DarkColorScheme
-        else -> LightColorScheme
+    val colorScheme = when (selectedTheme) {
+        "light" -> LightColorScheme
+        "dark" -> DarkColorScheme
+        else -> if (darkTheme) DarkColorScheme else LightColorScheme
     }
 
-    MaterialTheme(
-        colorScheme = colorScheme,
-        typography = Typography,
-        content = content
-    )
+    val resolvedTheme = if (selectedTheme == "liquid_glass") "system" else selectedTheme
+    androidx.compose.runtime.CompositionLocalProvider(LocalThemeState provides resolvedTheme) {
+        MaterialTheme(
+            colorScheme = colorScheme,
+            typography = Typography,
+            content = content
+        )
+    }
 }

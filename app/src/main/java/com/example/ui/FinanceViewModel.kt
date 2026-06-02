@@ -46,9 +46,15 @@ class FinanceViewModel(application: Application) : AndroidViewModel(application)
 
     init {
         val db = AppDatabase.getDatabase(application)
-        repository = TransactionRepository(db.transactionDao(), db.bajarItemDao())
+        repository = TransactionRepository(db.transactionDao(), db.bajarItemDao(), db.debtRecordDao())
         _selectedLanguage.value = prefs.getString("selected_lang", "en") ?: "en"
-        _selectedTheme.value = prefs.getString("selected_theme", "system") ?: "system"
+        val savedTheme = prefs.getString("selected_theme", "system") ?: "system"
+        if (savedTheme == "liquid_glass") {
+            _selectedTheme.value = "system"
+            prefs.edit().putString("selected_theme", "system").apply()
+        } else {
+            _selectedTheme.value = savedTheme
+        }
         _currentUser.value = prefs.getString("selected_user", null)
         _autoSyncOnChanges.value = prefs.getBoolean("auto_sync_drive", true)
 
@@ -84,6 +90,18 @@ class FinanceViewModel(application: Application) : AndroidViewModel(application)
     val bajarItems: StateFlow<List<com.example.data.BajarItem>> = activeUserId
         .flatMapLatest { userId ->
             repository.getAllBajarItems(userId)
+        }
+        .stateIn(
+            scope = viewModelScope,
+            started = SharingStarted.Eagerly,
+            initialValue = emptyList()
+        )
+
+    // Retrieve Debt items reactively based on active user
+    @OptIn(ExperimentalCoroutinesApi::class)
+    val debtRecords: StateFlow<List<com.example.data.DebtRecord>> = activeUserId
+        .flatMapLatest { userId ->
+            repository.getAllDebts(userId)
         }
         .stateIn(
             scope = viewModelScope,
@@ -254,6 +272,59 @@ class FinanceViewModel(application: Application) : AndroidViewModel(application)
     fun deleteBajarItem(item: com.example.data.BajarItem) {
         viewModelScope.launch {
             repository.deleteBajarItem(item)
+        }
+    }
+
+    // Debt Records management
+    fun addDebtRecord(personName: String, amount: Double, direction: String, note: String) {
+        viewModelScope.launch {
+            val record = com.example.data.DebtRecord(
+                personName = personName,
+                amount = amount,
+                timestamp = System.currentTimeMillis(),
+                direction = direction,
+                isSettled = false,
+                note = note,
+                userId = activeUserId.value
+            )
+            repository.insertDebt(record)
+        }
+    }
+
+    fun deleteDebtRecord(record: com.example.data.DebtRecord) {
+        viewModelScope.launch {
+            repository.deleteDebt(record)
+        }
+    }
+
+    fun settleDebtRecord(record: com.example.data.DebtRecord) {
+        viewModelScope.launch {
+            val updated = record.copy(isSettled = true)
+            repository.updateDebt(updated)
+
+            val transType = if (record.direction == "PAYABLE") "EXPENSE" else "INCOME"
+            val categoryStr = com.example.R.string.category_other.toString()
+            val noteText = if (record.direction == "PAYABLE") {
+                "Paid debt to ${record.personName} (${record.note})"
+            } else {
+                "Collected debt from ${record.personName} (${record.note})"
+            }
+
+            val transaction = Transaction(
+                amount = record.amount,
+                category = categoryStr,
+                type = transType,
+                dateLong = System.currentTimeMillis(),
+                note = noteText,
+                userId = activeUserId.value
+            )
+            repository.insert(transaction)
+
+            // Auto-sync
+            if (_autoSyncOnChanges.value && activeUserId.value != "local_guest") {
+                val currentList = repository.getAllTransactions(activeUserId.value).first()
+                googleDriveManager.backupData(activeUserId.value, currentList)
+            }
         }
     }
 

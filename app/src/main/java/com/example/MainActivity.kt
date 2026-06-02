@@ -32,7 +32,7 @@ class MainActivity : ComponentActivity() {
                 "dark" -> true
                 else -> isSystemInDarkTheme()
             }
-            MyApplicationTheme(darkTheme = darkTheme) {
+            MyApplicationTheme(selectedTheme = themeState, darkTheme = darkTheme) {
                 FinanceDashboardScreen(
                     viewModel = viewModel,
                     modifier = Modifier.fillMaxSize()

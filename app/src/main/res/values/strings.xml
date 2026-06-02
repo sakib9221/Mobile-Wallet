@@ -38,6 +38,7 @@
     <string name="theme_system">System Default</string>
     <string name="theme_light">Light Mode</string>
     <string name="theme_dark">Dark Mode</string>
+    <string name="theme_liquid_glass">Liquid Glass</string>
     <string name="drive_sync_title">Google Drive Cloud Sync</string>
     <string name="drive_sync_desc">Backup and restore your financial database to secure cloud storage.</string>
     <string name="drive_status_label">Sync Status:</string>
@@ -47,4 +48,17 @@
     <string name="drive_backup_btn">Backup Now</string>
     <string name="drive_restore_btn">Restore Now</string>
     <string name="drive_unavailable_guest">Drive sync requires a Google login</string>
+    <string name="debts_title">Debts &amp; Lending</string>
+    <string name="debt_payable_title">I Owe (আমার থেকে যারা পায়)</string>
+    <string name="debt_receivable_title">They Owe Me (আমি যাদের থেকে পাই)</string>
+    <string name="debts_button">Debts &amp; Loans</string>
+    <string name="debts_button_bn">দেন-পাওনা tracker</string>
+    <string name="add_debt_title">Add New Record</string>
+    <string name="add_debt_title_bn">দেন-পাওনা যোগ করুন</string>
+    <string name="person_name_label">Name / নাম</string>
+    <string name="debt_direction_label">Type / ধরন</string>
+    <string name="debt_payable_option">I owe them / আমি দেবো (PAYABLE)</string>
+    <string name="debt_receivable_option">They owe me / আমি পাবো (RECEIVABLE)</string>
+    <string name="debt_settle_btn">Settle / শোধ হয়েছে</string>
+    <string name="debt_no_records">No active debt records / কোনো তথ্য নেই</string>
 </resources>

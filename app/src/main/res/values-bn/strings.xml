@@ -38,6 +38,7 @@
     <string name="theme_system">সিস্টেম ডিফল্ট</string>
     <string name="theme_light">লাইট মোড</string>
     <string name="theme_dark">ডার্ক মোড</string>
+    <string name="theme_liquid_glass">লিকুইড গ্লাস</string>
     <string name="drive_sync_title">গুগল ড্রাইভ ক্লাউড সিঙ্ক</string>
     <string name="drive_sync_desc">নিরাপদ ক্লাউড স্টোরেজে আপনার ফাইন্যান্স ডেটা ব্যাকআপ ও পুনরুদ্ধার করুন।</string>
     <string name="drive_status_label">সিঙ্ক স্ট্যাটাস:</string>
