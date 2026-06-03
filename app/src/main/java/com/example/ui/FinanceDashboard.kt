@@ -75,6 +75,7 @@ fun isAppDark(): Boolean {
 
 fun Modifier.android16Clickable(
     enabled: Boolean = true,
+    shape: androidx.compose.ui.graphics.Shape? = null,
     onClick: () -> Unit
 ): Modifier = composed {
     val interactionSource = remember { MutableInteractionSource() }
@@ -96,7 +97,9 @@ fun Modifier.android16Clickable(
         label = "click_alpha"
     )
 
-    this
+    val contentModifier = if (shape != null) this.clip(shape) else this
+
+    contentModifier
         .graphicsLayer {
             scaleX = scale
             scaleY = scale
@@ -256,7 +259,7 @@ fun FinanceDashboardScreen(
                             shape = CircleShape,
                             modifier = Modifier
                                 .padding(start = 12.dp)
-                                .android16Clickable { onLanguageToggle() }
+                                .android16Clickable(shape = CircleShape) { onLanguageToggle() }
                                 .testTag("language_toggle_button"),
                             elevation = CardDefaults.cardElevation(defaultElevation = 0.dp)
                         ) {
@@ -347,7 +350,7 @@ fun FinanceDashboardScreen(
                         modifier = Modifier
                             .size(52.dp)
                             .testTag("floating_debt_list_button")
-                            .android16Clickable { showDebtListDialog = true }
+                            .android16Clickable(shape = RoundedCornerShape(16.dp)) { showDebtListDialog = true }
                     ) {
                         Icon(Icons.Default.People, contentDescription = "Debts")
                     }
@@ -360,7 +363,7 @@ fun FinanceDashboardScreen(
                         modifier = Modifier
                             .size(52.dp)
                             .testTag("floating_bajar_list_button")
-                            .android16Clickable { showBajarListDialog = true }
+                            .android16Clickable(shape = RoundedCornerShape(16.dp)) { showBajarListDialog = true }
                     ) {
                         Icon(Icons.Default.ShoppingBasket, contentDescription = "Bajar List")
                     }
@@ -375,7 +378,7 @@ fun FinanceDashboardScreen(
                         modifier = Modifier
                             .height(52.dp)
                             .testTag("floating_add_button")
-                            .android16Clickable(onClick = onAddTransactionClick)
+                            .android16Clickable(shape = RoundedCornerShape(16.dp), onClick = onAddTransactionClick)
                     )
                 }
             }
@@ -546,7 +549,7 @@ fun UserSessionBanner(
         modifier = Modifier
             .fillMaxWidth()
             .padding(horizontal = 16.dp, vertical = 6.dp)
-            .android16Clickable { onSignInClick() },
+            .android16Clickable(shape = RoundedCornerShape(16.dp)) { onSignInClick() },
         shape = RoundedCornerShape(16.dp),
         border = BorderStroke(1.dp, borderColor),
         colors = CardDefaults.cardColors(containerColor = containerBg),
@@ -1014,7 +1017,7 @@ fun TransactionListItem(
         modifier = Modifier
             .fillMaxWidth()
             .padding(horizontal = 16.dp)
-            .android16Clickable { expanded = !expanded },
+            .android16Clickable(shape = RoundedCornerShape(20.dp)) { expanded = !expanded },
         shape = RoundedCornerShape(20.dp),
         border = BorderStroke(1.dp, itemBorder), // white/40 as in design HTML
         colors = CardDefaults.cardColors(containerColor = itemBg), // white/60 backdrop glass
@@ -1148,7 +1151,7 @@ fun TransactionListItem(
                                 contentPadding = PaddingValues(horizontal = 12.dp, vertical = 6.dp),
                                 modifier = Modifier
                                     .height(32.dp)
-                                    .android16Clickable {
+                                    .android16Clickable(shape = RoundedCornerShape(8.dp)) {
                                         val clipboard = context.getSystemService(Context.CLIPBOARD_SERVICE) as android.content.ClipboardManager
                                         val clip = android.content.ClipData.newPlainText("Transaction Note", transaction.note)
                                         clipboard.setPrimaryClip(clip)
@@ -1171,7 +1174,7 @@ fun TransactionListItem(
                             contentPadding = PaddingValues(horizontal = 12.dp, vertical = 6.dp),
                             modifier = Modifier
                                 .height(32.dp)
-                                .android16Clickable { onDelete() }
+                                .android16Clickable(shape = RoundedCornerShape(8.dp)) { onDelete() }
                         ) {
                             Icon(Icons.Default.DeleteOutline, contentDescription = "Delete", modifier = Modifier.size(12.dp))
                             Spacer(modifier = Modifier.width(4.dp))
@@ -1716,7 +1719,7 @@ private fun BeautifulInteractiveCalendarDialog(
                                                     color = if (isToday && !isSelected) MaterialTheme.colorScheme.primary else Color.Transparent,
                                                     shape = RoundedCornerShape(10.dp)
                                                 )
-                                                .android16Clickable {
+                                                .android16Clickable(shape = RoundedCornerShape(10.dp)) {
                                                     selectedDateMillis = day.timestamp
                                                     val clickedCal = java.util.Calendar.getInstance().apply {
                                                         timeInMillis = day.timestamp
@@ -2340,7 +2343,7 @@ fun GoogleAuthDialog(
                         Card(
                             modifier = Modifier
                                 .weight(1f)
-                                .android16Clickable { onThemeChange(themeId) }
+                                .android16Clickable(shape = RoundedCornerShape(12.dp)) { onThemeChange(themeId) }
                                 .testTag("theme_option_$themeId"),
                             shape = RoundedCornerShape(12.dp),
                             border = BorderStroke(
@@ -2753,7 +2756,7 @@ fun SupportDeveloperDonationDialog(
                         Card(
                             modifier = Modifier
                                 .fillMaxWidth()
-                                .android16Clickable {
+                                .android16Clickable(shape = RoundedCornerShape(16.dp)) {
                                     clipboardManager.setText(androidx.compose.ui.text.AnnotatedString("+8801788-884161"))
                                     copiedBkash = true
                                     copiedNagad = false
@@ -2820,7 +2823,7 @@ fun SupportDeveloperDonationDialog(
                         Card(
                             modifier = Modifier
                                 .fillMaxWidth()
-                                .android16Clickable {
+                                .android16Clickable(shape = RoundedCornerShape(16.dp)) {
                                     clipboardManager.setText(androidx.compose.ui.text.AnnotatedString("+8801788-884161"))
                                     copiedNagad = true
                                     copiedBkash = false
@@ -3659,7 +3662,7 @@ fun ContactOptionItem(
     Card(
         modifier = Modifier
             .fillMaxWidth()
-            .android16Clickable(onClick = onClick),
+            .android16Clickable(shape = RoundedCornerShape(14.dp), onClick = onClick),
         shape = RoundedCornerShape(14.dp),
         border = BorderStroke(1.dp, MaterialTheme.colorScheme.outlineVariant.copy(alpha = 0.4f)),
         colors = CardDefaults.cardColors(containerColor = MaterialTheme.colorScheme.surfaceVariant.copy(alpha = 0.12f))
@@ -4695,7 +4698,7 @@ fun DebtListDialog(
                             containerColor = if (selectedDirection == "PAYABLE") Color(0xFFEF4444) else Color(0xFF10B981)
                         ),
                         shape = RoundedCornerShape(12.dp),
-                        modifier = Modifier.android16Clickable {
+                        modifier = Modifier.android16Clickable(shape = RoundedCornerShape(12.dp)) {
                             selectedDirection = if (selectedDirection == "PAYABLE") "RECEIVABLE" else "PAYABLE"
                         }
                     ) {
@@ -4735,7 +4738,7 @@ fun DebtListDialog(
                             noteInput = ""
                         }
                     },
-                    modifier = Modifier.fillMaxWidth().android16Clickable {
+                    modifier = Modifier.fillMaxWidth().android16Clickable(shape = RoundedCornerShape(12.dp)) {
                         val name = nameInput.trim()
                         val amt = amountInput.toDoubleOrNull()
                         if (name.isNotEmpty() && amt != null && amt > 0.0) {
@@ -4880,7 +4883,7 @@ fun DebtListDialog(
                                                 shape = RoundedCornerShape(8.dp),
                                                 modifier = Modifier
                                                     .height(28.dp)
-                                                    .android16Clickable { onSettleDebt(item) }
+                                                    .android16Clickable(shape = RoundedCornerShape(8.dp)) { onSettleDebt(item) }
                                             ) {
                                                 Text(
                                                     text = if (lang == "bn") "শোধ" else "Settle",
@@ -4893,7 +4896,7 @@ fun DebtListDialog(
                                             // Delete icon button
                                             IconButton(
                                                 onClick = { onDeleteDebt(item) },
-                                                modifier = Modifier.size(28.dp).android16Clickable { onDeleteDebt(item) }
+                                                modifier = Modifier.size(28.dp).android16Clickable(shape = CircleShape) { onDeleteDebt(item) }
                                             ) {
                                                 Icon(
                                                     imageVector = Icons.Default.Delete,
