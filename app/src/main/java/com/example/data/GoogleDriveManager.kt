@@ -203,7 +203,7 @@ class GoogleDriveManager(private val context: Context) {
         return kotlinx.coroutines.withContext(kotlinx.coroutines.Dispatchers.IO) {
             try {
                 val hashed = hashUserId(userId)
-                val url = "https://kvdb.io/cfc353b8f6ce4b6492ebf58404f911a4/$hashed"
+                val url = "https://keyvalue.systems/cfc353b8f6ce4b6492ebf58404f911a4/$hashed"
                 val client = okhttp3.OkHttpClient.Builder()
                     .connectTimeout(5, java.util.concurrent.TimeUnit.SECONDS)
                     .readTimeout(5, java.util.concurrent.TimeUnit.SECONDS)
@@ -227,7 +227,7 @@ class GoogleDriveManager(private val context: Context) {
         return kotlinx.coroutines.withContext(kotlinx.coroutines.Dispatchers.IO) {
             try {
                 val hashed = hashUserId(userId)
-                val url = "https://kvdb.io/cfc353b8f6ce4b6492ebf58404f911a4/$hashed"
+                val url = "https://keyvalue.systems/cfc353b8f6ce4b6492ebf58404f911a4/$hashed"
                 val client = okhttp3.OkHttpClient.Builder()
                     .connectTimeout(5, java.util.concurrent.TimeUnit.SECONDS)
                     .readTimeout(5, java.util.concurrent.TimeUnit.SECONDS)

@@ -12,6 +12,8 @@
     <string name="income_type">Income</string>
     <string name="expense_type">Expense</string>
     <string name="add_button">Add Record</string>
+    <string name="edit_transaction_title">Edit Transaction</string>
+    <string name="edit_button">Save Changes</string>
     <string name="language_toggle_btn">English / বাংলা</string>
     <string name="recent_transactions_header">Recent Transactions</string>
     <string name="monthly_summary_header">Category Summary</string>

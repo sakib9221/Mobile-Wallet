@@ -30,6 +30,7 @@ import androidx.compose.runtime.*
 import androidx.compose.ui.Alignment
 import androidx.compose.ui.Modifier
 import androidx.compose.ui.draw.clip
+import androidx.compose.ui.draw.shadow
 import androidx.compose.ui.graphics.Brush
 import androidx.compose.ui.graphics.Color
 import androidx.compose.ui.graphics.vector.ImageVector
@@ -45,6 +46,7 @@ import androidx.compose.ui.text.style.TextOverflow
 import androidx.compose.ui.unit.dp
 import androidx.compose.ui.unit.sp
 import androidx.compose.ui.window.Dialog
+import androidx.compose.ui.window.DialogProperties
 import androidx.lifecycle.compose.collectAsStateWithLifecycle
 import com.example.R
 import com.example.data.Transaction
@@ -76,6 +78,7 @@ fun isAppDark(): Boolean {
 fun Modifier.android16Clickable(
     enabled: Boolean = true,
     shape: androidx.compose.ui.graphics.Shape? = null,
+    elevation: androidx.compose.ui.unit.Dp = 0.dp,
     onClick: () -> Unit
 ): Modifier = composed {
     val interactionSource = remember { MutableInteractionSource() }
@@ -97,7 +100,15 @@ fun Modifier.android16Clickable(
         label = "click_alpha"
     )
 
-    val contentModifier = if (shape != null) this.clip(shape) else this
+    val contentModifier = if (shape != null) {
+        if (elevation > 0.dp) {
+            this.shadow(elevation, shape, clip = true)
+        } else {
+            this.clip(shape)
+        }
+    } else {
+        this
+    }
 
     contentModifier
         .graphicsLayer {
@@ -178,7 +189,55 @@ fun FinanceDashboardScreen(
     }
 
     // Modal dialog trigger states
+    var showActionsMenu by remember { mutableStateOf(false) }
+    
+    val filePickerLauncher = androidx.activity.compose.rememberLauncherForActivityResult(
+        contract = androidx.activity.result.contract.ActivityResultContracts.GetContent()
+    ) { uri: android.net.Uri? ->
+        uri?.let {
+            try {
+                val contentBuilder = java.lang.StringBuilder()
+                context.contentResolver.openInputStream(it)?.use { inputStream ->
+                    java.io.BufferedReader(java.io.InputStreamReader(inputStream, java.nio.charset.StandardCharsets.UTF_8)).use { reader ->
+                        var line = reader.readLine()
+                        while (line != null) {
+                            contentBuilder.append(line)
+                            line = reader.readLine()
+                        }
+                    }
+                }
+                val jsonStr = contentBuilder.toString()
+                
+                viewModel.importBackupContent(
+                    jsonStr = jsonStr,
+                    onSuccess = {
+                        Toast.makeText(
+                            context,
+                            if (currentLanguage == "bn") "ব্যাকআপ সফলভাবে ইমপোর্ট করা হয়েছে!" else "Backup imported successfully!",
+                            Toast.LENGTH_SHORT
+                        ).show()
+                    },
+                    onError = { errorMsg ->
+                        Toast.makeText(
+                            context,
+                            if (currentLanguage == "bn") "ইমপোর্ট ব্যর্থ হয়েছে: $errorMsg" else "Import failed: $errorMsg",
+                            Toast.LENGTH_LONG
+                        ).show()
+                    }
+                )
+            } catch (e: Exception) {
+                Toast.makeText(
+                    context,
+                    if (currentLanguage == "bn") "ফাইল পড়তে ব্যর্থ হয়েছে" else "Failed to read backup file",
+                    Toast.LENGTH_SHORT
+                ).show()
+            }
+        }
+    }
+
     var showAddDialog by remember { mutableStateOf(false) }
+    var showEditDialog by remember { mutableStateOf(false) }
+    var transactionToEdit by remember { mutableStateOf<Transaction?>(null) }
     var showAuthDialog by remember { mutableStateOf(false) }
     var showDeveloperCreditDialog by remember { mutableStateOf(false) }
     var showBajarListDialog by remember { mutableStateOf(false) }
@@ -201,10 +260,30 @@ fun FinanceDashboardScreen(
     val onDismissDeveloperCredit = remember { { showDeveloperCreditDialog = false } }
     val onDismissAddDialog = remember { { showAddDialog = false } }
     val onSaveAddDialog = remember(context, getStringResource) {
-        { amount: Double, categoryId: Int, type: String, note: String, dateLong: Long ->
-            viewModel.addTransaction(amount, categoryId, type, note, dateLong)
+        { amount: Double, category: String, type: String, note: String, dateLong: Long ->
+            viewModel.addTransaction(amount, category, type, note, dateLong)
             showAddDialog = false
             Toast.makeText(context, getStringResource(R.string.transaction_saved), Toast.LENGTH_SHORT).show()
+        }
+    }
+    val onDismissEditDialog = remember { { showEditDialog = false } }
+    val onSaveEditDialog = remember(context, getStringResource, currentLanguage) {
+        { amount: Double, category: String, type: String, note: String, dateLong: Long ->
+            transactionToEdit?.let {
+                viewModel.updateTransaction(it.id, amount, category, type, note, dateLong)
+            }
+            showEditDialog = false
+            Toast.makeText(
+                context,
+                if (currentLanguage == "bn") "লেনদেন সফলভাবে আপডেট করা হয়েছে" else "Transaction updated successfully!",
+                Toast.LENGTH_SHORT
+            ).show()
+        }
+    }
+    val onEditTransaction = remember {
+        { transaction: Transaction ->
+            transactionToEdit = transaction
+            showEditDialog = true
         }
     }
     val onThemeChange = remember { { theme: String -> viewModel.setTheme(theme) } }
@@ -303,29 +382,6 @@ fun FinanceDashboardScreen(
                                 modifier = Modifier.size(20.dp)
                             )
                         }
-
-                        // Google Auth Button inside a Glass circle
-                        Box(
-                            modifier = Modifier
-                                .padding(end = 12.dp)
-                                .size(36.dp)
-                                .clip(CircleShape)
-                                .background(if (isDark) MaterialTheme.colorScheme.surfaceVariant.copy(alpha = 0.5f) else Color(0x66FFFFFF))
-                                .android16Clickable { onShowAuth() }
-                                .testTag("auth_profile_button"),
-                            contentAlignment = Alignment.Center
-                        ) {
-                            if (currentUser != null) {
-                                GoogleAvatar(email = currentUser, sizeDp = 36.dp)
-                            } else {
-                                Icon(
-                                    imageVector = Icons.Outlined.AccountCircle,
-                                    contentDescription = "Profile Inactive",
-                                    tint = if (isDark) MaterialTheme.colorScheme.onSurfaceVariant else Color(0xFF475569),
-                                    modifier = Modifier.size(24.dp)
-                                )
-                            }
-                        }
                     },
                     colors = TopAppBarDefaults.centerAlignedTopAppBarColors(
                         containerColor = Color.Transparent
@@ -333,52 +389,35 @@ fun FinanceDashboardScreen(
                 )
             },
             floatingActionButton = {
-                val debtsButtonText = if (currentLanguage == "bn") "দেন-পাওনা" else "Debts"
-                val bajarListButtonText = if (currentLanguage == "bn") "বাজার" else "Bajar"
-                Row(
+                val rotationAngle by animateFloatAsState(
+                    targetValue = if (showActionsMenu) 135f else 0f,
+                    animationSpec = spring(
+                        dampingRatio = Spring.DampingRatioMediumBouncy,
+                        stiffness = Spring.StiffnessLow
+                    ),
+                    label = "fab_rotation"
+                )
+                val fabBgColor by animateColorAsState(
+                    targetValue = if (showActionsMenu) Color(0xFFEF4444) else Color(0xFF2563EB),
+                    animationSpec = tween(durationMillis = 250),
+                    label = "fab_color"
+                )
+                FloatingActionButton(
+                    onClick = { showActionsMenu = !showActionsMenu },
+                    containerColor = fabBgColor,
+                    contentColor = Color.White,
+                    shape = RoundedCornerShape(16.dp),
                     modifier = Modifier
-                        .navigationBarsPadding()
-                        .padding(horizontal = 8.dp),
-                    horizontalArrangement = Arrangement.spacedBy(8.dp),
-                    verticalAlignment = Alignment.CenterVertically
+                        .size(56.dp)
+                        .testTag("floating_plus_actions_button")
+                        .android16Clickable(shape = RoundedCornerShape(16.dp)) { showActionsMenu = !showActionsMenu }
                 ) {
-                    FloatingActionButton(
-                        onClick = { showDebtListDialog = true },
-                        containerColor = Color(0xFFF59E0B),
-                        contentColor = Color.White,
-                        shape = RoundedCornerShape(16.dp),
+                    Icon(
+                        imageVector = Icons.Default.Add,
+                        contentDescription = "Quick Actions Menu",
                         modifier = Modifier
-                            .size(52.dp)
-                            .testTag("floating_debt_list_button")
-                            .android16Clickable(shape = RoundedCornerShape(16.dp)) { showDebtListDialog = true }
-                    ) {
-                        Icon(Icons.Default.People, contentDescription = "Debts")
-                    }
-
-                    FloatingActionButton(
-                        onClick = { showBajarListDialog = true },
-                        containerColor = Color(0xFF10B981),
-                        contentColor = Color.White,
-                        shape = RoundedCornerShape(16.dp),
-                        modifier = Modifier
-                            .size(52.dp)
-                            .testTag("floating_bajar_list_button")
-                            .android16Clickable(shape = RoundedCornerShape(16.dp)) { showBajarListDialog = true }
-                    ) {
-                        Icon(Icons.Default.ShoppingBasket, contentDescription = "Bajar List")
-                    }
-
-                    ExtendedFloatingActionButton(
-                        onClick = onAddTransactionClick,
-                        icon = { Icon(Icons.Filled.Add, contentDescription = "Add transaction") },
-                        text = { Text(getStringResource(R.string.add_transaction_title)) },
-                        containerColor = Color(0xFF2563EB),
-                        contentColor = Color.White,
-                        shape = RoundedCornerShape(16.dp),
-                        modifier = Modifier
-                            .height(52.dp)
-                            .testTag("floating_add_button")
-                            .android16Clickable(shape = RoundedCornerShape(16.dp), onClick = onAddTransactionClick)
+                            .graphicsLayer(rotationZ = rotationAngle)
+                            .size(28.dp)
                     )
                 }
             }
@@ -388,18 +427,12 @@ fun FinanceDashboardScreen(
                     .fillMaxSize()
                     .padding(innerPadding)
             ) {
-            // Live banner indicating Google Auth State
-            UserSessionBanner(
-                currentUser = currentUser,
-                getString = getStringResource,
-                onSignInClick = onShowAuth
-            )
-
-            // Interactive Google Drive Sync block
-            GoogleDriveSyncBlock(
-                viewModel = viewModel,
-                currentUser = currentUser,
-                getString = getStringResource
+            // Local Auto-Backup & Manual Import Status Card
+            LocalBackupStatusCard(
+                currentLanguage = currentLanguage,
+                onImportClick = {
+                    filePickerLauncher.launch("application/json")
+                }
             )
 
             // Minimalist Monthly balance summary card
@@ -411,48 +444,43 @@ fun FinanceDashboardScreen(
 
             Spacer(modifier = Modifier.height(8.dp))
 
-            // Navigation selector for transactions list or monthly category summary
-            TabNavigationRow(
-                currentTab = currentTab,
-                onTabSelect = onTabSelect,
-                getString = getStringResource
+            TransactionsHeaderRow(
+                currentLanguage = currentLanguage,
+                getString = getStringResource,
+                onDownloadPdfClick = {
+                    val pdfUri = generateFinancePdfReport(context, transactions, currentLanguage)
+                    if (pdfUri != null) {
+                        Toast.makeText(
+                            context,
+                            if (currentLanguage == "bn") "রিপোর্ট পিডিএফ আকারে ডাউনলোড ফোল্ডারে সেভ করা হয়েছে!" else "Report downloaded to Downloads folder as PDF!",
+                            Toast.LENGTH_LONG
+                        ).show()
+                        triggerPdfShareIntent(context, pdfUri)
+                    } else {
+                        Toast.makeText(
+                            context,
+                            if (currentLanguage == "bn") "পিডিএফ তৈরি করতে ব্যর্থ হয়েছে" else "Failed to generate PDF Report",
+                            Toast.LENGTH_SHORT
+                        ).show()
+                    }
+                }
             )
 
             Spacer(modifier = Modifier.height(12.dp))
 
-            // Content matching the active tab with premium horizontal swipe transition
-            AnimatedContent(
-                targetState = currentTab,
-                transitionSpec = {
-                    if (targetState == "summary") {
-                        // Slide in from right (to left), together with slide out to left
-                        slideInHorizontally { width -> width } + fadeIn() togetherWith
-                                slideOutHorizontally { width -> -width } + fadeOut()
-                    } else {
-                        // Slide in from left (to right), together with slide out to right
-                        slideInHorizontally { width -> -width } + fadeIn() togetherWith
-                                slideOutHorizontally { width -> width } + fadeOut()
-                    }
-                },
-                label = "tab_transition",
+            // Keep transactions list always visible, discarding summary tab
+            Box(
                 modifier = Modifier
                     .fillMaxWidth()
                     .weight(1f)
-            ) { targetTab ->
-                if (targetTab == "dashboard") {
-                    TransactionsTabContent(
-                        transactions = transactions,
-                        currentLanguage = currentLanguage,
-                        getString = getStringResource,
-                        onDeleteTransaction = onDeleteTransaction
-                    )
-                } else {
-                    SummaryTabContent(
-                        transactions = transactions,
-                        currentLanguage = currentLanguage,
-                        getString = getStringResource
-                    )
-                }
+            ) {
+                TransactionsTabContent(
+                    transactions = transactions,
+                    currentLanguage = currentLanguage,
+                    getString = getStringResource,
+                    onDeleteTransaction = onDeleteTransaction,
+                    onEditTransaction = onEditTransaction
+                )
             }
         }
     }
@@ -477,6 +505,19 @@ fun FinanceDashboardScreen(
         )
     }
 
+    // Dialog 1.5: Edit Transaction Dialog
+    if (showEditDialog) {
+        transactionToEdit?.let { trans ->
+            EditTransactionDialog(
+                transaction = trans,
+                onDismiss = onDismissEditDialog,
+                onSave = onSaveEditDialog,
+                getString = getStringResource,
+                lang = currentLanguage
+            )
+        }
+    }
+
     // Dialog 2: Interactive Google Auth Dialog (With Real Feedback Sync)
     if (showAuthDialog) {
         GoogleAuthDialog(
@@ -486,8 +527,352 @@ fun FinanceDashboardScreen(
             onDismiss = onDismissAuthDialog,
             onSignInSuccess = onSignInSuccess,
             onSignOut = onSignOut,
-            getString = getStringResource
+            getString = getStringResource,
+            lang = currentLanguage
         )
+    }
+
+    // Quick Actions Menu Custom Ultra-Fast Bottom sheet dialog
+    if (showActionsMenu) {
+        Dialog(
+            onDismissRequest = { showActionsMenu = false },
+            properties = DialogProperties(
+                usePlatformDefaultWidth = false,
+                decorFitsSystemWindows = false
+            )
+        ) {
+            var animateIn by remember { mutableStateOf(false) }
+            LaunchedEffect(Unit) {
+                animateIn = true
+            }
+
+            val isDark = isAppDark()
+
+            val backdropAlpha by animateFloatAsState(
+                targetValue = if (animateIn) 0.56f else 0f,
+                animationSpec = androidx.compose.animation.core.tween(durationMillis = 150),
+                label = "backdrop_alpha"
+            )
+
+            val panelTranslationY by animateFloatAsState(
+                targetValue = if (animateIn) 0f else 320f,
+                animationSpec = androidx.compose.animation.core.spring(
+                    dampingRatio = 0.85f,
+                    stiffness = 380f
+                ),
+                label = "panel_translation"
+            )
+
+            val progress1 by animateFloatAsState(
+                targetValue = if (animateIn) 1f else 0f,
+                animationSpec = androidx.compose.animation.core.spring(dampingRatio = 0.82f, stiffness = 420f),
+                label = "progress1"
+            )
+            val progress2 by animateFloatAsState(
+                targetValue = if (animateIn) 1f else 0f,
+                animationSpec = androidx.compose.animation.core.spring(dampingRatio = 0.82f, stiffness = 340f),
+                label = "progress2"
+            )
+            val progress3 by animateFloatAsState(
+                targetValue = if (animateIn) 1f else 0f,
+                animationSpec = androidx.compose.animation.core.spring(dampingRatio = 0.82f, stiffness = 280f),
+                label = "progress3"
+            )
+            val progress4 by animateFloatAsState(
+                targetValue = if (animateIn) 1f else 0f,
+                animationSpec = androidx.compose.animation.core.spring(dampingRatio = 0.82f, stiffness = 220f),
+                label = "progress4"
+            )
+
+            Box(
+                modifier = Modifier
+                    .fillMaxSize()
+                    .background(Color.Black.copy(alpha = backdropAlpha))
+                    .clickable(
+                        interactionSource = remember { MutableInteractionSource() },
+                        indication = null
+                    ) {
+                        showActionsMenu = false
+                    },
+                contentAlignment = Alignment.BottomCenter
+            ) {
+                Card(
+                    modifier = Modifier
+                        .fillMaxWidth()
+                        .widthIn(max = 560.dp)
+                        .graphicsLayer {
+                            translationY = panelTranslationY
+                        }
+                        .clickable(
+                            interactionSource = remember { MutableInteractionSource() },
+                            indication = null
+                        ) { /* Prevent click through */ },
+                    shape = RoundedCornerShape(topStart = 28.dp, topEnd = 28.dp),
+                    colors = CardDefaults.cardColors(containerColor = if (isDark) Color(0xFF121212) else Color(0xFFFCFCFD)),
+                    border = BorderStroke(1.dp, if (isDark) Color(0xFF2E2E2E) else Color(0xFFE2E8F0)),
+                    elevation = CardDefaults.cardElevation(defaultElevation = 24.dp)
+                ) {
+                    Column(
+                        modifier = Modifier
+                            .fillMaxWidth()
+                            .verticalScroll(rememberScrollState())
+                            .padding(horizontal = 24.dp, vertical = 20.dp)
+                            .navigationBarsPadding(),
+                        horizontalAlignment = Alignment.CenterHorizontally,
+                        verticalArrangement = Arrangement.Center
+                    ) {
+                        Box(
+                            modifier = Modifier
+                                .width(36.dp)
+                                .height(4.dp)
+                                .clip(CircleShape)
+                                .background(if (isDark) Color(0xFF334155) else Color(0xFFCBD5E1))
+                        )
+                        Spacer(modifier = Modifier.height(16.dp))
+                Text(
+                    text = if (currentLanguage == "bn") "তাৎক্ষণিক অ্যাকশন" else "Quick Actions",
+                    style = MaterialTheme.typography.titleMedium,
+                    fontWeight = FontWeight.Bold,
+                    color = if (isDark) Color.White else Color(0xFF1E293B),
+                    modifier = Modifier.padding(bottom = 16.dp)
+                )
+
+                // 1. Add Transaction Card
+                val card1Bg = if (isDark) Color(0x1F4F46E5) else Color(0xFFEEF2FF)
+                val card1Border = if (isDark) Color(0x3D4F46E5) else Color(0xFFC7D2FE)
+                val card1TextColor = if (isDark) Color(0xFF818CF8) else Color(0xFF3730A3)
+                val card1SubColor = if (isDark) Color(0xFF94A3B8) else Color(0xFF475569)
+
+                Card(
+                    modifier = Modifier
+                        .fillMaxWidth()
+                        .padding(vertical = 6.dp)
+                        .graphicsLayer {
+                            alpha = progress1
+                            translationY = (1f - progress1) * 30f
+                            scaleX = 0.96f + (progress1 * 0.04f)
+                            scaleY = 0.96f + (progress1 * 0.04f)
+                        }
+                        .clickable {
+                            showActionsMenu = false
+                            showAddDialog = true
+                        },
+                    colors = CardDefaults.cardColors(containerColor = card1Bg),
+                    border = BorderStroke(1.dp, card1Border),
+                    shape = RoundedCornerShape(16.dp)
+                ) {
+                    Row(
+                        modifier = Modifier.padding(16.dp),
+                        verticalAlignment = Alignment.CenterVertically
+                    ) {
+                        Box(
+                            modifier = Modifier
+                                .size(44.dp)
+                                .clip(CircleShape)
+                                .background(if (isDark) Color(0xFF4F46E5) else Color(0xFF6366F1)),
+                            contentAlignment = Alignment.Center
+                        ) {
+                            Icon(Icons.Default.Add, contentDescription = "Add Transaction", tint = Color.White)
+                        }
+                        Spacer(modifier = Modifier.width(16.dp))
+                        Column {
+                            Text(
+                                text = if (currentLanguage == "bn") "লেনদেন যুক্ত করুন" else "Add Transaction",
+                                style = MaterialTheme.typography.titleSmall,
+                                fontWeight = FontWeight.Bold,
+                                color = card1TextColor
+                            )
+                            Text(
+                                text = if (currentLanguage == "bn") "নতুন আয় বা ব্যয়ের হিসাব লিখে রাখুন" else "Record a new income or expense details",
+                                style = MaterialTheme.typography.bodySmall,
+                                color = card1SubColor
+                            )
+                        }
+                    }
+                }
+
+                // 2. Bajar List Card
+                val card2Bg = if (isDark) Color(0x1F10B981) else Color(0xFFECFDF5)
+                val card2Border = if (isDark) Color(0x3D10B981) else Color(0xFFA7F3D0)
+                val card2TextColor = if (isDark) Color(0xFF34D399) else Color(0xFF047857)
+                val card2SubColor = if (isDark) Color(0xFF94A3B8) else Color(0xFF475569)
+
+                Card(
+                    modifier = Modifier
+                        .fillMaxWidth()
+                        .padding(vertical = 6.dp)
+                        .graphicsLayer {
+                            alpha = progress2
+                            translationY = (1f - progress2) * 30f
+                            scaleX = 0.96f + (progress2 * 0.04f)
+                            scaleY = 0.96f + (progress2 * 0.04f)
+                        }
+                        .clickable {
+                            showActionsMenu = false
+                            showBajarListDialog = true
+                        },
+                    colors = CardDefaults.cardColors(containerColor = card2Bg),
+                    border = BorderStroke(1.dp, card2Border),
+                    shape = RoundedCornerShape(16.dp)
+                ) {
+                    Row(
+                        modifier = Modifier.padding(16.dp),
+                        verticalAlignment = Alignment.CenterVertically
+                    ) {
+                        Box(
+                            modifier = Modifier
+                                .size(44.dp)
+                                .clip(CircleShape)
+                                .background(Color(0xFF10B981)),
+                            contentAlignment = Alignment.Center
+                        ) {
+                            Icon(Icons.Default.ShoppingBasket, contentDescription = "Bajar List", tint = Color.White)
+                        }
+                        Spacer(modifier = Modifier.width(16.dp))
+                        Column {
+                            Text(
+                                text = if (currentLanguage == "bn") "বাজারের তালিকা" else "Bajar (Shopping List)",
+                                style = MaterialTheme.typography.titleSmall,
+                                fontWeight = FontWeight.Bold,
+                                color = card2TextColor
+                            )
+                            Text(
+                                text = if (currentLanguage == "bn") "প্রয়োজনীয় জিনিসপত্রের কেনাকাটার তালিকা" else "Manage items to scan/buy from market list",
+                                style = MaterialTheme.typography.bodySmall,
+                                color = card2SubColor
+                            )
+                        }
+                    }
+                }
+
+                // 3. Debts & Lending Tracker Card
+                val card3Bg = if (isDark) Color(0x1FF59E0B) else Color(0xFFFFFBEB)
+                val card3Border = if (isDark) Color(0x3DF59E0B) else Color(0xFFFDE68A)
+                val card3TextColor = if (isDark) Color(0xFFFBBF24) else Color(0xFFB45309)
+                val card3SubColor = if (isDark) Color(0xFF94A3B8) else Color(0xFF475569)
+
+                Card(
+                    modifier = Modifier
+                        .fillMaxWidth()
+                        .padding(vertical = 6.dp)
+                        .graphicsLayer {
+                            alpha = progress3
+                            translationY = (1f - progress3) * 30f
+                            scaleX = 0.96f + (progress3 * 0.04f)
+                            scaleY = 0.96f + (progress3 * 0.04f)
+                        }
+                        .clickable {
+                            showActionsMenu = false
+                            showDebtListDialog = true
+                        },
+                    colors = CardDefaults.cardColors(containerColor = card3Bg),
+                    border = BorderStroke(1.dp, card3Border),
+                    shape = RoundedCornerShape(16.dp)
+                ) {
+                    Row(
+                        modifier = Modifier.padding(16.dp),
+                        verticalAlignment = Alignment.CenterVertically
+                    ) {
+                        Box(
+                            modifier = Modifier
+                                .size(44.dp)
+                                .clip(CircleShape)
+                                .background(Color(0xFFF59E0B)),
+                            contentAlignment = Alignment.Center
+                        ) {
+                            Icon(Icons.Default.People, contentDescription = "Debts/Loans", tint = Color.White)
+                        }
+                        Spacer(modifier = Modifier.width(16.dp))
+                        Column {
+                            Text(
+                                text = if (currentLanguage == "bn") "দেন-পাওনা / লোন" else "Debts & Loans",
+                                style = MaterialTheme.typography.titleSmall,
+                                fontWeight = FontWeight.Bold,
+                                color = card3TextColor
+                            )
+                            Text(
+                                text = if (currentLanguage == "bn") "কারো থেকে ঋণ গ্রহণ বা ঋণ প্রদানের হিসেব" else "Keep track of active loans or lending records",
+                                style = MaterialTheme.typography.bodySmall,
+                                color = card3SubColor
+                            )
+                        }
+                    }
+                }
+
+                // 4. Import Backup Card
+                val card4Bg = if (isDark) Color(0x1F64748B) else Color(0xFFF8FAFC)
+                val card4Border = if (isDark) Color(0x3D64748B) else Color(0xFFE2E8F0)
+                val card4TextColor = if (isDark) Color(0xFF94A3B8) else Color(0xFF475569)
+                val card4SubColor = if (isDark) Color(0xFF64748B) else Color(0xFF64748B)
+
+                Card(
+                    modifier = Modifier
+                        .fillMaxWidth()
+                        .padding(vertical = 6.dp)
+                        .graphicsLayer {
+                            alpha = progress4
+                            translationY = (1f - progress4) * 30f
+                            scaleX = 0.96f + (progress4 * 0.04f)
+                            scaleY = 0.96f + (progress4 * 0.04f)
+                        }
+                        .clickable {
+                            showActionsMenu = false
+                            filePickerLauncher.launch("application/json")
+                        },
+                    colors = CardDefaults.cardColors(containerColor = card4Bg),
+                    border = BorderStroke(1.dp, card4Border),
+                    shape = RoundedCornerShape(16.dp)
+                ) {
+                    Row(
+                        modifier = Modifier.padding(16.dp),
+                        verticalAlignment = Alignment.CenterVertically
+                    ) {
+                        Box(
+                            modifier = Modifier
+                                .size(44.dp)
+                                .clip(CircleShape)
+                                .background(if (isDark) Color(0xFF475569) else Color(0xFF94A3B8)),
+                            contentAlignment = Alignment.Center
+                        ) {
+                            Icon(Icons.Default.FileDownload, contentDescription = "Import Backup", tint = Color.White)
+                        }
+                        Spacer(modifier = Modifier.width(16.dp))
+                        Column {
+                            Text(
+                                text = if (currentLanguage == "bn") "ম্যানুয়াল ব্যাকআপ রিসেট" else "Import Manual Backup",
+                                style = MaterialTheme.typography.titleSmall,
+                                fontWeight = FontWeight.Bold,
+                                color = card4TextColor
+                            )
+                            Text(
+                                text = if (currentLanguage == "bn") "আগের ডাউনলোড করা ব্যাকআপ ফাইল থেকে ডাটা আনুন" else "Select local financial backup file to restore all details",
+                                style = MaterialTheme.typography.bodySmall,
+                                color = card4SubColor
+                            )
+                        }
+                    }
+                }
+
+                Spacer(modifier = Modifier.height(20.dp))
+
+                // Cancel Button
+                OutlinedButton(
+                    onClick = { showActionsMenu = false },
+                    modifier = Modifier
+                        .fillMaxWidth()
+                        .graphicsLayer {
+                            alpha = progress4
+                            translationY = (1f - progress4) * 20f
+                        },
+                    shape = RoundedCornerShape(12.dp),
+                    border = BorderStroke(1.dp, MaterialTheme.colorScheme.outlineVariant)
+                ) {
+                    Text(if (currentLanguage == "bn") "বন্ধ করুন" else "Cancel")
+                }
+                    }
+                }
+            }
+        }
     }
 
     // Dialog 3: Bajar List Dialog
@@ -790,111 +1175,288 @@ fun DashboardSummaryCard(
     }
 }
 
-// Custom Switch Tab Row for Transactions / Summary selection with glass styling
 @Composable
-fun TabNavigationRow(
-    currentTab: String,
-    onTabSelect: (String) -> Unit,
-    getString: (Int) -> String
+fun TransactionsHeaderRow(
+    currentLanguage: String,
+    getString: (Int) -> String,
+    onDownloadPdfClick: () -> Unit
 ) {
     val isDark = isAppDark()
-    val tabRowBg = if (isDark) MaterialTheme.colorScheme.surface.copy(alpha = 0.5f) else Color(0x33FFFFFF)
-    val tabRowBorder = if (isDark) MaterialTheme.colorScheme.outlineVariant.copy(alpha = 0.5f) else Color(0x66FFFFFF)
-    val activePaneBg = if (isDark) MaterialTheme.colorScheme.surfaceVariant else Color(0xE6FFFFFF)
-    val activeTextColor = if (isDark) MaterialTheme.colorScheme.primary else Color(0xFF2563EB)
-    val inactiveTextColor = if (isDark) MaterialTheme.colorScheme.onSurfaceVariant else Color(0xFF64748B)
-
-    // Smoothly animated weights for expanding the active tab
-    val dWeight by animateFloatAsState(
-        targetValue = if (currentTab == "dashboard") 1.4f else 1.0f,
-        animationSpec = spring(dampingRatio = 0.72f, stiffness = Spring.StiffnessMediumLow),
-        label = "dashboard_weight"
-    )
-    val sWeight by animateFloatAsState(
-        targetValue = if (currentTab == "summary") 1.4f else 1.0f,
-        animationSpec = spring(dampingRatio = 0.72f, stiffness = Spring.StiffnessMediumLow),
-        label = "summary_weight"
-    )
-
-    // Smoothly animated background card colors
-    val dBackGroundColor by animateColorAsState(
-        targetValue = if (currentTab == "dashboard") activePaneBg else Color.Transparent,
-        animationSpec = tween(durationMillis = 220),
-        label = "dashboard_bg"
-    )
-    val sBackGroundColor by animateColorAsState(
-        targetValue = if (currentTab == "summary") activePaneBg else Color.Transparent,
-        animationSpec = tween(durationMillis = 220),
-        label = "summary_bg"
-    )
-
-    // Smoothly animated text colors
-    val dTextColor by animateColorAsState(
-        targetValue = if (currentTab == "dashboard") activeTextColor else inactiveTextColor,
-        animationSpec = tween(durationMillis = 220),
-        label = "dashboard_text"
-    )
-    val sTextColor by animateColorAsState(
-        targetValue = if (currentTab == "summary") activeTextColor else inactiveTextColor,
-        animationSpec = tween(durationMillis = 220),
-        label = "summary_text"
-    )
-
-    Card(
+    Row(
         modifier = Modifier
             .fillMaxWidth()
-            .padding(horizontal = 16.dp),
-        shape = RoundedCornerShape(20.dp),
-        border = BorderStroke(1.dp, tabRowBorder),
-        colors = CardDefaults.cardColors(containerColor = tabRowBg),
-        elevation = CardDefaults.cardElevation(defaultElevation = 0.dp)
+            .padding(horizontal = 16.dp, vertical = 4.dp),
+        horizontalArrangement = Arrangement.SpaceBetween,
+        verticalAlignment = Alignment.CenterVertically
     ) {
-        Row(
-            modifier = Modifier
-                .fillMaxWidth()
-                .padding(4.dp),
-            horizontalArrangement = Arrangement.spacedBy(4.dp)
-        ) {
-            // Tab 1: Dashboard & Transactions list
-            Box(
-                modifier = Modifier
-                    .weight(dWeight)
-                    .clip(RoundedCornerShape(16.dp))
-                    .background(dBackGroundColor)
-                    .android16Clickable(enabled = currentTab != "dashboard") { onTabSelect("dashboard") }
-                    .padding(vertical = 12.dp),
-                contentAlignment = Alignment.Center
-            ) {
-                Text(
-                    text = getString(R.string.recent_transactions_header),
-                    fontWeight = FontWeight.Black,
-                    style = MaterialTheme.typography.labelMedium.copy(letterSpacing = 0.3.sp),
-                    color = dTextColor,
-                    maxLines = 1,
-                    overflow = TextOverflow.Ellipsis
-                )
-            }
+        Row(verticalAlignment = Alignment.CenterVertically) {
+            Icon(
+                imageVector = Icons.Default.ReceiptLong,
+                contentDescription = null,
+                tint = if (isDark) MaterialTheme.colorScheme.primary else Color(0xFF2563EB),
+                modifier = Modifier.size(24.dp)
+            )
+            Spacer(modifier = Modifier.width(8.dp))
+            Text(
+                text = getString(R.string.recent_transactions_header),
+                fontWeight = FontWeight.Black,
+                style = MaterialTheme.typography.titleMedium,
+                color = MaterialTheme.colorScheme.onBackground
+            )
+        }
 
-            // Tab 2: Categorized Summary info
-            Box(
-                modifier = Modifier
-                    .weight(sWeight)
-                    .clip(RoundedCornerShape(16.dp))
-                    .background(sBackGroundColor)
-                    .android16Clickable(enabled = currentTab != "summary") { onTabSelect("summary") }
-                    .padding(vertical = 12.dp),
-                contentAlignment = Alignment.Center
+        val buttonBg = if (isDark) Color(0x33EF4444) else Color(0xFFF3F4F6)
+        val buttonBorderColor = if (isDark) Color(0x66EF4444) else Color(0xFFE5E7EB)
+        val textAndIconColor = if (isDark) Color(0xFFFCA5A5) else Color(0xFFDC2626)
+
+        Card(
+            colors = CardDefaults.cardColors(
+                containerColor = buttonBg
+            ),
+            border = BorderStroke(
+                1.dp,
+                buttonBorderColor
+            ),
+            shape = RoundedCornerShape(12.dp),
+            modifier = Modifier
+                .android16Clickable(shape = RoundedCornerShape(12.dp)) {
+                    onDownloadPdfClick()
+                }
+                .testTag("download_pdf_report_button"),
+            elevation = CardDefaults.cardElevation(defaultElevation = 0.dp)
+        ) {
+            Row(
+                verticalAlignment = Alignment.CenterVertically,
+                horizontalArrangement = Arrangement.spacedBy(6.dp),
+                modifier = Modifier.padding(horizontal = 12.dp, vertical = 8.dp)
             ) {
+                Icon(
+                    imageVector = Icons.Default.PictureAsPdf,
+                    contentDescription = "PDF Icon",
+                    tint = textAndIconColor,
+                    modifier = Modifier.size(18.dp)
+                )
                 Text(
-                    text = getString(R.string.monthly_summary_header),
-                    fontWeight = FontWeight.Black,
-                    style = MaterialTheme.typography.labelMedium.copy(letterSpacing = 0.3.sp),
-                    color = sTextColor,
-                    maxLines = 1,
-                    overflow = TextOverflow.Ellipsis
+                    text = if (currentLanguage == "bn") "পিডিএফ ড্যাশবোর্ড" else "Download PDF",
+                    fontWeight = FontWeight.Bold,
+                    fontSize = 12.sp,
+                    color = textAndIconColor
                 )
             }
         }
+    }
+}
+
+fun generateFinancePdfReport(
+    context: android.content.Context,
+    transactions: List<Transaction>,
+    lang: String
+): android.net.Uri? {
+    try {
+        val pdfDocument = android.graphics.pdf.PdfDocument()
+        val paint = android.graphics.Paint()
+        
+        val pageWidth = 595
+        val pageHeight = 842
+        
+        val totalIncome = transactions.filter { it.type == "INCOME" }.sumOf { it.amount }
+        val totalExpense = transactions.filter { it.type == "EXPENSE" }.sumOf { it.amount }
+        val netBalance = totalIncome - totalExpense
+        
+        val itemsPerPage = 22
+        val totalPages = if (transactions.isEmpty()) 1 else ((transactions.size - 1) / itemsPerPage) + 1
+        
+        val dateFmt = java.text.SimpleDateFormat("yyyy-MM-dd HH:mm:ss", java.util.Locale.getDefault())
+        val generatedTime = dateFmt.format(java.util.Date())
+        
+        for (pageIndex in 0 until totalPages) {
+            val pageInfo = android.graphics.pdf.PdfDocument.PageInfo.Builder(pageWidth, pageHeight, pageIndex + 1).create()
+            val page = pdfDocument.startPage(pageInfo)
+            val canvas = page.canvas
+            
+            paint.style = android.graphics.Paint.Style.STROKE
+            paint.color = android.graphics.Color.LTGRAY
+            paint.strokeWidth = 1f
+            canvas.drawRect(20f, 20f, (pageWidth - 20).toFloat(), (pageHeight - 20).toFloat(), paint)
+            
+            var yPos = 45f
+            
+            if (pageIndex == 0) {
+                paint.style = android.graphics.Paint.Style.FILL
+                paint.color = android.graphics.Color.rgb(37, 99, 235)
+                paint.textSize = 20f
+                paint.isFakeBoldText = true
+                val title = if (lang == "bn") "অর্থ ব্যবস্থাপক প্রতিবেদন" else "Finance Manager Report"
+                canvas.drawText(title, 40f, yPos, paint)
+                
+                yPos += 20f
+                paint.textSize = 10f
+                paint.isFakeBoldText = false
+                paint.color = android.graphics.Color.GRAY
+                val subtitle = if (lang == "bn") "তৈরির সময়: $generatedTime" else "Generated: $generatedTime"
+                canvas.drawText(subtitle, 40f, yPos, paint)
+                
+                yPos += 30f
+                
+                paint.style = android.graphics.Paint.Style.FILL
+                paint.color = android.graphics.Color.rgb(243, 244, 246)
+                canvas.drawRoundRect(40f, yPos, (pageWidth - 40).toFloat(), yPos + 60f, 8f, 8f, paint)
+                
+                paint.style = android.graphics.Paint.Style.STROKE
+                paint.color = android.graphics.Color.rgb(209, 213, 219)
+                canvas.drawRoundRect(40f, yPos, (pageWidth - 40).toFloat(), yPos + 60f, 8f, 8f, paint)
+                
+                yPos += 20f
+                paint.style = android.graphics.Paint.Style.FILL
+                paint.textSize = 11f
+                paint.isFakeBoldText = true
+                
+                paint.color = android.graphics.Color.rgb(5, 150, 105)
+                val incomeStr = if (lang == "bn") "মোট আয়: ৳${String.format("%.2f", totalIncome)}" else "Total Income: \$${String.format("%.2f", totalIncome)}"
+                canvas.drawText(incomeStr, 60f, yPos, paint)
+                
+                paint.color = android.graphics.Color.rgb(220, 38, 38)
+                val expenseStr = if (lang == "bn") "মোট ব্যয়: ৳${String.format("%.2f", totalExpense)}" else "Total Expense: \$${String.format("%.2f", totalExpense)}"
+                canvas.drawText(expenseStr, 240f, yPos, paint)
+                
+                paint.color = if (netBalance >= 0) android.graphics.Color.rgb(37, 99, 235) else android.graphics.Color.rgb(220, 38, 38)
+                val balStr = if (lang == "bn") "অবশিষ্ট ব্যালেন্স: ৳${String.format("%.2f", netBalance)}" else "Net Balance: \$${String.format("%.2f", netBalance)}"
+                canvas.drawText(balStr, 410f, yPos, paint)
+                
+                yPos += 40f
+            } else {
+                yPos = 40f
+            }
+            
+            paint.style = android.graphics.Paint.Style.FILL
+            paint.color = android.graphics.Color.rgb(71, 85, 105)
+            canvas.drawRect(40f, yPos, (pageWidth - 40).toFloat(), yPos + 22f, paint)
+            
+            paint.color = android.graphics.Color.WHITE
+            paint.textSize = 10f
+            paint.isFakeBoldText = true
+            
+            val colDate = if (lang == "bn") "তারিখ" else "Date"
+            val colType = if (lang == "bn") "ধরণ" else "Type"
+            val colCat = if (lang == "bn") "ক্যাটাগরি" else "Category"
+            val colNote = if (lang == "bn") "মন্তব্য" else "Note"
+            val colAmt = if (lang == "bn") "পরিমাণ" else "Amount"
+            
+            canvas.drawText(colDate, 50f, yPos + 15f, paint)
+            canvas.drawText(colType, 130f, yPos + 15f, paint)
+            canvas.drawText(colCat, 190f, yPos + 15f, paint)
+            canvas.drawText(colNote, 290f, yPos + 15f, paint)
+            canvas.drawText(colAmt, 490f, yPos + 15f, paint)
+            
+            yPos += 22f
+            
+            paint.isFakeBoldText = false
+            paint.color = android.graphics.Color.BLACK
+            
+            val startIndex = pageIndex * itemsPerPage
+            val endIndex = minOf(startIndex + itemsPerPage, transactions.size)
+            
+            val simpleDateFormat = java.text.SimpleDateFormat("yyyy-MM-dd", java.util.Locale.getDefault())
+            
+            for (i in startIndex until endIndex) {
+                val transaction = transactions[i]
+                
+                if (i % 2 == 0) {
+                    paint.style = android.graphics.Paint.Style.FILL
+                    paint.color = android.graphics.Color.rgb(249, 250, 251)
+                    canvas.drawRect(40f, yPos, (pageWidth - 40).toFloat(), yPos + 20f, paint)
+                }
+                
+                paint.style = android.graphics.Paint.Style.FILL
+                paint.color = android.graphics.Color.BLACK
+                paint.textSize = 9f
+                
+                val dateStr = simpleDateFormat.format(java.util.Date(transaction.dateLong))
+                canvas.drawText(dateStr, 50f, yPos + 14f, paint)
+                
+                val typeStr = transaction.type
+                paint.color = if (typeStr == "INCOME") android.graphics.Color.rgb(5, 150, 105) else android.graphics.Color.rgb(220, 38, 38)
+                paint.isFakeBoldText = true
+                val cleanType = if (typeStr == "INCOME") (if (lang == "bn") "আয়" else "INCOME") else (if (lang == "bn") "ব্যয়" else "EXPENSE")
+                canvas.drawText(cleanType, 130f, yPos + 14f, paint)
+                paint.isFakeBoldText = false
+                paint.color = android.graphics.Color.BLACK
+                
+                val catRawVal = transaction.category
+                val catIdInt = catRawVal.toIntOrNull()
+                val categoryName = if (catIdInt != null) {
+                    try {
+                        context.getString(catIdInt)
+                    } catch (e: Exception) {
+                        "Other"
+                    }
+                } else {
+                    catRawVal
+                }
+                val safeCat = if (categoryName.length > 15) categoryName.take(13) + ".." else categoryName
+                canvas.drawText(safeCat, 190f, yPos + 14f, paint)
+                
+                val noteDisplay = if (transaction.note.isNotBlank()) transaction.note else "-"
+                val safeNote = if (noteDisplay.length > 25) noteDisplay.take(22) + ".." else noteDisplay
+                canvas.drawText(safeNote, 290f, yPos + 14f, paint)
+                
+                paint.isFakeBoldText = true
+                val amtStr = if (lang == "bn") "৳${String.format("%.2f", transaction.amount)}" else "\$${String.format("%.2f", transaction.amount)}"
+                paint.color = if (typeStr == "INCOME") android.graphics.Color.rgb(5, 150, 105) else android.graphics.Color.rgb(220, 38, 38)
+                canvas.drawText(amtStr, 490f, yPos + 14f, paint)
+                paint.isFakeBoldText = false
+                paint.color = android.graphics.Color.BLACK
+                
+                paint.style = android.graphics.Paint.Style.STROKE
+                paint.color = android.graphics.Color.rgb(229, 231, 235)
+                canvas.drawLine(40f, yPos + 20f, (pageWidth - 40).toFloat(), yPos + 20f, paint)
+                
+                yPos += 20f
+            }
+            
+            paint.style = android.graphics.Paint.Style.FILL
+            paint.color = android.graphics.Color.GRAY
+            paint.textSize = 9f
+            val footerStr = "${pageIndex + 1} / $totalPages"
+            canvas.drawText(footerStr, (pageWidth / 2f) - 10f, (pageHeight - 30).toFloat(), paint)
+            
+            pdfDocument.finishPage(page)
+        }
+        
+        val contentResolver = context.contentResolver
+        val pdfDate = java.text.SimpleDateFormat("yyyy-MM-dd", java.util.Locale.getDefault()).format(java.util.Date())
+        val contentValues = android.content.ContentValues().apply {
+            put(android.provider.MediaStore.MediaColumns.DISPLAY_NAME, "Finance_Report_$pdfDate.pdf")
+            put(android.provider.MediaStore.MediaColumns.MIME_TYPE, "application/pdf")
+            put(android.provider.MediaStore.MediaColumns.RELATIVE_PATH, android.os.Environment.DIRECTORY_DOWNLOADS)
+        }
+        
+        val pdfUri = contentResolver.insert(android.provider.MediaStore.Downloads.EXTERNAL_CONTENT_URI, contentValues)
+        if (pdfUri != null) {
+            contentResolver.openOutputStream(pdfUri)?.use { outputStream ->
+                pdfDocument.writeTo(outputStream)
+            }
+            pdfDocument.close()
+            return pdfUri
+        }
+        
+        pdfDocument.close()
+    } catch (e: Exception) {
+        android.util.Log.e("PDF_GEN", "Failed to compile/write PDF report: ${e.message}", e)
+    }
+    return null
+}
+
+fun triggerPdfShareIntent(context: android.content.Context, uri: android.net.Uri) {
+    try {
+        val shareIntent = android.content.Intent(android.content.Intent.ACTION_SEND).apply {
+            type = "application/pdf"
+            putExtra(android.content.Intent.EXTRA_STREAM, uri)
+            addFlags(android.content.Intent.FLAG_GRANT_READ_URI_PERMISSION)
+        }
+        context.startActivity(android.content.Intent.createChooser(shareIntent, "Share Finance Report PDF"))
+    } catch (e: Exception) {
+        android.util.Log.e("PDF_SHARE", "Failed to start share sheet: ${e.message}")
     }
 }
 
@@ -904,7 +1466,8 @@ fun TransactionsTabContent(
     transactions: List<Transaction>,
     currentLanguage: String,
     getString: (Int) -> String,
-    onDeleteTransaction: (Transaction) -> Unit
+    onDeleteTransaction: (Transaction) -> Unit,
+    onEditTransaction: (Transaction) -> Unit
 ) {
     val isDark = isAppDark()
     if (transactions.isEmpty()) {
@@ -934,7 +1497,9 @@ fun TransactionsTabContent(
             }
         }
     } else {
+        val listState = remember { androidx.compose.foundation.lazy.LazyListState() }
         LazyColumn(
+            state = listState,
             modifier = Modifier.fillMaxSize(),
             contentPadding = PaddingValues(bottom = 84.dp, top = 4.dp),
             verticalArrangement = Arrangement.spacedBy(8.dp)
@@ -945,7 +1510,8 @@ fun TransactionsTabContent(
                     lang = currentLanguage,
                     getString = getString,
                     isDark = isDark,
-                    onDelete = { onDeleteTransaction(transaction) }
+                    onDelete = onDeleteTransaction,
+                    onEdit = onEditTransaction
                 )
             }
         }
@@ -959,7 +1525,8 @@ fun TransactionListItem(
     lang: String,
     getString: (Int) -> String,
     isDark: Boolean,
-    onDelete: () -> Unit
+    onDelete: (Transaction) -> Unit,
+    onEdit: (Transaction) -> Unit
 ) {
     var expanded by remember { mutableStateOf(false) }
 
@@ -1165,7 +1732,24 @@ fun TransactionListItem(
                         }
 
                         Button(
-                            onClick = onDelete,
+                            onClick = { onEdit(transaction) },
+                            colors = ButtonDefaults.buttonColors(
+                                containerColor = MaterialTheme.colorScheme.secondaryContainer,
+                                contentColor = MaterialTheme.colorScheme.onSecondaryContainer
+                            ),
+                            shape = RoundedCornerShape(8.dp),
+                            contentPadding = PaddingValues(horizontal = 12.dp, vertical = 6.dp),
+                            modifier = Modifier
+                                .height(32.dp)
+                                .android16Clickable(shape = RoundedCornerShape(8.dp)) { onEdit(transaction) }
+                        ) {
+                            Icon(Icons.Default.Edit, contentDescription = "Edit", modifier = Modifier.size(12.dp))
+                            Spacer(modifier = Modifier.width(4.dp))
+                            Text(if (lang == "bn") "সম্পাদনা" else "Edit", fontSize = 11.sp, fontWeight = FontWeight.Bold)
+                        }
+
+                        Button(
+                            onClick = { onDelete(transaction) },
                             colors = ButtonDefaults.buttonColors(
                                 containerColor = MaterialTheme.colorScheme.errorContainer.copy(alpha = 0.8f),
                                 contentColor = MaterialTheme.colorScheme.onErrorContainer
@@ -1174,11 +1758,11 @@ fun TransactionListItem(
                             contentPadding = PaddingValues(horizontal = 12.dp, vertical = 6.dp),
                             modifier = Modifier
                                 .height(32.dp)
-                                .android16Clickable(shape = RoundedCornerShape(8.dp)) { onDelete() }
+                                .android16Clickable(shape = RoundedCornerShape(8.dp)) { onDelete(transaction) }
                         ) {
                             Icon(Icons.Default.DeleteOutline, contentDescription = "Delete", modifier = Modifier.size(12.dp))
                             Spacer(modifier = Modifier.width(4.dp))
-                            Text(if (lang == "bn") "মুছে ফেলুন" else "Delete Record", fontSize = 11.sp, fontWeight = FontWeight.Bold)
+                            Text(if (lang == "bn") "মুছে ফেলুন" else "Delete", fontSize = 11.sp, fontWeight = FontWeight.Bold)
                         }
                     }
                 }
@@ -1828,13 +2412,14 @@ private fun convertDigitsToBengali(input: String): String {
 @Composable
 fun AddTransactionDialog(
     onDismiss: () -> Unit,
-    onSave: (amount: Double, categoryId: Int, type: String, note: String, dateLong: Long) -> Unit,
+    onSave: (amount: Double, category: String, type: String, note: String, dateLong: Long) -> Unit,
     getString: (Int) -> String,
     lang: String
 ) {
     var amountText by remember { mutableStateOf("") }
     var noteText by remember { mutableStateOf("") }
     var selectedType by remember { mutableStateOf("EXPENSE") }
+    var customCategoryText by remember { mutableStateOf("") }
 
     val categories = remember {
         listOf(
@@ -2010,6 +2595,21 @@ fun AddTransactionDialog(
                             )
                         }
                     }
+
+                    if (selectedCategory == R.string.category_other) {
+                        Spacer(modifier = Modifier.height(8.dp))
+                        OutlinedTextField(
+                            value = customCategoryText,
+                            onValueChange = { customCategoryText = it },
+                            label = { Text(if (lang == "bn") "কাস্টম ক্যাটাগরি লিখুন" else "Enter custom category") },
+                            placeholder = { Text(if (lang == "bn") "যেমন: উপহার, বোনাস ইত্যাদি" else "e.g., Gift, Bonus, etc.") },
+                            singleLine = true,
+                            modifier = Modifier
+                                .fillMaxWidth()
+                                .testTag("custom_category_input"),
+                            shape = RoundedCornerShape(12.dp)
+                        )
+                    }
                 }
 
                 // Note (Optional)
@@ -2090,7 +2690,12 @@ fun AddTransactionDialog(
                             if (amt == null || amt <= 0) {
                                 labelErrorText = getString(R.string.error_empty_amount)
                             } else {
-                                onSave(amt, selectedCategory, selectedType, noteText, dateMillis)
+                                val finalCategory = if (selectedCategory == R.string.category_other && customCategoryText.isNotBlank()) {
+                                    customCategoryText.trim()
+                                } else {
+                                    selectedCategory.toString()
+                                }
+                                onSave(amt, finalCategory, selectedType, noteText, dateMillis)
                             }
                         },
                         modifier = Modifier
@@ -2107,6 +2712,368 @@ fun AddTransactionDialog(
 }
 }
 
+@OptIn(ExperimentalLayoutApi::class, ExperimentalMaterial3Api::class)
+@Composable
+fun EditTransactionDialog(
+    transaction: com.example.data.Transaction,
+    onDismiss: () -> Unit,
+    onSave: (amount: Double, category: String, type: String, note: String, dateLong: Long) -> Unit,
+    getString: (Int) -> String,
+    lang: String
+) {
+    var amountText by remember { mutableStateOf(transaction.amount.toString()) }
+    var noteText by remember { mutableStateOf(transaction.note) }
+    var selectedType by remember { mutableStateOf(transaction.type) }
+
+    val categories = remember {
+        listOf(
+            R.string.category_food,
+            R.string.category_groceries,
+            R.string.category_salary,
+            R.string.category_freelance,
+            R.string.category_utilities,
+            R.string.category_entertainment,
+            R.string.category_transport,
+            R.string.category_other
+        )
+    }
+
+    var customCategoryText by remember(transaction.category) {
+        val catId = transaction.category.toIntOrNull()
+        mutableStateOf(if (catId == null) transaction.category else "")
+    }
+
+    var selectedCategory by remember(transaction.category) {
+        val catId = transaction.category.toIntOrNull()
+        mutableStateOf(catId ?: R.string.category_other)
+    }
+    var dateMillis by remember { mutableStateOf(transaction.dateLong) }
+    val formattedDate = remember(dateMillis, lang) {
+        formatDate(dateMillis, lang)
+    }
+    var showDatePicker by remember { mutableStateOf(false) }
+
+    var labelErrorText by remember { mutableStateOf("") }
+
+    Dialog(onDismissRequest = onDismiss) {
+        AnimatedDialogContent {
+            val isDark = isAppDark()
+            val dialogSurfaceBg = if (isDark) MaterialTheme.colorScheme.surface else Color.White
+            val dialogBorder = MaterialTheme.colorScheme.outlineVariant
+            Card(
+                modifier = Modifier
+                    .fillMaxWidth()
+                    .padding(horizontal = 8.dp)
+                    .testTag("edit_transaction_dialog_surface"),
+                shape = RoundedCornerShape(24.dp),
+                border = BorderStroke(1.dp, dialogBorder),
+                colors = CardDefaults.cardColors(containerColor = dialogSurfaceBg)
+            ) {
+                Column(
+                    modifier = Modifier
+                        .padding(24.dp)
+                        .fillMaxWidth(),
+                    verticalArrangement = Arrangement.spacedBy(16.dp)
+                ) {
+                    Text(
+                        text = if (lang == "bn") "লেনদেন সম্পাদনা" else getString(R.string.edit_transaction_title),
+                        style = MaterialTheme.typography.titleLarge,
+                        fontWeight = FontWeight.Bold,
+                        modifier = Modifier.fillMaxWidth(),
+                        textAlign = TextAlign.Center
+                    )
+
+                    // Select Transaction Type (Income VS Expense tabs block)
+                    Row(
+                        modifier = Modifier
+                            .fillMaxWidth()
+                            .clip(RoundedCornerShape(12.dp))
+                            .background(MaterialTheme.colorScheme.surfaceVariant.copy(alpha = 0.5f))
+                            .padding(4.dp)
+                    ) {
+                        val expenseSelected = selectedType == "EXPENSE"
+                        val isDark = isAppDark()
+                        
+                        val expenseColor = if (expenseSelected) {
+                            ButtonDefaults.buttonColors(
+                                containerColor = MaterialTheme.colorScheme.errorContainer,
+                                contentColor = MaterialTheme.colorScheme.onErrorContainer
+                            )
+                        } else {
+                            ButtonDefaults.buttonColors(
+                                containerColor = Color.Transparent,
+                                contentColor = MaterialTheme.colorScheme.onSurfaceVariant
+                            )
+                        }
+
+                        val incomeColor = if (!expenseSelected) {
+                            ButtonDefaults.buttonColors(
+                                containerColor = if (isDark) Color(0x3334D399) else Color(0xFFE8F5E9), // Light green container
+                                contentColor = if (isDark) Color(0xFF34D399) else Color(0xFF1B5E20) // Dark green text
+                            )
+                        } else {
+                            ButtonDefaults.buttonColors(
+                                containerColor = Color.Transparent,
+                                contentColor = MaterialTheme.colorScheme.onSurfaceVariant
+                            )
+                        }
+
+                        Button(
+                            onClick = {
+                                selectedType = "EXPENSE"
+                                selectedCategory = R.string.category_food
+                            },
+                            colors = expenseColor,
+                            modifier = Modifier
+                                .weight(1f)
+                                .testTag("edit_type_expense_tab"),
+                            shape = RoundedCornerShape(8.dp),
+                            elevation = null
+                        ) {
+                            Text(getString(R.string.expense_type), fontWeight = FontWeight.Bold)
+                        }
+
+                        Button(
+                            onClick = {
+                                selectedType = "INCOME"
+                                selectedCategory = R.string.category_salary
+                            },
+                            colors = incomeColor,
+                            modifier = Modifier
+                                .weight(1f)
+                                .testTag("edit_type_income_tab"),
+                            shape = RoundedCornerShape(8.dp),
+                            elevation = null
+                        ) {
+                            Text(getString(R.string.income_type), fontWeight = FontWeight.Bold)
+                        }
+                    }
+
+                    // Amount Field
+                    OutlinedTextField(
+                        value = amountText,
+                        onValueChange = {
+                            if (it.isEmpty() || it.toDoubleOrNull() != null || it.matches(Regex("^\\d+\\.?\\d{0,2}$"))) {
+                                amountText = it
+                                labelErrorText = ""
+                            }
+                        },
+                        label = { Text(getString(R.string.amount_label)) },
+                        placeholder = { Text("0.00") },
+                        keyboardOptions = KeyboardOptions(keyboardType = KeyboardType.Number),
+                        modifier = Modifier
+                            .fillMaxWidth()
+                            .testTag("edit_amount_input"),
+                        shape = RoundedCornerShape(12.dp),
+                        singleLine = true
+                    )
+
+                    // Render error helper text if any
+                    if (labelErrorText.isNotBlank()) {
+                        Text(
+                            text = labelErrorText,
+                            color = MaterialTheme.colorScheme.error,
+                            style = MaterialTheme.typography.bodySmall,
+                            fontWeight = FontWeight.Bold
+                        )
+                    }
+
+                    // Category selection buttons mapping the list
+                    Column {
+                        Text(
+                            text = getString(R.string.category_label) + ":",
+                            style = MaterialTheme.typography.bodyMedium,
+                            fontWeight = FontWeight.Bold,
+                            color = MaterialTheme.colorScheme.onSurfaceVariant
+                        )
+                        Spacer(modifier = Modifier.height(6.dp))
+                        
+                        // Simple wrapping grid items
+                        FlowRow(
+                            modifier = Modifier.fillMaxWidth(),
+                            horizontalArrangement = Arrangement.spacedBy(6.dp),
+                            maxItemsInEachRow = 3
+                        ) {
+                            categories.forEach { categoryId ->
+                                val isChosen = selectedCategory == categoryId
+                                FilterChip(
+                                    selected = isChosen,
+                                    onClick = { selectedCategory = categoryId },
+                                    label = { Text(getString(categoryId), fontSize = 12.sp) },
+                                    shape = RoundedCornerShape(8.dp),
+                                    modifier = Modifier.testTag("edit_cat_chip_$categoryId")
+                                )
+                            }
+                        }
+
+                        if (selectedCategory == R.string.category_other) {
+                            Spacer(modifier = Modifier.height(8.dp))
+                            OutlinedTextField(
+                                value = customCategoryText,
+                                onValueChange = { customCategoryText = it },
+                                label = { Text(if (lang == "bn") "কাস্টম ক্যাটাগরি লিখুন" else "Enter custom category") },
+                                placeholder = { Text(if (lang == "bn") "যেমন: উপহার, বোনাস ইত্যাদি" else "e.g., Gift, Bonus, etc.") },
+                                singleLine = true,
+                                modifier = Modifier
+                                    .fillMaxWidth()
+                                    .testTag("edit_custom_category_input"),
+                                shape = RoundedCornerShape(12.dp)
+                            )
+                        }
+                    }
+
+                    // Note (Optional)
+                    OutlinedTextField(
+                        value = noteText,
+                        onValueChange = { noteText = it },
+                        label = { Text(getString(R.string.note_label)) },
+                        singleLine = true,
+                        modifier = Modifier
+                            .fillMaxWidth()
+                            .testTag("edit_note_input"),
+                        shape = RoundedCornerShape(12.dp)
+                    )
+
+                    // Date Picker row info
+                    Row(
+                        modifier = Modifier
+                            .fillMaxWidth()
+                            .clip(RoundedCornerShape(12.dp))
+                            .background(MaterialTheme.colorScheme.surfaceVariant.copy(alpha = 0.3f))
+                            .android16Clickable {
+                                showDatePicker = true
+                            }
+                            .padding(horizontal = 16.dp, vertical = 14.dp),
+                        horizontalArrangement = Arrangement.SpaceBetween,
+                        verticalAlignment = Alignment.CenterVertically
+                    ) {
+                        Row(verticalAlignment = Alignment.CenterVertically) {
+                            Icon(
+                                imageVector = Icons.Default.CalendarToday,
+                                contentDescription = "Calendar",
+                                tint = MaterialTheme.colorScheme.onSurfaceVariant,
+                                modifier = Modifier.size(20.dp)
+                            )
+                            Spacer(modifier = Modifier.width(8.dp))
+                            Text(
+                                text = getString(R.string.date_label),
+                                style = MaterialTheme.typography.bodyMedium,
+                                fontWeight = FontWeight.SemiBold
+                            )
+                        }
+                        Text(
+                            text = formattedDate,
+                            style = MaterialTheme.typography.bodyMedium,
+                            fontWeight = FontWeight.Bold,
+                            color = MaterialTheme.colorScheme.primary
+                        )
+                    }
+
+                    if (showDatePicker) {
+                        BeautifulInteractiveCalendarDialog(
+                            initialSelectedDateMillis = dateMillis,
+                            lang = lang,
+                            onDismissRequest = { showDatePicker = false },
+                            onDateSelected = { selectedDate ->
+                                dateMillis = selectedDate
+                            }
+                        )
+                    }
+
+                    Spacer(modifier = Modifier.height(4.dp))
+
+                    // Actions Button Row
+                    Row(
+                        modifier = Modifier.fillMaxWidth(),
+                        horizontalArrangement = Arrangement.spacedBy(10.dp)
+                    ) {
+                        TextButton(
+                            onClick = onDismiss,
+                            modifier = Modifier.weight(1f)
+                        ) {
+                            Text(if (lang == "bn") "বাতিল" else "Cancel", fontWeight = FontWeight.Bold)
+                        }
+
+                        Button(
+                            onClick = {
+                                val amt = amountText.toDoubleOrNull()
+                                if (amt == null || amt <= 0) {
+                                    labelErrorText = getString(R.string.error_empty_amount)
+                                } else {
+                                    val finalCategory = if (selectedCategory == R.string.category_other && customCategoryText.isNotBlank()) {
+                                        customCategoryText.trim()
+                                    } else {
+                                        selectedCategory.toString()
+                                    }
+                                    onSave(amt, finalCategory, selectedType, noteText, dateMillis)
+                                }
+                            },
+                            modifier = Modifier
+                                .weight(1.5f)
+                                .testTag("edit_save_transaction_button"),
+                            shape = RoundedCornerShape(12.dp)
+                        ) {
+                            Text(if (lang == "bn") "পরিবর্তন সংরক্ষণ" else getString(R.string.edit_button), fontWeight = FontWeight.Bold)
+                        }
+                    }
+                }
+            }
+        }
+    }
+}
+
+@Composable
+fun GoogleLogoIcon(modifier: Modifier = Modifier) {
+    Canvas(modifier = modifier) {
+        val sizePx = size.width
+        val strokeWidth = sizePx * 0.18f
+        val radius = (sizePx - strokeWidth) / 2f
+        val cx = sizePx / 2f
+        val cy = sizePx / 2f
+
+        // Draw 4 gorgeous segments: Red (top), Yellow (left), Green (bottom), Blue (right with horizontal bar)
+        // 1. Red (top): 180 to 315
+        drawArc(
+            color = Color(0xFFEA4335),
+            startAngle = 180f,
+            sweepAngle = 135f,
+            useCenter = false,
+            style = androidx.compose.ui.graphics.drawscope.Stroke(width = strokeWidth)
+        )
+        // 2. Yellow (left): 90 to 180
+        drawArc(
+            color = Color(0xFFFBBC05),
+            startAngle = 90f,
+            sweepAngle = 90f,
+            useCenter = false,
+            style = androidx.compose.ui.graphics.drawscope.Stroke(width = strokeWidth)
+        )
+        // 3. Green (bottom): 0 to 90
+        drawArc(
+            color = Color(0xFF34A853),
+            startAngle = 0f,
+            sweepAngle = 90f,
+            useCenter = false,
+            style = androidx.compose.ui.graphics.drawscope.Stroke(width = strokeWidth)
+        )
+        // 4. Blue (right segment with the horizontal inside bar): 270 to 360/0
+        drawArc(
+            color = Color(0xFF4285F4),
+            startAngle = 270f,
+            sweepAngle = 90f,
+            useCenter = false,
+            style = androidx.compose.ui.graphics.drawscope.Stroke(width = strokeWidth)
+        )
+
+        // Horizontal bar inside for the 'G'
+        drawRect(
+            color = Color(0xFF4285F4),
+            topLeft = androidx.compose.ui.geometry.Offset(cx, cy - strokeWidth / 2f),
+            size = androidx.compose.ui.geometry.Size(cx, strokeWidth)
+        )
+    }
+}
+
 // Google Authentication Flow Simulator (Provides immersive Interactive syncing)
 @Composable
 fun GoogleAuthDialog(
@@ -2116,11 +3083,14 @@ fun GoogleAuthDialog(
     onDismiss: () -> Unit,
     onSignInSuccess: (email: String) -> Unit,
     onSignOut: () -> Unit,
-    getString: (Int) -> String
+    getString: (Int) -> String,
+    lang: String
 ) {
     var isVerifyingAccount by remember { mutableStateOf<String?>(null) }
     var emailInput by remember { mutableStateOf("") }
     var emailError by remember { mutableStateOf(false) }
+    var isChoosingAccount by remember { mutableStateOf(false) }
+    var isEnteringCustomEmail by remember { mutableStateOf(false) }
 
     LaunchedEffect(isVerifyingAccount) {
         val email = isVerifyingAccount
@@ -2141,187 +3111,412 @@ fun GoogleAuthDialog(
                     .fillMaxWidth()
                     .padding(horizontal = 8.dp)
                     .testTag("google_auth_dialog_surface"),
-            shape = RoundedCornerShape(24.dp),
-            border = BorderStroke(1.dp, dialogBorder),
-            colors = CardDefaults.cardColors(containerColor = dialogSurfaceBg)
-        ) {
-            Column(
-                modifier = Modifier
-                    .padding(24.dp)
-                    .fillMaxWidth(),
-                horizontalAlignment = Alignment.CenterHorizontally,
-                verticalArrangement = Arrangement.Center
+                shape = RoundedCornerShape(24.dp),
+                border = BorderStroke(1.dp, dialogBorder),
+                colors = CardDefaults.cardColors(containerColor = dialogSurfaceBg)
             ) {
-                Icon(
-                    imageVector = Icons.Default.Security,
-                    contentDescription = "Secure login header",
-                    tint = MaterialTheme.colorScheme.primary,
-                    modifier = Modifier.size(54.dp)
-                )
-                Spacer(modifier = Modifier.height(16.dp))
-                
-                Text(
-                    text = "Google Identity Services",
-                    style = MaterialTheme.typography.titleLarge,
-                    fontWeight = FontWeight.ExtraBold,
-                    color = MaterialTheme.colorScheme.onSurface
-                )
-                
-                Spacer(modifier = Modifier.height(8.dp))
-                
-                Text(
-                    text = "Secure your financial records across all Android platforms using your Google identity.",
-                    style = MaterialTheme.typography.bodySmall,
-                    color = MaterialTheme.colorScheme.onSurfaceVariant,
-                    textAlign = TextAlign.Center,
-                    lineHeight = 16.sp
-                )
+                Column(
+                    modifier = Modifier
+                        .padding(24.dp)
+                        .fillMaxWidth(),
+                    horizontalAlignment = Alignment.CenterHorizontally,
+                    verticalArrangement = Arrangement.Center
+                ) {
+                    Icon(
+                        imageVector = Icons.Default.Security,
+                        contentDescription = "Secure login header",
+                        tint = MaterialTheme.colorScheme.primary,
+                        modifier = Modifier.size(54.dp)
+                    )
+                    Spacer(modifier = Modifier.height(16.dp))
+                    
+                    Text(
+                        text = "Google Identity Services",
+                        style = MaterialTheme.typography.titleLarge,
+                        fontWeight = FontWeight.ExtraBold,
+                        color = MaterialTheme.colorScheme.onSurface
+                    )
+                    
+                    Spacer(modifier = Modifier.height(8.dp))
+                    
+                    Text(
+                        text = "Secure your financial records across all Android platforms using your Google identity.",
+                        style = MaterialTheme.typography.bodySmall,
+                        color = MaterialTheme.colorScheme.onSurfaceVariant,
+                        textAlign = TextAlign.Center,
+                        lineHeight = 16.sp
+                    )
 
-                Spacer(modifier = Modifier.height(24.dp))
+                    Spacer(modifier = Modifier.height(24.dp))
 
-                if (isVerifyingAccount != null) {
-                    Column(
-                        horizontalAlignment = Alignment.CenterHorizontally,
-                        verticalArrangement = Arrangement.spacedBy(12.dp)
-                    ) {
-                        CircularProgressIndicator(modifier = Modifier.size(36.dp))
-                        Text(
-                            text = "Establishing secure connection...",
-                            style = MaterialTheme.typography.bodyMedium,
-                            fontWeight = FontWeight.Medium,
-                            color = MaterialTheme.colorScheme.primary
-                        )
-                    }
-                } else {
-                    if (currentUser == null) {
-                        OutlinedTextField(
-                            value = emailInput,
-                            onValueChange = {
-                                emailInput = it
-                                emailError = false
-                            },
-                            label = { Text("Google Email Account") },
-                            placeholder = { Text("example@gmail.com") },
-                            isError = emailError,
-                            modifier = Modifier
-                                .fillMaxWidth()
-                                .testTag("google_email_input"),
-                            singleLine = true,
-                            keyboardOptions = KeyboardOptions(
-                                keyboardType = KeyboardType.Email
-                            ),
-                            shape = RoundedCornerShape(12.dp)
-                        )
-
-                        if (emailError) {
-                            Text(
-                                text = "Please enter a valid Google email address.",
-                                color = MaterialTheme.colorScheme.error,
-                                style = MaterialTheme.typography.labelSmall,
-                                modifier = Modifier
-                                    .align(Alignment.Start)
-                                    .padding(start = 4.dp, top = 2.dp)
-                            )
-                        }
-
-                        Spacer(modifier = Modifier.height(16.dp))
-
-                        Button(
-                            onClick = {
-                                val trimmed = emailInput.trim()
-                                if (trimmed.isNotBlank() && android.util.Patterns.EMAIL_ADDRESS.matcher(trimmed).matches()) {
-                                    isVerifyingAccount = trimmed
-                                } else {
-                                    emailError = true
-                                }
-                            },
-                            modifier = Modifier
-                                .fillMaxWidth()
-                                .height(48.dp)
-                                .testTag("google_signin_submit"),
-                            shape = RoundedCornerShape(12.dp),
-                            colors = ButtonDefaults.buttonColors(
-                                containerColor = MaterialTheme.colorScheme.primary
-                            )
+                    if (isVerifyingAccount != null) {
+                        Column(
+                            horizontalAlignment = Alignment.CenterHorizontally,
+                            verticalArrangement = Arrangement.spacedBy(12.dp)
                         ) {
-                            Icon(
-                                imageVector = Icons.Default.AccountCircle,
-                                contentDescription = "Sign In"
+                            CircularProgressIndicator(modifier = Modifier.size(36.dp))
+                            Text(
+                                text = "Establishing secure connection...",
+                                style = MaterialTheme.typography.bodyMedium,
+                                fontWeight = FontWeight.Medium,
+                                color = MaterialTheme.colorScheme.primary
                             )
-                            Spacer(modifier = Modifier.width(8.dp))
-                            Text(getString(R.string.google_signin), fontWeight = FontWeight.Bold)
                         }
                     } else {
-                        // If already logged in, show account and provide "Sign Out" option
-                        Card(
-                            modifier = Modifier.fillMaxWidth(),
-                            shape = RoundedCornerShape(16.dp),
-                            colors = CardDefaults.cardColors(containerColor = MaterialTheme.colorScheme.primaryContainer.copy(alpha = 0.4f))
-                        ) {
-                            Column(
-                                modifier = Modifier
-                                    .fillMaxWidth()
-                                    .padding(16.dp),
-                                horizontalAlignment = Alignment.CenterHorizontally
-                            ) {
-                                Box(
-                                    contentAlignment = Alignment.BottomEnd,
-                                    modifier = Modifier.padding(bottom = 8.dp)
+                        if (currentUser == null) {
+                            if (isChoosingAccount) {
+                                // Google high-fidelity Account Selector popup within dialog bounds
+                                Column(
+                                    modifier = Modifier.fillMaxWidth(),
+                                    horizontalAlignment = Alignment.CenterHorizontally
                                 ) {
-                                    GoogleAvatar(email = currentUser, sizeDp = 72.dp)
-                                    Box(
+                                    Text(
+                                        text = if (lang == "bn") "একটি অ্যাকাউন্ট বেছে নিন" else "Choose an account",
+                                        style = MaterialTheme.typography.titleMedium,
+                                        fontWeight = FontWeight.Black,
+                                        color = MaterialTheme.colorScheme.onSurface
+                                    )
+                                    Spacer(modifier = Modifier.height(4.dp))
+                                    Text(
+                                        text = if (lang == "bn") "Finance Manager-এ সাইন-ইন করতে" else "to continue to Finance Manager",
+                                        style = MaterialTheme.typography.bodySmall,
+                                        color = MaterialTheme.colorScheme.onSurfaceVariant
+                                    )
+                                    Spacer(modifier = Modifier.height(16.dp))
+                                    HorizontalDivider(
+                                        color = MaterialTheme.colorScheme.outlineVariant.copy(alpha = 0.5f),
+                                        thickness = 1.dp
+                                    )
+                                    Spacer(modifier = Modifier.height(12.dp))
+
+                                    // Primary pre-configured real user account option (Sakib Islam as from metadata)
+                                    Card(
                                         modifier = Modifier
-                                            .size(22.dp)
-                                            .clip(CircleShape)
-                                            .background(Color(0xFF2E7D32))
-                                            .border(1.5.dp, MaterialTheme.colorScheme.surface, CircleShape),
-                                        contentAlignment = Alignment.Center
+                                            .fillMaxWidth()
+                                            .android16Clickable(shape = RoundedCornerShape(12.dp)) {
+                                                isVerifyingAccount = "sakibislam94433@gmail.com"
+                                                isChoosingAccount = false
+                                            }
+                                            .testTag("google_account_sakib_islam"),
+                                        colors = CardDefaults.cardColors(containerColor = Color.Transparent),
+                                        shape = RoundedCornerShape(12.dp)
                                     ) {
-                                        Icon(
-                                            imageVector = Icons.Default.Check,
-                                            contentDescription = "Active",
-                                            tint = Color.White,
-                                            modifier = Modifier.size(12.dp)
+                                        Row(
+                                            modifier = Modifier
+                                                .fillMaxWidth()
+                                                .padding(12.dp),
+                                            verticalAlignment = Alignment.CenterVertically
+                                        ) {
+                                            GoogleAvatar(email = "sakibislam94433@gmail.com", sizeDp = 40.dp)
+                                            Spacer(modifier = Modifier.width(12.dp))
+                                            Column(modifier = Modifier.weight(1f)) {
+                                                Text(
+                                                    text = "Sakib Islam",
+                                                    fontWeight = FontWeight.Bold,
+                                                    style = MaterialTheme.typography.bodyMedium,
+                                                    color = MaterialTheme.colorScheme.onSurface
+                                                )
+                                                Text(
+                                                    text = "sakibislam94433@gmail.com",
+                                                    style = MaterialTheme.typography.bodySmall,
+                                                    color = MaterialTheme.colorScheme.onSurfaceVariant
+                                                )
+                                            }
+                                            Icon(
+                                                imageVector = Icons.Default.ChevronRight,
+                                                contentDescription = null,
+                                                tint = MaterialTheme.colorScheme.onSurfaceVariant.copy(alpha = 0.7f),
+                                                modifier = Modifier.size(18.dp)
+                                            )
+                                        }
+                                    }
+
+                                    Spacer(modifier = Modifier.height(8.dp))
+
+                                    // Secondary account selection card
+                                    Card(
+                                        modifier = Modifier
+                                            .fillMaxWidth()
+                                            .android16Clickable(shape = RoundedCornerShape(12.dp)) {
+                                                isChoosingAccount = false
+                                                isEnteringCustomEmail = true
+                                            }
+                                            .testTag("google_account_custom"),
+                                        colors = CardDefaults.cardColors(containerColor = Color.Transparent),
+                                        shape = RoundedCornerShape(12.dp)
+                                    ) {
+                                        Row(
+                                            modifier = Modifier
+                                                .fillMaxWidth()
+                                                .padding(12.dp),
+                                            verticalAlignment = Alignment.CenterVertically
+                                        ) {
+                                            Box(
+                                                modifier = Modifier
+                                                    .size(40.dp)
+                                                    .clip(CircleShape)
+                                                    .background(MaterialTheme.colorScheme.surfaceVariant),
+                                                contentAlignment = Alignment.Center
+                                            ) {
+                                                Icon(
+                                                    imageVector = Icons.Default.Add,
+                                                    contentDescription = null,
+                                                    tint = MaterialTheme.colorScheme.primary,
+                                                    modifier = Modifier.size(20.dp)
+                                                )
+                                            }
+                                            Spacer(modifier = Modifier.width(12.dp))
+                                            Text(
+                                                text = if (lang == "bn") "অন্য গুগল অ্যাকাউন্ট ব্যবহার করুন" else "Use another Google Account",
+                                                fontWeight = FontWeight.Bold,
+                                                style = MaterialTheme.typography.bodyMedium,
+                                                color = MaterialTheme.colorScheme.onSurface,
+                                                modifier = Modifier.weight(1f)
+                                            )
+                                            Icon(
+                                                imageVector = Icons.Default.ChevronRight,
+                                                contentDescription = null,
+                                                tint = MaterialTheme.colorScheme.onSurfaceVariant.copy(alpha = 0.7f),
+                                                modifier = Modifier.size(18.dp)
+                                            )
+                                        }
+                                    }
+
+                                    Spacer(modifier = Modifier.height(16.dp))
+                                    HorizontalDivider(
+                                        color = MaterialTheme.colorScheme.outlineVariant.copy(alpha = 0.5f),
+                                        thickness = 1.dp
+                                    )
+                                    Spacer(modifier = Modifier.height(12.dp))
+
+                                    Text(
+                                        text = if (lang == "bn") "ফাইন্যান্স ডাটা ক্লাউডে সুরক্ষিত রাখতে গুগল আপনার ছবি, ইমেইল এড্রেস এবং গুগল ড্রাইভে সুরক্ষিত ব্যাকআপ ফোল্ডারের এক্সেস শেয়ার করবে।" else "Google will securely share your profile details and private AppData storage spaces in Google Drive to auto-sync your wallet transactions.",
+                                        style = MaterialTheme.typography.bodySmall,
+                                        fontSize = 11.sp,
+                                        color = MaterialTheme.colorScheme.onSurfaceVariant.copy(alpha = 0.75f),
+                                        textAlign = TextAlign.Center,
+                                        lineHeight = 15.sp
+                                    )
+
+                                    Spacer(modifier = Modifier.height(16.dp))
+
+                                    TextButton(
+                                        onClick = { isChoosingAccount = false },
+                                        modifier = Modifier.testTag("google_auth_back")
+                                    ) {
+                                        Text(
+                                            text = if (lang == "bn") "বাতিল করুন" else "Cancel",
+                                            fontWeight = FontWeight.Bold,
+                                            color = MaterialTheme.colorScheme.primary
                                         )
                                     }
                                 }
-                                Text(
-                                    text = "Connected Successfully",
-                                    fontWeight = FontWeight.Bold,
-                                    style = MaterialTheme.typography.bodyMedium,
-                                    color = Color(0xFF1B5E20)
-                                )
-                                Spacer(modifier = Modifier.height(4.dp))
-                                Text(
-                                    text = currentUser,
-                                    style = MaterialTheme.typography.bodySmall,
-                                    fontWeight = FontWeight.Medium
-                                )
+                            } else if (isEnteringCustomEmail) {
+                                // High-Polished Manual Email TextInput fallback option
+                                Column(modifier = Modifier.fillMaxWidth()) {
+                                    Text(
+                                        text = if (lang == "bn") "গুগল অ্যাকাউন্ট ইমেইল" else "Enter Google Email",
+                                        style = MaterialTheme.typography.titleMedium,
+                                        fontWeight = FontWeight.Bold,
+                                        color = MaterialTheme.colorScheme.onSurface,
+                                        modifier = Modifier.padding(bottom = 12.dp)
+                                    )
+
+                                    OutlinedTextField(
+                                        value = emailInput,
+                                        onValueChange = {
+                                            emailInput = it
+                                            emailError = false
+                                        },
+                                        label = { Text(if (lang == "bn") "গুগল ইমেইল এড্রেস" else "Google Email Account") },
+                                        placeholder = { Text("example@gmail.com") },
+                                        isError = emailError,
+                                        modifier = Modifier
+                                            .fillMaxWidth()
+                                            .testTag("google_email_input"),
+                                        singleLine = true,
+                                        keyboardOptions = KeyboardOptions(
+                                            keyboardType = KeyboardType.Email
+                                        ),
+                                        shape = RoundedCornerShape(12.dp)
+                                    )
+
+                                    if (emailError) {
+                                        Text(
+                                            text = if (lang == "bn") "অনুগ্রহ করে একটি সঠিক গুগল ইমেইল এড্রেস প্রবেশ করান।" else "Please enter a valid Google email address.",
+                                            color = MaterialTheme.colorScheme.error,
+                                            style = MaterialTheme.typography.labelSmall,
+                                            modifier = Modifier
+                                                .align(Alignment.Start)
+                                                .padding(start = 4.dp, top = 2.dp)
+                                        )
+                                    }
+
+                                    Spacer(modifier = Modifier.height(16.dp))
+
+                                    Row(
+                                        modifier = Modifier.fillMaxWidth(),
+                                        horizontalArrangement = Arrangement.spacedBy(8.dp)
+                                    ) {
+                                        OutlinedButton(
+                                            onClick = { 
+                                                isEnteringCustomEmail = false
+                                                isChoosingAccount = true
+                                            },
+                                            modifier = Modifier
+                                                .weight(1f)
+                                                .height(48.dp),
+                                            shape = RoundedCornerShape(12.dp)
+                                        ) {
+                                            Text(if (lang == "bn") "ফিরে যান" else "Back")
+                                        }
+
+                                        Button(
+                                            onClick = {
+                                                val trimmed = emailInput.trim()
+                                                if (trimmed.isNotBlank() && android.util.Patterns.EMAIL_ADDRESS.matcher(trimmed).matches()) {
+                                                    isVerifyingAccount = trimmed
+                                                    isEnteringCustomEmail = false
+                                                } else {
+                                                    emailError = true
+                                                }
+                                            },
+                                            modifier = Modifier
+                                                .weight(1.5f)
+                                                .height(48.dp)
+                                                .testTag("google_signin_submit"),
+                                            shape = RoundedCornerShape(12.dp),
+                                            colors = ButtonDefaults.buttonColors(
+                                                containerColor = MaterialTheme.colorScheme.primary
+                                            )
+                                        ) {
+                                            Text(if (lang == "bn") "সাইন-ইন" else "Sign In", fontWeight = FontWeight.Bold)
+                                        }
+                                    }
+                                }
+                            } else {
+                                // Default Google Brand Sign-In Button (Official Spec styled representation)
+                                Column(
+                                    modifier = Modifier.fillMaxWidth(),
+                                    horizontalAlignment = Alignment.CenterHorizontally
+                                ) {
+                                    val googleBtnBg = if (isDark) MaterialTheme.colorScheme.surfaceVariant else Color.White
+                                    val googleBtnBorder = if (isDark) Color.Transparent else MaterialTheme.colorScheme.outlineVariant
+                                    val googleBtnTextColor = if (isDark) MaterialTheme.colorScheme.onSurfaceVariant else Color(0xFF1F2937)
+
+                                    Card(
+                                        modifier = Modifier
+                                            .fillMaxWidth()
+                                            .height(52.dp)
+                                            .android16Clickable(shape = RoundedCornerShape(26.dp)) {
+                                                isChoosingAccount = true
+                                            }
+                                            .testTag("google_brand_signin_button"),
+                                        shape = RoundedCornerShape(26.dp),
+                                        border = BorderStroke(1.dp, googleBtnBorder),
+                                        colors = CardDefaults.cardColors(containerColor = googleBtnBg),
+                                        elevation = CardDefaults.cardElevation(defaultElevation = 0.dp)
+                                    ) {
+                                        Row(
+                                            modifier = Modifier
+                                                .fillMaxSize()
+                                                .padding(horizontal = 16.dp),
+                                            verticalAlignment = Alignment.CenterVertically,
+                                            horizontalArrangement = Arrangement.Center
+                                        ) {
+                                            GoogleLogoIcon(modifier = Modifier.size(22.dp))
+                                            Spacer(modifier = Modifier.width(12.dp))
+                                            Text(
+                                                text = if (lang == "bn") "গুগল অ্যাকাউন্ট দিয়ে সাইন-ইন করুন" else "Sign In with Google Account",
+                                                fontWeight = FontWeight.Black,
+                                                style = MaterialTheme.typography.bodyMedium,
+                                                color = googleBtnTextColor
+                                            )
+                                        }
+                                    }
+
+                                    Spacer(modifier = Modifier.height(12.dp))
+
+                                    Text(
+                                        text = if (lang == "bn") "নিরাপদ ক্লাউড ব্যাকআপ সক্রিয় করতে গুগল অ্যাকাউন্ট ব্যবহার করুন" else "Uses your Google identity to trigger automatic Google Drive appdata backup.",
+                                        style = MaterialTheme.typography.bodySmall,
+                                        color = MaterialTheme.colorScheme.onSurfaceVariant,
+                                        textAlign = TextAlign.Center,
+                                        fontSize = 11.sp
+                                    )
+                                }
+                            }
+                        } else {
+                            // If already logged in, show account and provide "Sign Out" option
+                            Card(
+                                modifier = Modifier.fillMaxWidth(),
+                                shape = RoundedCornerShape(16.dp),
+                                colors = CardDefaults.cardColors(containerColor = MaterialTheme.colorScheme.primaryContainer.copy(alpha = 0.4f))
+                            ) {
+                                Column(
+                                    modifier = Modifier
+                                        .fillMaxWidth()
+                                        .padding(16.dp),
+                                    horizontalAlignment = Alignment.CenterHorizontally
+                                ) {
+                                    Box(
+                                        contentAlignment = Alignment.BottomEnd,
+                                        modifier = Modifier.padding(bottom = 8.dp)
+                                    ) {
+                                        GoogleAvatar(email = currentUser, sizeDp = 72.dp)
+                                        Box(
+                                            modifier = Modifier
+                                                .size(22.dp)
+                                                .clip(CircleShape)
+                                                .background(Color(0xFF2E7D32))
+                                                .border(1.5.dp, MaterialTheme.colorScheme.surface, CircleShape),
+                                            contentAlignment = Alignment.Center
+                                        ) {
+                                            Icon(
+                                                imageVector = Icons.Default.Check,
+                                                contentDescription = "Active",
+                                                tint = Color.White,
+                                                modifier = Modifier.size(12.dp)
+                                            )
+                                        }
+                                    }
+                                    Text(
+                                        text = "Connected Successfully",
+                                        fontWeight = FontWeight.Bold,
+                                        style = MaterialTheme.typography.bodyMedium,
+                                        color = Color(0xFF1B5E20)
+                                    )
+                                    Spacer(modifier = Modifier.height(4.dp))
+                                    Text(
+                                        text = currentUser,
+                                        style = MaterialTheme.typography.bodySmall,
+                                        fontWeight = FontWeight.Medium
+                                    )
+                                }
+                            }
+
+                            Spacer(modifier = Modifier.height(20.dp))
+
+                            Button(
+                                onClick = onSignOut,
+                                colors = ButtonDefaults.buttonColors(containerColor = MaterialTheme.colorScheme.error),
+                                modifier = Modifier
+                                    .fillMaxWidth()
+                                    .testTag("signout_button"),
+                                shape = RoundedCornerShape(12.dp)
+                            ) {
+                                Text(getString(R.string.google_signout), fontWeight = FontWeight.Bold)
                             }
                         }
-
-                        Spacer(modifier = Modifier.height(20.dp))
-
-                        Button(
-                            onClick = onSignOut,
-                            colors = ButtonDefaults.buttonColors(containerColor = MaterialTheme.colorScheme.error),
-                            modifier = Modifier
-                                .fillMaxWidth()
-                                .testTag("signout_button"),
-                            shape = RoundedCornerShape(12.dp)
-                        ) {
-                            Text(getString(R.string.google_signout), fontWeight = FontWeight.Bold)
-                        }
                     }
-                }
 
-                Spacer(modifier = Modifier.height(24.dp))
+                    Spacer(modifier = Modifier.height(24.dp))
 
-                // Theme Selection Block - Bilingual
-                Text(
-                    text = getString(R.string.theme_section_title),
-                    style = MaterialTheme.typography.labelSmall,
-                    fontWeight = FontWeight.Bold,
+                    // Theme Selection Block - Bilingual
+                    Text(
+                        text = getString(R.string.theme_section_title),
+                        style = MaterialTheme.typography.labelSmall,
+                        fontWeight = FontWeight.Bold,
                     color = MaterialTheme.colorScheme.onSurfaceVariant.copy(alpha = 0.7f),
                     modifier = Modifier.align(Alignment.Start)
                 )
@@ -3034,51 +4229,51 @@ fun AboutAppDialog(
                             FeatureItem(
                                 emoji = "💸",
                                 titleBn = "দৈনিক আয়-ব্যয় ট্র্যাকার",
-                                titleEn = "Income & Expense Ledger",
-                                descBn = "প্রতিদিনের আয় এবং ব্যয় সহজে ক্যাটাগরি, নোট ও সঠিক তারিখ সহ সংরক্ষণ করুন। কোন ঝামেলা ছাড়াই নিখুঁত বাজেট বজায় রাখুন।",
-                                descEn = "Effortlessly catalog daily cash flow with customized categories, remarks, and custom transaction dates."
+                                titleEn = "Income & Expense Tracker",
+                                descBn = "সহজে দৈনিক আয়-ব্যয় কাস্টম ক্যাটাগরি, নোট ও সঠিক তারিখ দিয়ে লিখে রাখুন। ঝামেলাহীনভাবে বাজেট কন্ট্রোল করুন।",
+                                descEn = "Record daily transactions with specific dates, labels, and notes. Control your budget easily."
                             ),
                             FeatureItem(
                                 emoji = "📊",
-                                titleBn = "বিশদ পরিসংখ্যান ও চার্ট",
-                                titleEn = "Visual Financial Analytics",
-                                descBn = "রিয়েল-টাইম সুন্দর পাই-চার্ট ও পরিমাণের উপর ভিত্তি করে ক্যাটাগরি অনুযায়ী খরচের পার্সেন্টেজ ও তুলনামূলক গ্রাফস দেখুন।",
-                                descEn = "Examine budget patterns instantly using graphical distribution cards, and real-time category ratios."
+                                titleBn = "রিয়েল-টাইম চার্ট ও ইনসাইট",
+                                titleEn = "Visual Analytics & Insights",
+                                descBn = "ইন্টারেক্টিভ পাই-চার্ট, ক্যাটাগরি ভিত্তিক খরচের হার এবং সম্পূর্ণ আর্থিক হিসেবের চমৎকার ভিজ্যুয়াল রিপোর্ট।",
+                                descEn = "Interactive pie charts and category percentage ratios provide dynamic visual cash flow reports."
                             ),
                             FeatureItem(
                                 emoji = "🛒",
                                 titleBn = "ডিজিটাল বাজার তালিকা",
-                                titleEn = "Shopping List (Bajar)",
-                                descBn = "বাজারে যাওয়ার আগে ফর্দ তৈরি করুন, প্রয়োজনীয় পরিমাণ লিখে রাখুন। কেনা সম্পন্ন হলে টিক দিয়ে দিন বা ট্র্যাশে পাঠান।",
-                                descEn = "Frame future market needs by registering items with quantities, checking items of interest off as you shopping."
+                                titleEn = "Digital Shopping (Bajar) List",
+                                descBn = "বাজারে যাওয়ার আগে ফর্দ তৈরি করুন, প্রয়োজনীয় পরিমাণ লিখে রাখুন এবং কেনা সম্পন্ন হলে টিক দিয়ে দিন বা ট্র্যাশে পাঠান।",
+                                descEn = "Frame future market needs by registering items with quantities, checking items of interest off as you shop."
                             ),
                             FeatureItem(
                                 emoji = "🤝",
-                                titleBn = "দেনা-পাওনা (Debt) ট্র্যাকার",
+                                titleBn = "দেনা-পাওনা ও ঋণ ট্র্যাকার",
                                 titleEn = "Debts & Loans Tracker",
                                 descBn = "বন্ধুবান্ধব ও পরিবারের সাথে লেনদেনের বিস্তারিত হিসাব রাখুন। পরিশোধিত হলে এক ক্লিকে 'Settle' করে সম্পূর্ণ রেকর্ড সংরক্ষণ করুন।",
                                 descEn = "Identify exact balances owed to or by you in a clear dashboard. Finish historical loans in a single tap."
                             ),
                             FeatureItem(
-                                emoji = "🌐",
-                                titleBn = "অফলাইন ফার্স্ট ও ক্লাউড সিঙ্ক",
-                                titleEn = "Offline First & Sync Engine",
-                                descBn = "আপনার সকল ডেটা ফোনেই সুরক্ষিত থাকে, তাই ইন্টারনেট ছাড়াই চলে। আবার ডেটা হারানোর ভয় এড়াতে ক্লাউড ব্যাকআপ নেওয়ার চমৎকার সুবিধা আছে।",
-                                descEn = "Operates completely internet-free for high security, with automated triggers to backup/restore securely anytime."
+                                emoji = "💾",
+                                titleBn = "স্মার্ট অটো-রিপ্লেস রিস্টোর ব্যাকআপ",
+                                titleEn = "Auto-Overwrite Local Backup",
+                                descBn = "ডাউনলোডস ফোল্ডারে ম্যানুয়াল JSON ব্যাকআপ এক্সপোর্ট করুন। নতুন ব্যাকআপ ফাইলটি অটোমেটিক পুরনোটিকে রিপ্লেস করে ফোনে অপ্রয়োজনীয় ডুপ্লিকেট ফাইল জমে থাকা বন্ধ করে!",
+                                descEn = "Export manual JSON formatted file into your custom Downloads folder. Subsequent backups replace previous files to avoid digital clutter."
                             ),
                             FeatureItem(
                                 emoji = "🌍",
-                                titleBn = "সম্পূর্ণ দ্বি-ভাষিক সুবিধা",
-                                titleEn = "Dual Language Experience",
-                                descBn = "বাঙালিদের জন্য শতভাগ খাঁটি বাংলা ভাষা এবং বৈশ্বিক ব্যবহারের জন্য ইংরেজি ভাষায় সহজেই এক ক্লিকে পরিবর্তন যোগ্য ইন্টারফেস।",
-                                descEn = "Instantly toggle between authentic Bengali and professional English language templates from the app header."
+                                titleBn = "ইনস্ট্যান্ট দ্রুত ভাষা পরিবর্তন",
+                                titleEn = "Instant Language Toggle",
+                                descBn = "অ্যাপের সম্পূর্ণ ইন্টারফেস খাঁটি বাংলা অথবা প্রফেশনাল ইংরেজি ভাষায় এক ক্লিকে পরিবর্তন করুন হেডার থেকে।",
+                                descEn = "Instantly toggle the workspace templates between beautiful Bengali and professional English from the app header."
                             ),
                             FeatureItem(
                                 emoji = "🎨",
-                                titleBn = "চোখধাঁধানো গ্লাস-ইউআই ও ডার্ক মোড",
-                                titleEn = "Premium Theme & Dark Mode",
+                                titleBn = "প্রিমিয়াম গ্লাস-ইউআই ও ডার্ক মোড",
+                                titleEn = "Premium Soft Glass UI & Theme",
                                 descBn = "চোখের সুরক্ষার জন্য আরামদায়ক অন্ধকার ডার্ক থিম বা পরিচ্ছন্ন লাইট থিম। সাথে প্রিমিয়াম গ্লাস-মরফিজম ভিজ্যুয়াল ফিনিশ!",
-                                descEn = "Dive into seamless, distraction-free modern UI styled elegantly with rich dark theme aesthetics."
+                                descEn = "Dive into seamless, distraction-free modern UI styled elegantly with rich dark theme aesthetics and dynamic ripple effects."
                             )
                         )
 
@@ -4916,5 +6111,83 @@ fun DebtListDialog(
         }
     }
 }
+}
+
+@Composable
+fun LocalBackupStatusCard(
+    currentLanguage: String,
+    onImportClick: () -> Unit
+) {
+    val isDark = isAppDark()
+    val containerBg = if (isDark) {
+        Color(0x1F10B981) // Green transparent hue
+    } else {
+        Color(0x1210B981)
+    }
+    val textColor = if (isDark) Color(0xFF34D399) else Color(0xFF065F46)
+    val borderColor = if (isDark) Color(0x3310B981) else Color(0x4010B981)
+
+    Card(
+        modifier = Modifier
+            .fillMaxWidth()
+            .padding(horizontal = 16.dp, vertical = 6.dp),
+        shape = RoundedCornerShape(16.dp),
+        border = BorderStroke(1.dp, borderColor),
+        colors = CardDefaults.cardColors(containerColor = containerBg),
+        elevation = CardDefaults.cardElevation(defaultElevation = 0.dp)
+    ) {
+        Row(
+            modifier = Modifier
+                .fillMaxWidth()
+                .padding(16.dp),
+            verticalAlignment = Alignment.CenterVertically,
+            horizontalArrangement = Arrangement.SpaceBetween
+        ) {
+            Column(modifier = Modifier.weight(1f)) {
+                Row(verticalAlignment = Alignment.CenterVertically) {
+                    Icon(
+                        imageVector = Icons.Default.Backup,
+                        contentDescription = "Backup Active",
+                        tint = textColor,
+                        modifier = Modifier.size(20.dp)
+                    )
+                    Spacer(modifier = Modifier.width(8.dp))
+                    Text(
+                        text = if (currentLanguage == "bn") "অটো ব্যাকআপ সক্রিয়" else "Auto-Backup Active",
+                        style = MaterialTheme.typography.titleSmall,
+                        color = textColor,
+                        fontWeight = FontWeight.Bold
+                    )
+                }
+                Spacer(modifier = Modifier.height(4.dp))
+                Text(
+                    text = if (currentLanguage == "bn") 
+                        "ডাটা পরিবর্তন হলে স্বয়ংক্রিয়ভাবে ডাউনলোড ফোল্ডারে ব্যাকআপ ফাইল তৈরি হবে।" 
+                    else 
+                        "Local backup automatically updates in your Downloads folder when data changes.",
+                    style = MaterialTheme.typography.bodySmall,
+                    color = textColor.copy(alpha = 0.85f)
+                )
+            }
+            Spacer(modifier = Modifier.width(8.dp))
+            Button(
+                onClick = onImportClick,
+                colors = ButtonDefaults.buttonColors(
+                    containerColor = textColor,
+                    contentColor = if (isDark) Color.Black else Color.White
+                ),
+                contentPadding = PaddingValues(horizontal = 12.dp, vertical = 6.dp),
+                modifier = Modifier.height(34.dp),
+                shape = RoundedCornerShape(8.dp),
+                elevation = ButtonDefaults.buttonElevation(defaultElevation = 0.dp)
+            ) {
+                Text(
+                    text = if (currentLanguage == "bn") "ইমপোর্ট" else "Import",
+                    style = MaterialTheme.typography.labelMedium,
+                    fontWeight = FontWeight.Bold
+                )
+            }
+        }
+    }
 }
 

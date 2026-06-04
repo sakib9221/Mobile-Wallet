@@ -1,33 +1,47 @@
 package com.example.ui
 
+import android.widget.Toast
 import android.app.Application
 import android.content.Context
 import android.net.Uri
+import android.content.ContentUris
 import androidx.lifecycle.AndroidViewModel
 import androidx.lifecycle.viewModelScope
 import com.example.data.AppDatabase
 import com.example.data.Transaction
 import com.example.data.TransactionRepository
+import com.example.data.GoogleDriveManager
 import kotlinx.coroutines.ExperimentalCoroutinesApi
 import kotlinx.coroutines.flow.*
 import kotlinx.coroutines.launch
 import java.io.BufferedReader
 import java.io.InputStreamReader
 import java.io.OutputStreamWriter
+import org.json.JSONObject
+import org.json.JSONArray
+import java.io.File
+import android.content.ContentValues
+import android.provider.MediaStore
+import android.os.Build
+import android.os.Environment
 
 class FinanceViewModel(application: Application) : AndroidViewModel(application) {
     private val repository: TransactionRepository
-    val googleDriveManager = com.example.data.GoogleDriveManager(application)
+    val googleDriveManager = GoogleDriveManager(application)
     
-    // User Session: null means Guest (Local) Mode
+    val driveSyncState = googleDriveManager.syncState
+    val driveLastSyncMessage = googleDriveManager.lastSyncMessage
+    val driveOnlineCount = googleDriveManager.onlineCount
+
+    // User Session: Always null (Guest Mode) as requested
     private val _currentUser = MutableStateFlow<String?>(null)
     val currentUser: StateFlow<String?> = _currentUser.asStateFlow()
 
-    // Screen state: "all", or "summary" (for categorized summary view)
+    // Screen state: "dashboard" or other tabs
     private val _uiTab = MutableStateFlow("dashboard")
     val uiTab: StateFlow<String> = _uiTab.asStateFlow()
 
-    private val prefs = application.getSharedPreferences("finance_prefs", android.content.Context.MODE_PRIVATE)
+    private val prefs = application.getSharedPreferences("finance_prefs", Context.MODE_PRIVATE)
 
     // Multi-Language state: "en" for English, "bn" for Bengali
     private val _selectedLanguage = MutableStateFlow("en")
@@ -37,10 +51,6 @@ class FinanceViewModel(application: Application) : AndroidViewModel(application)
     private val _selectedTheme = MutableStateFlow("system")
     val selectedTheme: StateFlow<String> = _selectedTheme.asStateFlow()
 
-    val driveSyncState = googleDriveManager.syncState
-    val driveLastSyncMessage = googleDriveManager.lastSyncMessage
-    val driveOnlineCount = googleDriveManager.onlineCount
-
     private val _autoSyncOnChanges = MutableStateFlow(true)
     val autoSyncOnChanges: StateFlow<Boolean> = _autoSyncOnChanges.asStateFlow()
 
@@ -49,31 +59,31 @@ class FinanceViewModel(application: Application) : AndroidViewModel(application)
         repository = TransactionRepository(db.transactionDao(), db.bajarItemDao(), db.debtRecordDao())
         _selectedLanguage.value = prefs.getString("selected_lang", "en") ?: "en"
         val savedTheme = prefs.getString("selected_theme", "system") ?: "system"
-        if (savedTheme == "liquid_glass") {
-            _selectedTheme.value = "system"
-            prefs.edit().putString("selected_theme", "system").apply()
-        } else {
-            _selectedTheme.value = savedTheme
-        }
-        _currentUser.value = prefs.getString("selected_user", null)
-        _autoSyncOnChanges.value = prefs.getBoolean("auto_sync_drive", true)
+        _selectedTheme.value = if (savedTheme == "liquid_glass") "system" else savedTheme
+        
+        // Always enforce local guest user
+        _currentUser.value = null
 
-        // Reset database once to clear previously seeded default data
-        val dbResetZero = prefs.getBoolean("db_reset_zero_v4", false)
+        // Reset database once if not done, to clear old seeds
+        val dbResetZero = prefs.getBoolean("db_reset_zero_v5", false)
         if (!dbResetZero) {
             viewModelScope.launch {
                 repository.deleteAll()
-                prefs.edit().putBoolean("db_reset_zero_v4", true).apply()
+                repository.clearBajarItemsForUser("local_guest")
+                repository.clearDebtsForUser("local_guest")
+                prefs.edit().putBoolean("db_reset_zero_v5", true).apply()
+                
+                // Trigger an initial empty backup
+                autoBackupData()
             }
         }
     }
 
-    // Active userId depends on login state (Sharing Eagerly to prevent delays)
-    val activeUserId: StateFlow<String> = _currentUser
-        .map { it ?: "local_guest" }
+    // Active userId is always guest
+    val activeUserId: StateFlow<String> = flowOf("local_guest")
         .stateIn(viewModelScope, SharingStarted.Eagerly, "local_guest")
 
-    // Retrieve transactions reactively based on active user
+    // Retrieve transactions reactively
     @OptIn(ExperimentalCoroutinesApi::class)
     val transactions: StateFlow<List<Transaction>> = activeUserId
         .flatMapLatest { userId ->
@@ -85,7 +95,7 @@ class FinanceViewModel(application: Application) : AndroidViewModel(application)
             initialValue = emptyList()
         )
 
-    // Retrieve Bajar items reactively based on active user
+    // Retrieve Bajar items reactively
     @OptIn(ExperimentalCoroutinesApi::class)
     val bajarItems: StateFlow<List<com.example.data.BajarItem>> = activeUserId
         .flatMapLatest { userId ->
@@ -97,7 +107,7 @@ class FinanceViewModel(application: Application) : AndroidViewModel(application)
             initialValue = emptyList()
         )
 
-    // Retrieve Debt items reactively based on active user
+    // Retrieve Debt items reactively
     @OptIn(ExperimentalCoroutinesApi::class)
     val debtRecords: StateFlow<List<com.example.data.DebtRecord>> = activeUserId
         .flatMapLatest { userId ->
@@ -109,7 +119,7 @@ class FinanceViewModel(application: Application) : AndroidViewModel(application)
             initialValue = emptyList()
         )
 
-    // Calculate income, expense and balance stats dynamically
+    // Calculate stats dynamically
     val stats: StateFlow<Stats> = transactions
         .map { transactionList ->
             val income = transactionList.filter { it.type == "INCOME" }.sumOf { it.amount }
@@ -150,74 +160,51 @@ class FinanceViewModel(application: Application) : AndroidViewModel(application)
         _uiTab.value = tab
     }
 
-    // Google Sign-In action with user data migration and session persistence
+    // Google Sign-In stubs for compatibility
     fun loginWithGoogle(email: String) {
-        viewModelScope.launch {
-            // 1. Migrate any guest data to this email first so user transactions don't disappear after logging in
-            val guestTransactions = repository.getAllTransactions("local_guest").first()
-            if (guestTransactions.isNotEmpty()) {
-                guestTransactions.forEach { transaction ->
-                    val migrated = transaction.copy(id = 0, userId = email) // id=0 to auto-generate a new ID in the database and avoid collision
-                    repository.insert(migrated)
-                }
-                repository.clearAllForUser("local_guest")
-            }
-
-            // 2. Set user session state and persist session to SharedPreferences
-            _currentUser.value = email
-            prefs.edit().putString("selected_user", email).apply()
-
-            // 3. Do not seed any sample data, keeping default data at 0
-            prefs.edit().putBoolean("seeded_user_$email", true).apply()
-
-            // 4. Automatically retrieve existing backup from Google Drive on Sign in!
-            viewModelScope.launch {
-                val restored = googleDriveManager.restoreData(email)
-                if (restored.isNotEmpty()) {
-                    repository.clearAllForUser(email)
-                    restored.forEach { repository.insert(it) }
-                }
-            }
-        }
+        // Disabled
     }
 
     fun logout() {
-        viewModelScope.launch {
-            _currentUser.value = null
-            prefs.edit().remove("selected_user").apply()
-            googleDriveManager.clearState()
-        }
+        // Disabled
     }
 
-    fun addTransaction(amount: Double, categoryResId: Int, type: String, note: String, dateLong: Long) {
+    // Core write operations trigger an automatic backup
+    fun addTransaction(amount: Double, category: String, type: String, note: String, dateLong: Long) {
         viewModelScope.launch {
             val transaction = Transaction(
                 amount = amount,
-                category = categoryResId.toString(), // Store as string resource reference for proper i18n
+                category = category,
                 type = type,
                 dateLong = dateLong,
                 note = note,
-                userId = activeUserId.value
+                userId = "local_guest"
             )
             repository.insert(transaction)
+            autoBackupData()
+        }
+    }
 
-            // Auto-sync addition to Google Drive if active user is logged in
-            if (_autoSyncOnChanges.value && activeUserId.value != "local_guest") {
-                val currentList = repository.getAllTransactions(activeUserId.value).first()
-                googleDriveManager.backupData(activeUserId.value, currentList)
-            }
+    fun updateTransaction(id: Long, amount: Double, category: String, type: String, note: String, dateLong: Long) {
+        viewModelScope.launch {
+            val transaction = Transaction(
+                id = id,
+                amount = amount,
+                category = category,
+                type = type,
+                dateLong = dateLong,
+                note = note,
+                userId = "local_guest"
+            )
+            repository.insert(transaction)
+            autoBackupData()
         }
     }
 
     fun deleteTransaction(transaction: Transaction) {
         viewModelScope.launch {
             repository.delete(transaction)
-
-            // Auto-sync deletion to Google Drive if active user is logged in
-            if (_autoSyncOnChanges.value && activeUserId.value != "local_guest") {
-                val currentList = repository.getAllTransactions(activeUserId.value).first()
-                googleDriveManager.backupData(activeUserId.value, currentList)
-            }
+            autoBackupData()
         }
     }
 
@@ -227,9 +214,10 @@ class FinanceViewModel(application: Application) : AndroidViewModel(application)
                 name = name,
                 quantity = quantity,
                 isCompleted = false,
-                userId = activeUserId.value
+                userId = "local_guest"
             )
             repository.insertBajarItem(item)
+            autoBackupData()
         }
     }
 
@@ -237,6 +225,7 @@ class FinanceViewModel(application: Application) : AndroidViewModel(application)
         viewModelScope.launch {
             val updated = item.copy(isCompleted = isCompleted)
             repository.updateBajarItem(updated)
+            autoBackupData()
         }
     }
 
@@ -254,28 +243,21 @@ class FinanceViewModel(application: Application) : AndroidViewModel(application)
                 type = "EXPENSE",
                 dateLong = System.currentTimeMillis(),
                 note = noteText,
-                userId = activeUserId.value
+                userId = "local_guest"
             )
             repository.insert(transaction)
-
-            // Auto-delete completed items from the list since we just converted them to expense
-            repository.deleteCompletedBajarItems(activeUserId.value)
-
-            // Auto-sync
-            if (_autoSyncOnChanges.value && activeUserId.value != "local_guest") {
-                val currentList = repository.getAllTransactions(activeUserId.value).first()
-                googleDriveManager.backupData(activeUserId.value, currentList)
-            }
+            repository.deleteCompletedBajarItems("local_guest")
+            autoBackupData()
         }
     }
 
     fun deleteBajarItem(item: com.example.data.BajarItem) {
         viewModelScope.launch {
             repository.deleteBajarItem(item)
+            autoBackupData()
         }
     }
 
-    // Debt Records management
     fun addDebtRecord(personName: String, amount: Double, direction: String, note: String) {
         viewModelScope.launch {
             val record = com.example.data.DebtRecord(
@@ -285,15 +267,17 @@ class FinanceViewModel(application: Application) : AndroidViewModel(application)
                 direction = direction,
                 isSettled = false,
                 note = note,
-                userId = activeUserId.value
+                userId = "local_guest"
             )
             repository.insertDebt(record)
+            autoBackupData()
         }
     }
 
     fun deleteDebtRecord(record: com.example.data.DebtRecord) {
         viewModelScope.launch {
             repository.deleteDebt(record)
+            autoBackupData()
         }
     }
 
@@ -316,99 +300,201 @@ class FinanceViewModel(application: Application) : AndroidViewModel(application)
                 type = transType,
                 dateLong = System.currentTimeMillis(),
                 note = noteText,
-                userId = activeUserId.value
+                userId = "local_guest"
             )
             repository.insert(transaction)
+            autoBackupData()
+        }
+    }
 
-            // Auto-sync
-            if (_autoSyncOnChanges.value && activeUserId.value != "local_guest") {
-                val currentList = repository.getAllTransactions(activeUserId.value).first()
-                googleDriveManager.backupData(activeUserId.value, currentList)
+    // Google sync compatibility stubs
+    fun backupToDrive() {}
+    fun restoreFromDrive() {}
+    fun toggleAutoSync() {}
+    fun getDriveLastSyncTime(): String = "Offline Active"
+    fun getDriveOnlineCount(): Int = 0
+    fun clearDriveSyncState() {}
+    fun seedGuestDataIfNeeded() {}
+
+    // Fully Local Serialization Helpers
+    fun serializeFullBackup(
+        transactions: List<Transaction>,
+        bajarItems: List<com.example.data.BajarItem>,
+        debtRecords: List<com.example.data.DebtRecord>
+    ): String {
+        val rootObj = JSONObject()
+
+        // 1. Transactions
+        val transArray = JSONArray()
+        for (t in transactions) {
+            val obj = JSONObject().apply {
+                put("amount", t.amount)
+                put("category", t.category)
+                put("type", t.type)
+                put("dateLong", t.dateLong)
+                put("note", t.note)
+                put("userId", t.userId)
+            }
+            transArray.put(obj)
+        }
+        rootObj.put("transactions", transArray)
+
+        // 2. Bajar items
+        val bajarArray = JSONArray()
+        for (b in bajarItems) {
+            val obj = JSONObject().apply {
+                put("name", b.name)
+                put("quantity", b.quantity)
+                put("isCompleted", b.isCompleted)
+                put("userId", b.userId)
+            }
+            bajarArray.put(obj)
+        }
+        rootObj.put("bajar_items", bajarArray)
+
+        // 3. Debts
+        val debtArray = JSONArray()
+        for (d in debtRecords) {
+            val obj = JSONObject().apply {
+                put("personName", d.personName)
+                put("amount", d.amount)
+                put("timestamp", d.timestamp)
+                put("direction", d.direction)
+                put("isSettled", d.isSettled)
+                put("note", d.note)
+                put("userId", d.userId)
+            }
+            debtArray.put(obj)
+        }
+        rootObj.put("debt_records", debtArray)
+
+        return rootObj.toString(2)
+    }
+
+    // Automatic Backup Trigger
+    fun autoBackupData() {
+        viewModelScope.launch {
+            try {
+                val transList = repository.getAllTransactions("local_guest").first()
+                val bajarList = repository.getAllBajarItems("local_guest").first()
+                val debtsList = repository.getAllDebts("local_guest").first()
+
+                val jsonContent = serializeFullBackup(transList, bajarList, debtsList)
+                saveBackupToDownloadsFolder(jsonContent)
+            } catch (e: Exception) {
+                android.util.Log.e("FinanceViewModel", "Error fetching DB for autoBackup: ${e.message}")
             }
         }
     }
 
-    // Google Drive interactive methods
-    fun backupToDrive() {
-        viewModelScope.launch {
-            val currentList = repository.getAllTransactions(activeUserId.value).first()
-            googleDriveManager.backupData(activeUserId.value, currentList)
-        }
-    }
+    // Writes backup JSON to cache AND public Downloads folder via MediaStore
+    private fun saveBackupToDownloadsFolder(jsonString: String) {
+        val context = getApplication<Application>()
 
-    fun restoreFromDrive() {
-        viewModelScope.launch {
-            val restored = googleDriveManager.restoreData(activeUserId.value)
-            if (restored.isNotEmpty()) {
-                repository.clearAllForUser(activeUserId.value)
-                restored.forEach { repository.insert(it) }
+        // 1. Save to internal FilesDir as redundant fallback cache
+        try {
+            val file = File(context.filesDir, "personal_finance_backup.json")
+            file.writeText(jsonString, Charsets.UTF_8)
+        } catch (e: Exception) {
+            android.util.Log.e("FinanceViewModel", "Cache backup failed: ${e.message}")
+        }
+
+        // 2. Save/Overwrite file in public Downloads folder using MediaStore API beautifully (no permissions needed on modern Q+)
+        try {
+            val resolver = context.contentResolver
+            val fileName = "personal_finance_backup.json"
+            val collectionUri = if (Build.VERSION.SDK_INT >= Build.VERSION_CODES.Q) {
+                MediaStore.Downloads.EXTERNAL_CONTENT_URI
+            } else {
+                MediaStore.Files.getContentUri("external")
+            }
+
+            // Explicitly query MediaStore to find any existing file with this name
+            val projection = arrayOf(MediaStore.MediaColumns._ID)
+            val querySelection = if (Build.VERSION.SDK_INT >= Build.VERSION_CODES.Q) {
+                "${MediaStore.MediaColumns.DISPLAY_NAME} = ? AND ${MediaStore.MediaColumns.RELATIVE_PATH} LIKE ?"
+            } else {
+                "${MediaStore.MediaColumns.DISPLAY_NAME} = ?"
+            }
+            val selectionArgs = if (Build.VERSION.SDK_INT >= Build.VERSION_CODES.Q) {
+                arrayOf(fileName, "%Download%")
+            } else {
+                arrayOf(fileName)
+            }
+
+            try {
+                resolver.query(collectionUri, projection, querySelection, selectionArgs, null)?.use { cursor ->
+                    while (cursor.moveToNext()) {
+                        val idCol = cursor.getColumnIndexOrThrow(MediaStore.MediaColumns._ID)
+                        val id = cursor.getLong(idCol)
+                        val existingUri = ContentUris.withAppendedId(collectionUri, id)
+                        resolver.delete(existingUri, null, null)
+                    }
+                }
+            } catch (ee: Exception) {
+                android.util.Log.e("FinanceViewModel", "Error deleting old instances prior to backup: ${ee.message}")
+            }
+
+            val values = ContentValues().apply {
+                put(MediaStore.MediaColumns.DISPLAY_NAME, fileName)
+                put(MediaStore.MediaColumns.MIME_TYPE, "application/json")
+                if (Build.VERSION.SDK_INT >= Build.VERSION_CODES.Q) {
+                    put(MediaStore.MediaColumns.RELATIVE_PATH, Environment.DIRECTORY_DOWNLOADS)
+                    put(MediaStore.MediaColumns.IS_PENDING, 1)
+                }
+            }
+
+            val fileUri = resolver.insert(collectionUri, values)
+            if (fileUri != null) {
+                resolver.openOutputStream(fileUri)?.use { output ->
+                    output.write(jsonString.toByteArray(Charsets.UTF_8))
+                }
+                if (Build.VERSION.SDK_INT >= Build.VERSION_CODES.Q) {
+                    values.clear()
+                    values.put(MediaStore.MediaColumns.IS_PENDING, 0)
+                    resolver.update(fileUri, values, null, null)
+                }
+                android.util.Log.i("FinanceViewModel", "Backup written to public Downloads folder successfully.")
+            }
+        } catch (e: Exception) {
+            android.util.Log.e("FinanceViewModel", "MediaStore public back up failed, using direct File API: ${e.message}")
+            try {
+                val downloadsFolder = Environment.getExternalStoragePublicDirectory(Environment.DIRECTORY_DOWNLOADS)
+                if (!downloadsFolder.exists()) downloadsFolder.mkdirs()
+                val file = File(downloadsFolder, "personal_finance_backup.json")
+                file.writeText(jsonString, Charsets.UTF_8)
+            } catch (ioEx: Exception) {
+                android.util.Log.e("FinanceViewModel", "Direct File fallback back up also failed: ${ioEx.message}")
             }
         }
     }
 
-    fun toggleAutoSync() {
-        val next = !_autoSyncOnChanges.value
-        _autoSyncOnChanges.value = next
-        prefs.edit().putBoolean("auto_sync_drive", next).apply()
-    }
-
-    fun getDriveLastSyncTime(): String {
-        return googleDriveManager.getLastSyncTime(activeUserId.value)
-    }
-
-    fun getDriveOnlineCount(): Int {
-        return googleDriveManager.getOnlineRecordCount(activeUserId.value)
-    }
-
-    fun clearDriveSyncState() {
-        googleDriveManager.clearState()
-    }
-
-    private suspend fun seedSampleDataForUser(userId: String) {
-        // Disabled to keep default data 0
-    }
-
-    fun seedGuestDataIfNeeded() {
-        viewModelScope.launch {
-            prefs.edit().putBoolean("seeded_guest", true).apply()
-        }
-    }
-
-    // Export current transactions to selected URI (Local file)
+    // Direct manual file triggers used by old helper dialogs (keeps everything backwards compatible and working!)
     fun exportBackupToFile(context: Context, uri: Uri) {
         viewModelScope.launch {
             try {
-                val currentList = repository.getAllTransactions(activeUserId.value).first()
-                val jsonStr = googleDriveManager.serializeTransactions(currentList)
+                val transList = repository.getAllTransactions("local_guest").first()
+                val bajarList = repository.getAllBajarItems("local_guest").first()
+                val debtsList = repository.getAllDebts("local_guest").first()
+                val json = serializeFullBackup(transList, bajarList, debtsList)
+
                 context.contentResolver.openOutputStream(uri)?.use { outputStream ->
-                    OutputStreamWriter(outputStream).use { writer ->
-                        writer.write(jsonStr)
-                    }
+                    outputStream.write(json.toByteArray(Charsets.UTF_8))
                 }
-                // Save this json local copy also to the sandbox "google_drive_prefs" SharedPreferences
-                // so if Google Drive sync restore is triggered, it has the backup payload!
-                val drivePrefs = context.getSharedPreferences("google_drive_prefs", Context.MODE_PRIVATE)
-                val nowFormatted = java.text.SimpleDateFormat("dd MMM yyyy, hh:mm a", java.util.Locale.getDefault()).format(java.util.Date())
-                drivePrefs.edit().apply {
-                    putString("cloud_store_${activeUserId.value}", jsonStr)
-                    putInt("count_${activeUserId.value}", currentList.size)
-                    putString("time_${activeUserId.value}", nowFormatted)
-                    apply()
-                }
+                Toast.makeText(context, "Export success!", Toast.LENGTH_SHORT).show()
             } catch (e: Exception) {
-                android.util.Log.e("FinanceViewModel", "Failed to export backup file: ${e.message}")
+                android.util.Log.e("FinanceViewModel", "Manual exportBackupToFile fail: ${e.message}")
             }
         }
     }
 
-    // Import transactions from selected URI (Local file)
-    fun importBackupFromFile(context: Context, uri: Uri, onSuccess: () -> Unit = {}) {
+    fun importBackupFromFile(context: Context, uri: Uri) {
         viewModelScope.launch {
             try {
-                val contentBuilder = StringBuilder()
+                val contentBuilder = java.lang.StringBuilder()
                 context.contentResolver.openInputStream(uri)?.use { inputStream ->
-                    BufferedReader(InputStreamReader(inputStream)).use { reader ->
-                        var line: String? = reader.readLine()
+                    java.io.BufferedReader(java.io.InputStreamReader(inputStream, java.nio.charset.StandardCharsets.UTF_8)).use { reader ->
+                        var line = reader.readLine()
                         while (line != null) {
                             contentBuilder.append(line)
                             line = reader.readLine()
@@ -416,24 +502,104 @@ class FinanceViewModel(application: Application) : AndroidViewModel(application)
                     }
                 }
                 val jsonStr = contentBuilder.toString()
-                val restoredList = googleDriveManager.deserializeTransactions(jsonStr, activeUserId.value)
-                if (restoredList.isNotEmpty()) {
-                    repository.clearAllForUser(activeUserId.value)
-                    restoredList.forEach { repository.insert(it) }
-                    
-                    // Update our simulated "google_drive_prefs" SharedPreferences too to sync values
-                    val drivePrefs = context.getSharedPreferences("google_drive_prefs", Context.MODE_PRIVATE)
-                    val nowFormatted = java.text.SimpleDateFormat("dd MMM yyyy, hh:mm a", java.util.Locale.getDefault()).format(java.util.Date())
-                    drivePrefs.edit().apply {
-                        putString("cloud_store_${activeUserId.value}", jsonStr)
-                        putInt("count_${activeUserId.value}", restoredList.size)
-                        putString("time_${activeUserId.value}", nowFormatted)
-                        apply()
+                importBackupContent(
+                    jsonStr = jsonStr,
+                    onSuccess = {
+                        Toast.makeText(context, "Backup restored!", Toast.LENGTH_SHORT).show()
+                    },
+                    onError = { err ->
+                        Toast.makeText(context, "Import failed: $err", Toast.LENGTH_LONG).show()
                     }
-                    onSuccess()
-                }
+                )
             } catch (e: Exception) {
-                android.util.Log.e("FinanceViewModel", "Failed to import backup file: ${e.message}")
+                android.util.Log.e("FinanceViewModel", "Manual importBackupFromFile fail: ${e.message}")
+            }
+        }
+    }
+
+    // Fully Local RESTORE/IMPORT trigger (manual)
+    fun importBackupContent(
+        jsonStr: String,
+        onSuccess: () -> Unit,
+        onError: (String) -> Unit
+    ) {
+        viewModelScope.launch {
+            try {
+                val rootObj = JSONObject(jsonStr)
+
+                val transactionsList = mutableListOf<Transaction>()
+                if (rootObj.has("transactions")) {
+                    val arr = rootObj.getJSONArray("transactions")
+                    for (i in 0 until arr.length()) {
+                        val json = arr.getJSONObject(i)
+                        transactionsList.add(
+                            Transaction(
+                                id = 0,
+                                amount = json.getDouble("amount"),
+                                category = json.getString("category"),
+                                type = json.getString("type"),
+                                dateLong = json.getLong("dateLong"),
+                                note = json.optString("note", ""),
+                                userId = "local_guest"
+                            )
+                        )
+                    }
+                }
+
+                val bajarList = mutableListOf<com.example.data.BajarItem>()
+                if (rootObj.has("bajar_items")) {
+                    val arr = rootObj.getJSONArray("bajar_items")
+                    for (i in 0 until arr.length()) {
+                        val json = arr.getJSONObject(i)
+                        bajarList.add(
+                            com.example.data.BajarItem(
+                                id = 0,
+                                name = json.getString("name"),
+                                quantity = json.getString("quantity"),
+                                isCompleted = json.optBoolean("isCompleted", false),
+                                userId = "local_guest"
+                            )
+                        )
+                    }
+                }
+
+                val debtList = mutableListOf<com.example.data.DebtRecord>()
+                if (rootObj.has("debt_records")) {
+                    val arr = rootObj.getJSONArray("debt_records")
+                    for (i in 0 until arr.length()) {
+                        val json = arr.getJSONObject(i)
+                        debtList.add(
+                            com.example.data.DebtRecord(
+                                id = 0,
+                                personName = json.getString("personName"),
+                                amount = json.getDouble("amount"),
+                                timestamp = json.getLong("timestamp"),
+                                direction = json.getString("direction"),
+                                isSettled = json.optBoolean("isSettled", false),
+                                note = json.optString("note", ""),
+                                userId = "local_guest"
+                            )
+                        )
+                    }
+                }
+
+                // 1. Clear existing database for the local guest user to prevent double count/merging clashes
+                repository.clearAllForUser("local_guest")
+                repository.clearBajarItemsForUser("local_guest")
+                repository.clearDebtsForUser("local_guest")
+
+                // 2. Insert all deserialized items safely
+                transactionsList.forEach { repository.insert(it) }
+                bajarList.forEach { repository.insertBajarItem(it) }
+                debtList.forEach { repository.insertDebt(it) }
+
+                onSuccess()
+                
+                // Re-trigger a fresh backup of the imported contents to sync state
+                autoBackupData()
+            } catch (e: Exception) {
+                android.util.Log.e("FinanceViewModel", "Backup restoration fail: ${e.message}")
+                onError(e.message ?: "Invalid file structure")
             }
         }
     }

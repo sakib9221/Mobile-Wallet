@@ -64,7 +64,15 @@ fun MyApplicationTheme(
     }
 
     val resolvedTheme = if (selectedTheme == "liquid_glass") "system" else selectedTheme
-    androidx.compose.runtime.CompositionLocalProvider(LocalThemeState provides resolvedTheme) {
+    val currentDensity = androidx.compose.ui.platform.LocalDensity.current
+    val customDensity = androidx.compose.ui.unit.Density(
+        density = currentDensity.density,
+        fontScale = currentDensity.fontScale.coerceAtMost(1.15f)
+    )
+    androidx.compose.runtime.CompositionLocalProvider(
+        LocalThemeState provides resolvedTheme,
+        androidx.compose.ui.platform.LocalDensity provides customDensity
+    ) {
         MaterialTheme(
             colorScheme = colorScheme,
             typography = Typography,
