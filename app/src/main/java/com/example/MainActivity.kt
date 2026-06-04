@@ -27,12 +27,17 @@ class MainActivity : ComponentActivity() {
         setContent {
             val viewModel: FinanceViewModel = viewModel()
             val themeState by viewModel.selectedTheme.collectAsStateWithLifecycle()
+            val selectedLanguage by viewModel.selectedLanguage.collectAsStateWithLifecycle()
             val darkTheme = when (themeState) {
                 "light" -> false
                 "dark" -> true
                 else -> isSystemInDarkTheme()
             }
-            MyApplicationTheme(selectedTheme = themeState, darkTheme = darkTheme) {
+            MyApplicationTheme(
+                selectedTheme = themeState,
+                darkTheme = darkTheme,
+                selectedLanguage = selectedLanguage
+            ) {
                 FinanceDashboardScreen(
                     viewModel = viewModel,
                     modifier = Modifier.fillMaxSize()

@@ -53,6 +53,7 @@ val LocalThemeState = androidx.compose.runtime.staticCompositionLocalOf { "syste
 fun MyApplicationTheme(
     selectedTheme: String = "system",
     darkTheme: Boolean = isSystemInDarkTheme(),
+    selectedLanguage: String = "en",
     // Set default dynamicColor to false to maintain cohesive brand identity on all devices
     dynamicColor: Boolean = false,
     content: @Composable () -> Unit,
@@ -65,9 +66,18 @@ fun MyApplicationTheme(
 
     val resolvedTheme = if (selectedTheme == "liquid_glass") "system" else selectedTheme
     val currentDensity = androidx.compose.ui.platform.LocalDensity.current
+    
+    // Choose fontScale cap dynamically. Bengali is physically taller and wider, so we scale and cap scales
+    // protectively to match English proportions beautifully and prevent layout clutter on large displays or languages.
+    val baseFontScale = currentDensity.fontScale
+    val customFontScale = if (selectedLanguage == "bn") {
+        (baseFontScale * 0.84f).coerceAtMost(0.84f)
+    } else {
+        baseFontScale.coerceAtMost(1.15f)
+    }
     val customDensity = androidx.compose.ui.unit.Density(
         density = currentDensity.density,
-        fontScale = currentDensity.fontScale.coerceAtMost(1.15f)
+        fontScale = customFontScale
     )
     androidx.compose.runtime.CompositionLocalProvider(
         LocalThemeState provides resolvedTheme,
