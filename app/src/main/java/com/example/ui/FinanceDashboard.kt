@@ -86,20 +86,13 @@ fun Modifier.android16Clickable(
     val interactionSource = remember { MutableInteractionSource() }
     val isPressed by interactionSource.collectIsPressedAsState()
 
-    val scale by animateFloatAsState(
-        targetValue = if (isPressed) 0.90f else 1.0f,
+    val pressProgress by animateFloatAsState(
+        targetValue = if (isPressed) 1f else 0f,
         animationSpec = spring(
-            dampingRatio = 0.45f,
-            stiffness = Spring.StiffnessMedium
+            dampingRatio = 0.5f,
+            stiffness = Spring.StiffnessMediumLow
         ),
-        label = "click_scale"
-    )
-    val alpha by animateFloatAsState(
-        targetValue = if (isPressed) 0.82f else 1.0f,
-        animationSpec = spring(
-            stiffness = Spring.StiffnessHigh
-        ),
-        label = "click_alpha"
+        label = "press_progress"
     )
 
     val contentModifier = if (shape != null) {
@@ -114,9 +107,10 @@ fun Modifier.android16Clickable(
 
     contentModifier
         .graphicsLayer {
-            scaleX = scale
-            scaleY = scale
-            this.alpha = alpha
+            val s = 1f - (pressProgress * 0.10f)
+            scaleX = s
+            scaleY = s
+            this.alpha = 1f - (pressProgress * 0.18f)
         }
         .clickable(
             interactionSource = interactionSource,
@@ -1382,7 +1376,11 @@ fun TransactionsTabContent(
             contentPadding = PaddingValues(bottom = 84.dp, top = 4.dp),
             verticalArrangement = Arrangement.spacedBy(8.dp)
         ) {
-            items(transactions, key = { it.id }) { transaction ->
+            items(
+                items = transactions,
+                key = { it.id },
+                contentType = { "transaction_item" }
+            ) { transaction ->
                 TransactionListItem(
                     transaction = transaction,
                     lang = currentLanguage,
@@ -4038,7 +4036,7 @@ fun AboutAppDialog(
                                 color = MaterialTheme.colorScheme.onSurface
                             )
                             Text(
-                                text = "Mobile Wallet v1.4.0",
+                                text = "Mobile Wallet v2.0",
                                 style = MaterialTheme.typography.labelSmall,
                                 color = MaterialTheme.colorScheme.onSurfaceVariant.copy(alpha = 0.7f),
                                 fontWeight = FontWeight.Bold
