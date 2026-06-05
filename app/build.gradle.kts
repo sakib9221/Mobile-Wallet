@@ -14,11 +14,18 @@ android {
     applicationId = "com.aistudio.financetracker.vqyhm"
     minSdk = 24
     targetSdk = 36
-    versionCode = 1
-    versionName = "1.0"
+    versionCode = 1.5
+    versionName = "1.5.0"
 
     testInstrumentationRunner = "androidx.test.runner.AndroidJUnitRunner"
   }
+
+  applicationVariants.all { variant ->
+        variant.outputs.all {
+            outputFileName = "Mobile.Wallet.v1.5.0.apk"
+        }
+    }
+}
 
   signingConfigs {
     create("release") {
