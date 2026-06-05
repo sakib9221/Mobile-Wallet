@@ -399,7 +399,7 @@ class FinanceViewModel(application: Application) : AndroidViewModel(application)
             android.util.Log.e("FinanceViewModel", "Cache backup failed: ${e.message}")
         }
 
-        // 2. Save/Overwrite file in public Downloads folder using MediaStore API beautifully (no permissions needed on modern Q+)
+        // 2. Save/Overwrite file in public Downloads folder
         try {
             val resolver = context.contentResolver
             val fileName = "personal_finance_backup.json"
@@ -409,7 +409,43 @@ class FinanceViewModel(application: Application) : AndroidViewModel(application)
                 MediaStore.Files.getContentUri("external")
             }
 
-            // Explicitly query MediaStore to find any existing file with this name
+            // Let's first clean up any previous duplicate/suffixed backup files, e.g., personal_finance_backup (1).json, (2).json etc,
+            // to keep the folder clean and prevent digital clutter as requested.
+            try {
+                val cleanProjection = arrayOf(MediaStore.MediaColumns._ID, MediaStore.MediaColumns.DISPLAY_NAME)
+                val cleanSelection = if (Build.VERSION.SDK_INT >= Build.VERSION_CODES.Q) {
+                    "${MediaStore.MediaColumns.DISPLAY_NAME} LIKE ? AND ${MediaStore.MediaColumns.RELATIVE_PATH} LIKE ?"
+                } else {
+                    "${MediaStore.MediaColumns.DISPLAY_NAME} LIKE ?"
+                }
+                val cleanSelectionArgs = if (Build.VERSION.SDK_INT >= Build.VERSION_CODES.Q) {
+                    arrayOf("personal_finance_backup%.json", "%Download%")
+                } else {
+                    arrayOf("personal_finance_backup%.json")
+                }
+                resolver.query(collectionUri, cleanProjection, cleanSelection, cleanSelectionArgs, null)?.use { cursor ->
+                    while (cursor.moveToNext()) {
+                        val idCol = cursor.getColumnIndexOrThrow(MediaStore.MediaColumns._ID)
+                        val nameCol = cursor.getColumnIndexOrThrow(MediaStore.MediaColumns.DISPLAY_NAME)
+                        val id = cursor.getLong(idCol)
+                        val name = cursor.getString(nameCol) ?: ""
+                        // Delete if it is a duplicate (contains parenthesis or suffix)
+                        if (name != fileName) {
+                            val dupUri = ContentUris.withAppendedId(collectionUri, id)
+                            try {
+                                resolver.delete(dupUri, null, null)
+                            } catch (e: Exception) {
+                                // Ignore delete failures for non-owned files
+                            }
+                        }
+                    }
+                }
+            } catch (e: Exception) {
+                android.util.Log.e("FinanceViewModel", "Failed cleaning duplicate backups: ${e.message}")
+            }
+
+            // Now, let's search for the main "personal_finance_backup.json" file.
+            var existingUri: Uri? = null
             val projection = arrayOf(MediaStore.MediaColumns._ID)
             val querySelection = if (Build.VERSION.SDK_INT >= Build.VERSION_CODES.Q) {
                 "${MediaStore.MediaColumns.DISPLAY_NAME} = ? AND ${MediaStore.MediaColumns.RELATIVE_PATH} LIKE ?"
@@ -424,37 +460,58 @@ class FinanceViewModel(application: Application) : AndroidViewModel(application)
 
             try {
                 resolver.query(collectionUri, projection, querySelection, selectionArgs, null)?.use { cursor ->
-                    while (cursor.moveToNext()) {
+                    if (cursor.moveToFirst()) {
                         val idCol = cursor.getColumnIndexOrThrow(MediaStore.MediaColumns._ID)
                         val id = cursor.getLong(idCol)
-                        val existingUri = ContentUris.withAppendedId(collectionUri, id)
-                        resolver.delete(existingUri, null, null)
+                        existingUri = ContentUris.withAppendedId(collectionUri, id)
                     }
                 }
             } catch (ee: Exception) {
-                android.util.Log.e("FinanceViewModel", "Error deleting old instances prior to backup: ${ee.message}")
+                android.util.Log.e("FinanceViewModel", "Error querying main backup: ${ee.message}")
             }
 
-            val values = ContentValues().apply {
-                put(MediaStore.MediaColumns.DISPLAY_NAME, fileName)
-                put(MediaStore.MediaColumns.MIME_TYPE, "application/json")
-                if (Build.VERSION.SDK_INT >= Build.VERSION_CODES.Q) {
-                    put(MediaStore.MediaColumns.RELATIVE_PATH, Environment.DIRECTORY_DOWNLOADS)
-                    put(MediaStore.MediaColumns.IS_PENDING, 1)
+            var writeSuccessful = false
+            if (existingUri != null) {
+                try {
+                    // Try to open and overwrite in place. Using "rwt" opens/truncates existing file.
+                    resolver.openOutputStream(existingUri!!, "rwt")?.use { output ->
+                        output.write(jsonString.toByteArray(Charsets.UTF_8))
+                        writeSuccessful = true
+                    }
+                    android.util.Log.i("FinanceViewModel", "Overwrote existing personal_finance_backup.json in place successfully.")
+                } catch (e: Exception) {
+                    android.util.Log.e("FinanceViewModel", "Failed to overwrite main backup in place, attempting delete: ${e.message}")
+                    try {
+                        resolver.delete(existingUri!!, null, null)
+                    } catch (delEx: Exception) {
+                        android.util.Log.e("FinanceViewModel", "Failed to delete main backup: ${delEx.message}")
+                    }
                 }
             }
 
-            val fileUri = resolver.insert(collectionUri, values)
-            if (fileUri != null) {
-                resolver.openOutputStream(fileUri)?.use { output ->
-                    output.write(jsonString.toByteArray(Charsets.UTF_8))
+            // If we couldn't overwrite, we insert a new record
+            if (!writeSuccessful) {
+                val values = ContentValues().apply {
+                    put(MediaStore.MediaColumns.DISPLAY_NAME, fileName)
+                    put(MediaStore.MediaColumns.MIME_TYPE, "application/json")
+                    if (Build.VERSION.SDK_INT >= Build.VERSION_CODES.Q) {
+                        put(MediaStore.MediaColumns.RELATIVE_PATH, Environment.DIRECTORY_DOWNLOADS)
+                        put(MediaStore.MediaColumns.IS_PENDING, 1)
+                    }
                 }
-                if (Build.VERSION.SDK_INT >= Build.VERSION_CODES.Q) {
-                    values.clear()
-                    values.put(MediaStore.MediaColumns.IS_PENDING, 0)
-                    resolver.update(fileUri, values, null, null)
+
+                val fileUri = resolver.insert(collectionUri, values)
+                if (fileUri != null) {
+                    resolver.openOutputStream(fileUri)?.use { output ->
+                        output.write(jsonString.toByteArray(Charsets.UTF_8))
+                    }
+                    if (Build.VERSION.SDK_INT >= Build.VERSION_CODES.Q) {
+                        values.clear()
+                        values.put(MediaStore.MediaColumns.IS_PENDING, 0)
+                        resolver.update(fileUri, values, null, null)
+                    }
+                    android.util.Log.i("FinanceViewModel", "New personal_finance_backup.json written to Downloads successfully.")
                 }
-                android.util.Log.i("FinanceViewModel", "Backup written to public Downloads folder successfully.")
             }
         } catch (e: Exception) {
             android.util.Log.e("FinanceViewModel", "MediaStore public back up failed, using direct File API: ${e.message}")

@@ -51,6 +51,8 @@ import androidx.lifecycle.compose.collectAsStateWithLifecycle
 import com.example.R
 import com.example.data.Transaction
 import com.example.ui.theme.LocalThemeState
+import kotlinx.coroutines.launch
+import kotlinx.coroutines.withContext
 import java.text.SimpleDateFormat
 import java.util.*
 import android.app.Activity
@@ -243,6 +245,8 @@ fun FinanceDashboardScreen(
     var showSettingsDialog by remember { mutableStateOf(false) }
     var showBajarListDialog by remember { mutableStateOf(false) }
     var showDebtListDialog by remember { mutableStateOf(false) }
+    var launchUpdateInfo by remember { mutableStateOf<AppUpdateInfo?>(null) }
+    var showReportPreviewDialog by remember { mutableStateOf(false) }
     val bItems by viewModel.bajarItems.collectAsStateWithLifecycle()
     val debtRecords by viewModel.debtRecords.collectAsStateWithLifecycle()
 
@@ -304,9 +308,14 @@ fun FinanceDashboardScreen(
         }
     }
 
-    // Ensure initial guest data are seeded for preview/starter
+    // Ensure initial guest data are seeded for preview/starter and check for updates
     LaunchedEffect(Unit) {
         viewModel.seedGuestDataIfNeeded()
+        checkForUpdatesAsync(context) { info, _ ->
+            if (info != null && info.hasUpdate) {
+                launchUpdateInfo = info
+            }
+        }
     }
 
     MeshBackground {
@@ -542,7 +551,7 @@ fun FinanceDashboardScreen(
                                     DropdownItem(
                                         icon = Icons.Default.People,
                                         iconBg = Color(0xFFF59E0B),
-                                        title = if (currentLanguage == "bn") "দেন-পাওনা / লোন" else "Debts & Loans",
+                                        title = if (currentLanguage == "bn") "দেনা-পাওনা / লোন" else "Debts & Loans",
                                         desc = if (currentLanguage == "bn") "কারো থেকে ঋণ গ্রহণ বা প্রদানের হিসাব" else "Track active loans or lendings",
                                         isDark = isDark,
                                         onClick = {
@@ -617,21 +626,7 @@ fun FinanceDashboardScreen(
                 currentLanguage = currentLanguage,
                 getString = getStringResource,
                 onDownloadPdfClick = {
-                    val pdfUri = generateFinancePdfReport(context, transactions, currentLanguage)
-                    if (pdfUri != null) {
-                        Toast.makeText(
-                            context,
-                            if (currentLanguage == "bn") "রিপোর্ট পিডিএফ আকারে ডাউনলোড ফোল্ডারে সেভ করা হয়েছে!" else "Report downloaded to Downloads folder as PDF!",
-                            Toast.LENGTH_LONG
-                        ).show()
-                        triggerPdfShareIntent(context, pdfUri)
-                    } else {
-                        Toast.makeText(
-                            context,
-                            if (currentLanguage == "bn") "পিডিএফ তৈরি করতে ব্যর্থ হয়েছে" else "Failed to generate PDF Report",
-                            Toast.LENGTH_SHORT
-                        ).show()
-                    }
+                    showReportPreviewDialog = true
                 }
             )
 
@@ -655,7 +650,52 @@ fun FinanceDashboardScreen(
     }
     }
 
+    // Launch automatic update dialog if update exists on startup
+    if (launchUpdateInfo != null) {
+        AppUpdateDialog(
+            updateInfo = launchUpdateInfo!!,
+            currentLanguage = currentLanguage,
+            onDismiss = { launchUpdateInfo = null }
+        )
+    }
+
     // Dialog 0: Developer Credit Dialog
+    if (showReportPreviewDialog) {
+        ReportPreviewDialog(
+            transactions = transactions,
+            currentLanguage = currentLanguage,
+            onDownloadPdf = {
+                val pdfUri = generateFinancePdfReport(context, transactions, currentLanguage)
+                if (pdfUri != null) {
+                    Toast.makeText(
+                        context,
+                        if (currentLanguage == "bn") "রিপোর্ট পিডিএফ আকারে সেভ করা হয়েছে!" else "Report printed to Downloads folder as PDF successfully!",
+                        Toast.LENGTH_LONG
+                    ).show()
+                } else {
+                    Toast.makeText(
+                        context,
+                        if (currentLanguage == "bn") "পিডিএফ তৈরি করতে ব্যর্থ হয়েছে" else "Failed to generate PDF Report",
+                        Toast.LENGTH_SHORT
+                    ).show()
+                }
+            },
+            onSharePdf = {
+                val pdfUri = generateFinancePdfReport(context, transactions, currentLanguage)
+                if (pdfUri != null) {
+                    triggerPdfShareIntent(context, pdfUri)
+                } else {
+                    Toast.makeText(
+                        context,
+                        if (currentLanguage == "bn") "পিডিএফ তৈরি করতে ব্যর্থ হয়েছে" else "Failed to generate PDF Report",
+                        Toast.LENGTH_SHORT
+                    ).show()
+                }
+            },
+            onDismiss = { showReportPreviewDialog = false }
+        )
+    }
+
     if (showDeveloperCreditDialog) {
         DeveloperCreditDialog(
             currentUser = currentUser,
@@ -4366,6 +4406,106 @@ fun SettingsDialog(
 
                 Spacer(modifier = Modifier.height(16.dp))
 
+                // Check for updates UI Card Checked over Raw Github release JSON
+                var isCheckingForUpdates by remember { mutableStateOf(false) }
+                var settingsUpdateInfo by remember { mutableStateOf<AppUpdateInfo?>(null) }
+                val context = LocalContext.current
+
+                if (settingsUpdateInfo != null) {
+                    AppUpdateDialog(
+                        updateInfo = settingsUpdateInfo!!,
+                        currentLanguage = currentLanguage,
+                        onDismiss = { settingsUpdateInfo = null }
+                    )
+                }
+
+                Card(
+                    modifier = Modifier
+                        .fillMaxWidth()
+                        .padding(vertical = 4.dp)
+                        .android16Clickable(
+                            shape = RoundedCornerShape(12.dp),
+                            enabled = !isCheckingForUpdates
+                        ) {
+                            isCheckingForUpdates = true
+                            checkForUpdatesAsync(context) { info, error ->
+                                isCheckingForUpdates = false
+                                if (error != null) {
+                                    Toast.makeText(context, if (currentLanguage == "bn") "নেটওয়ার্ক সমস্যা, অনুগ্রহ করে পুনরায় চেষ্টা করুন" else "Network issue, please try again", Toast.LENGTH_SHORT).show()
+                                } else if (info != null) {
+                                    if (info.hasUpdate) {
+                                        settingsUpdateInfo = info
+                                    } else {
+                                        Toast.makeText(context, if (currentLanguage == "bn") "আপনার অ্যাপটি ইতিমধ্যে সর্বশেষ সংস্করণে রয়েছে!" else "Your app is already up to date!", Toast.LENGTH_SHORT).show()
+                                    }
+                                }
+                            }
+                        },
+                    shape = RoundedCornerShape(12.dp),
+                    colors = CardDefaults.cardColors(
+                        containerColor = if (isDark) Color(0xFF1E293B).copy(alpha = 0.5f) else Color(0xFFF8FAFC).copy(alpha = 0.65f)
+                    ),
+                    border = BorderStroke(1.dp, if (isDark) Color(0xFF334155).copy(alpha = 0.5f) else Color(0xFFE2E8F0).copy(alpha = 0.65f))
+                ) {
+                    Row(
+                        modifier = Modifier
+                            .fillMaxWidth()
+                            .padding(12.dp),
+                        verticalAlignment = Alignment.CenterVertically
+                    ) {
+                        Box(
+                            modifier = Modifier
+                                .size(36.dp)
+                                .background(
+                                    color = if (isDark) Color(0x2410B981) else Color(0x1610B981),
+                                    shape = CircleShape
+                                ),
+                            contentAlignment = Alignment.Center
+                        ) {
+                            if (isCheckingForUpdates) {
+                                CircularProgressIndicator(
+                                    modifier = Modifier.size(16.dp),
+                                    strokeWidth = 2.dp,
+                                    color = Color(0xFF10B981)
+                                )
+                            } else {
+                                Icon(
+                                    imageVector = Icons.Default.SystemUpdate,
+                                    contentDescription = "Update Check Icon",
+                                    tint = Color(0xFF10B981),
+                                    modifier = Modifier.size(18.dp)
+                                )
+                            }
+                        }
+                        Spacer(modifier = Modifier.width(12.dp))
+                        Column(modifier = Modifier.weight(1f)) {
+                            Text(
+                                text = if (currentLanguage == "bn") "আপডেট চেক করুন" else "Check for Updates",
+                                style = MaterialTheme.typography.bodyMedium,
+                                fontWeight = FontWeight.Bold,
+                                color = if (isDark) Color.White else Color(0xFF1E293B)
+                            )
+                            Text(
+                                text = if (isCheckingForUpdates) {
+                                    if (currentLanguage == "bn") "আপডেটের হিসাব খোঁজা হচ্ছে..." else "Looking for recent build releases..."
+                                } else {
+                                    if (currentLanguage == "bn") "সর্বশেষ সংস্করণ কোড চেক করুন" else "Check latest release code"
+                                },
+                                style = MaterialTheme.typography.labelSmall,
+                                color = if (isDark) Color(0xFF94A3B8) else Color(0xFF64748B)
+                            )
+                        }
+                        Icon(
+                            imageVector = Icons.Default.ChevronRight,
+                            contentDescription = null,
+                            tint = if (isDark) Color.White.copy(alpha = 0.4f) else Color.Black.copy(alpha = 0.4f),
+                            modifier = Modifier.size(20.dp)
+                        )
+                    }
+                }
+
+                Spacer(modifier = Modifier.height(12.dp))
+
                 // About App Button Inside settings
                 Button(
                     onClick = { showAboutAppDialog = true },
@@ -6278,6 +6418,547 @@ fun DropdownItem(
                     maxLines = 1,
                     overflow = TextOverflow.Ellipsis
                 )
+            }
+        }
+    }
+}
+
+data class AppUpdateInfo(
+    val hasUpdate: Boolean,
+    val latestVersionName: String,
+    val latestVersionCode: Int,
+    val changelog: String,
+    val downloadUrl: String
+)
+
+fun checkForUpdatesAsync(
+    context: android.content.Context,
+    onResult: (AppUpdateInfo?, String?) -> Unit
+) {
+    val currentVersionCode = try {
+        val pInfo = context.packageManager.getPackageInfo(context.packageName, 0)
+        if (android.os.Build.VERSION.SDK_INT >= android.os.Build.VERSION_CODES.P) {
+            pInfo.longVersionCode.toInt()
+        } else {
+            pInfo.versionCode
+        }
+    } catch (e: Exception) {
+        1
+    }
+
+    kotlinx.coroutines.CoroutineScope(kotlinx.coroutines.Dispatchers.IO).launch {
+        var connection: java.net.HttpURLConnection? = null
+        try {
+            val url = java.net.URL("https://raw.githubusercontent.com/sakib9221/Mobile-Wallet/main/update.json")
+            connection = url.openConnection() as java.net.HttpURLConnection
+            connection.requestMethod = "GET"
+            connection.connectTimeout = 8000
+            connection.readTimeout = 8000
+            connection.useCaches = false
+            
+            if (connection.responseCode == 200) {
+                val responseText = connection.inputStream.bufferedReader().use { it.readText() }
+                val json = org.json.JSONObject(responseText)
+                val latestVersionCode = json.optInt("versionCode", 1)
+                val latestVersionName = json.optString("versionName", "1.0")
+                val changelog = json.optString("changelog", "")
+                val downloadUrl = json.optString("downloadUrl", "https://github.com/sakib9221/Mobile-Wallet/releases")
+                
+                val hasUpdate = latestVersionCode > currentVersionCode
+                
+                kotlinx.coroutines.withContext(kotlinx.coroutines.Dispatchers.Main) {
+                    onResult(
+                        AppUpdateInfo(
+                            hasUpdate = hasUpdate,
+                            latestVersionName = latestVersionName,
+                            latestVersionCode = latestVersionCode,
+                            changelog = changelog,
+                            downloadUrl = downloadUrl
+                        ),
+                        null
+                    )
+                }
+            } else {
+                kotlinx.coroutines.withContext(kotlinx.coroutines.Dispatchers.Main) {
+                    onResult(null, "Response code: ${connection.responseCode}")
+                }
+            }
+        } catch (e: Exception) {
+            kotlinx.coroutines.withContext(kotlinx.coroutines.Dispatchers.Main) {
+                onResult(null, e.localizedMessage ?: "Network error")
+            }
+        } finally {
+            connection?.disconnect()
+        }
+    }
+}
+
+@Composable
+fun AppUpdateDialog(
+    updateInfo: AppUpdateInfo,
+    currentLanguage: String,
+    onDismiss: () -> Unit
+) {
+    val context = LocalContext.current
+    val isDark = isAppDark()
+    
+    Dialog(onDismissRequest = onDismiss) {
+        AnimatedDialogContent {
+            val dialogBg = if (isDark) Color(0xFF1E293B).copy(alpha = 0.95f) else Color.White.copy(alpha = 0.95f)
+            val borderColor = if (isDark) Color(0xFF334155).copy(alpha = 0.8f) else Color(0xFFE2E8F0).copy(alpha = 0.8f)
+            
+            Card(
+                modifier = Modifier
+                    .fillMaxWidth()
+                    .padding(16.dp),
+                shape = RoundedCornerShape(24.dp),
+                border = BorderStroke(1.dp, borderColor),
+                colors = CardDefaults.cardColors(containerColor = dialogBg),
+                elevation = CardDefaults.cardElevation(defaultElevation = 16.dp)
+            ) {
+                Column(
+                    modifier = Modifier
+                        .fillMaxWidth()
+                        .padding(24.dp),
+                    horizontalAlignment = Alignment.CenterHorizontally
+                ) {
+                    Box(
+                        modifier = Modifier
+                            .size(56.dp)
+                            .background(
+                                color = if (isDark) Color(0x2410B981) else Color(0x1610B981),
+                                shape = CircleShape
+                            ),
+                        contentAlignment = Alignment.Center
+                    ) {
+                        Icon(
+                            imageVector = Icons.Default.SystemUpdate,
+                            contentDescription = null,
+                            tint = Color(0xFF10B981),
+                            modifier = Modifier.size(28.dp)
+                        )
+                    }
+                    
+                    Spacer(modifier = Modifier.height(16.dp))
+                    
+                    Text(
+                        text = if (currentLanguage == "bn") "নতুন আপডেট এসেছে!" else "New Update Available!",
+                        style = MaterialTheme.typography.titleMedium,
+                        fontWeight = FontWeight.ExtraBold,
+                        color = if (isDark) Color.White else Color(0xFF1E293B)
+                    )
+                    
+                    Spacer(modifier = Modifier.height(8.dp))
+                    
+                    Text(
+                        text = if (currentLanguage == "bn") "ভার্সন: ${updateInfo.latestVersionName}" else "Version: ${updateInfo.latestVersionName}",
+                        style = MaterialTheme.typography.bodySmall,
+                        fontWeight = FontWeight.Bold,
+                        color = if (isDark) Color(0xFF94A3B8) else Color(0xFF64748B)
+                    )
+                    
+                    Spacer(modifier = Modifier.height(16.dp))
+                    
+                    if (updateInfo.changelog.isNotEmpty()) {
+                        Card(
+                            modifier = Modifier.fillMaxWidth(),
+                            colors = CardDefaults.cardColors(
+                                containerColor = if (isDark) Color(0xFF0F172A).copy(alpha = 0.5f) else Color(0xFFF1F5F9).copy(alpha = 0.70f)
+                            ),
+                            shape = RoundedCornerShape(12.dp),
+                            border = BorderStroke(1.dp, if (isDark) Color(0xFF334155).copy(alpha = 0.5f) else Color(0xFFE2E8F0).copy(alpha = 0.5f))
+                        ) {
+                            Column(
+                                modifier = Modifier
+                                    .fillMaxWidth()
+                                    .padding(12.dp)
+                            ) {
+                                Text(
+                                    text = if (currentLanguage == "bn") "কী পরিবর্তন করা হয়েছে:" else "What's New:",
+                                    style = MaterialTheme.typography.labelMedium,
+                                    fontWeight = FontWeight.Bold,
+                                    color = if (isDark) Color(0xFF38BDF8) else Color(0xFF0284C7)
+                                )
+                                Spacer(modifier = Modifier.height(6.dp))
+                                Text(
+                                    text = updateInfo.changelog,
+                                    style = MaterialTheme.typography.bodySmall,
+                                    color = if (isDark) Color(0xFFCBD5E1) else Color(0xFF334155),
+                                    lineHeight = 18.sp
+                                )
+                            }
+                        }
+                        Spacer(modifier = Modifier.height(20.dp))
+                    }
+                    
+                    Row(
+                        modifier = Modifier.fillMaxWidth(),
+                        horizontalArrangement = Arrangement.spacedBy(10.dp)
+                    ) {
+                        OutlinedButton(
+                            onClick = onDismiss,
+                            shape = RoundedCornerShape(12.dp),
+                            border = BorderStroke(1.dp, if (isDark) Color(0xFF334155) else Color(0xFFCBD5E1)),
+                            modifier = Modifier
+                                .weight(1f)
+                                .height(48.dp)
+                        ) {
+                            Text(
+                                text = if (currentLanguage == "bn") "পরে করব" else "Maybe Later",
+                                style = MaterialTheme.typography.labelLarge.copy(fontWeight = FontWeight.Bold),
+                                color = if (isDark) Color(0xFF94A3B8) else Color(0xFF475569),
+                                maxLines = 1
+                            )
+                        }
+                        
+                        Button(
+                            onClick = {
+                                try {
+                                    val intent = android.content.Intent(android.content.Intent.ACTION_VIEW, android.net.Uri.parse(updateInfo.downloadUrl))
+                                    context.startActivity(intent)
+                                } catch (e: Exception) {
+                                    Toast.makeText(context, "Cannot open browser", Toast.LENGTH_SHORT).show()
+                                }
+                                onDismiss()
+                            },
+                            shape = RoundedCornerShape(12.dp),
+                            colors = ButtonDefaults.buttonColors(
+                                containerColor = Color(0xFF10B981),
+                                contentColor = Color.White
+                            ),
+                            modifier = Modifier
+                                .weight(1.2f)
+                                .height(48.dp)
+                                .android16Clickable(shape = RoundedCornerShape(12.dp)) {}
+                        ) {
+                            Icon(
+                                imageVector = Icons.Default.Download,
+                                contentDescription = null,
+                                modifier = Modifier.size(16.dp)
+                            )
+                            Spacer(modifier = Modifier.width(6.dp))
+                            Text(
+                                text = if (currentLanguage == "bn") "আপডেট করুন" else "Update Now",
+                                style = MaterialTheme.typography.labelLarge.copy(fontWeight = FontWeight.Bold),
+                                maxLines = 1
+                            )
+                        }
+                    }
+                }
+            }
+        }
+    }
+}
+
+@Composable
+fun ReportPreviewDialog(
+    transactions: List<Transaction>,
+    currentLanguage: String,
+    onDownloadPdf: () -> Unit,
+    onSharePdf: () -> Unit,
+    onDismiss: () -> Unit
+) {
+    val isDark = isAppDark()
+    val dialogBg = if (isDark) Color(0xFF1E293B).copy(alpha = 0.95f) else Color.White.copy(alpha = 0.95f)
+    val borderColor = if (isDark) Color(0xFF334155).copy(alpha = 0.8f) else Color(0xFFE2E8F0).copy(alpha = 0.8f)
+
+    Dialog(onDismissRequest = onDismiss) {
+        AnimatedDialogContent {
+            Card(
+                modifier = Modifier
+                    .fillMaxWidth()
+                    .fillMaxHeight(0.85f)
+                    .padding(vertical = 12.dp),
+                shape = RoundedCornerShape(24.dp),
+                border = BorderStroke(1.dp, borderColor),
+                colors = CardDefaults.cardColors(containerColor = dialogBg),
+                elevation = CardDefaults.cardElevation(defaultElevation = 16.dp)
+            ) {
+                Column(
+                    modifier = Modifier
+                        .fillMaxSize()
+                        .padding(20.dp)
+                ) {
+                    // Title Bar
+                    Row(
+                        modifier = Modifier.fillMaxWidth(),
+                        horizontalArrangement = Arrangement.SpaceBetween,
+                        verticalAlignment = Alignment.CenterVertically
+                    ) {
+                        Row(verticalAlignment = Alignment.CenterVertically) {
+                            Icon(
+                                imageVector = Icons.Default.PictureAsPdf,
+                                contentDescription = null,
+                                tint = Color(0xFFEF4444),
+                                modifier = Modifier.size(24.dp)
+                            )
+                            Spacer(modifier = Modifier.width(8.dp))
+                            Text(
+                                text = if (currentLanguage == "bn") "রিপোর্ট প্রিভিউ" else "Report Preview",
+                                style = MaterialTheme.typography.titleMedium,
+                                fontWeight = FontWeight.Bold,
+                                color = if (isDark) Color.White else Color(0xFF1E293B)
+                            )
+                        }
+                        
+                        IconButton(
+                            onClick = onDismiss,
+                            modifier = Modifier.size(32.dp)
+                        ) {
+                            Icon(
+                                imageVector = Icons.Default.Close,
+                                contentDescription = "Close",
+                                tint = if (isDark) Color(0xFF94A3B8) else Color(0xFF64748B),
+                                modifier = Modifier.size(20.dp)
+                            )
+                        }
+                    }
+
+                    Spacer(modifier = Modifier.height(16.dp))
+
+                    // Report Paper-Style Sheet (Scrollable Preview)
+                    Box(
+                        modifier = Modifier
+                            .weight(1f)
+                            .fillMaxWidth()
+                            .background(
+                                color = if (isDark) Color(0xFF0F172A) else Color(0xFFF8FAFC),
+                                shape = RoundedCornerShape(16.dp)
+                            )
+                            .border(
+                                width = 1.dp,
+                                color = if (isDark) Color(0xFF1E293B) else Color(0xFFE2E8F0),
+                                shape = RoundedCornerShape(16.dp)
+                            )
+                            .padding(16.dp)
+                    ) {
+                        LazyColumn(
+                            verticalArrangement = Arrangement.spacedBy(12.dp)
+                        ) {
+                            item {
+                                // Report Title Header
+                                Column(horizontalAlignment = Alignment.CenterHorizontally, modifier = Modifier.fillMaxWidth()) {
+                                    Text(
+                                        text = if (currentLanguage == "bn") "অর্থসংক্রান্ত প্রতিবেদন" else "Personal Finance Report",
+                                        style = MaterialTheme.typography.titleSmall,
+                                        fontWeight = FontWeight.Black,
+                                        color = if (isDark) Color.White else Color(0xFF1E293B)
+                                    )
+                                    Spacer(modifier = Modifier.height(4.dp))
+                                    val dateFmt = java.text.SimpleDateFormat("yyyy-MM-dd HH:mm:ss", java.util.Locale.getDefault())
+                                    Text(
+                                        text = if (currentLanguage == "bn") "তৈরি করার সময়: ${dateFmt.format(java.util.Date())}" else "Generated: ${dateFmt.format(java.util.Date())}",
+                                        style = MaterialTheme.typography.labelSmall,
+                                        color = if (isDark) Color(0xFF64748B) else Color(0xFF94A3B8)
+                                    )
+                                }
+                            }
+
+                            item {
+                                HorizontalDivider(
+                                    modifier = Modifier.padding(vertical = 4.dp),
+                                    color = if (isDark) Color(0xFF1E293B) else Color(0xFFE2E8F0)
+                                )
+                            }
+
+                            // Summary Figures block
+                            item {
+                                val totalIncome = transactions.filter { it.type == "INCOME" }.sumOf { it.amount }
+                                val totalExpense = transactions.filter { it.type == "EXPENSE" }.sumOf { it.amount }
+                                val netBalance = totalIncome - totalExpense
+
+                                Column(
+                                    modifier = Modifier
+                                        .fillMaxWidth()
+                                        .background(
+                                            color = if (isDark) Color(0xFF1E293B).copy(alpha = 0.5f) else Color.White,
+                                            shape = RoundedCornerShape(12.dp)
+                                        )
+                                        .padding(14.dp)
+                                ) {
+                                    Row(
+                                        modifier = Modifier.fillMaxWidth(),
+                                        horizontalArrangement = Arrangement.SpaceBetween
+                                    ) {
+                                        Text(
+                                            text = if (currentLanguage == "bn") "মোট ব্যালেন্স" else "Net Balance",
+                                            style = MaterialTheme.typography.labelMedium,
+                                            color = if (isDark) Color(0xFF94A3B8) else Color(0xFF64748B)
+                                        )
+                                        Text(
+                                            text = "৳ ${"%,.2f".format(netBalance)}",
+                                            style = MaterialTheme.typography.titleMedium,
+                                            fontWeight = FontWeight.ExtraBold,
+                                            color = if (netBalance >= 0) Color(0xFF10B981) else Color(0xFFEF4444)
+                                        )
+                                    }
+                                    
+                                    Spacer(modifier = Modifier.height(10.dp))
+                                    HorizontalDivider(color = if (isDark) Color(0xFF0F172A) else Color(0xFFF1F5F9))
+                                    Spacer(modifier = Modifier.height(10.dp))
+
+                                    Row(modifier = Modifier.fillMaxWidth()) {
+                                        Column(modifier = Modifier.weight(1f)) {
+                                            Text(
+                                                text = if (currentLanguage == "bn") "মোট আয়" else "Total Income",
+                                                style = MaterialTheme.typography.labelSmall,
+                                                color = if (isDark) Color(0xFF94A3B8) else Color(0xFF64748B)
+                                            )
+                                            Text(
+                                                text = "৳ ${"%,.2f".format(totalIncome)}",
+                                                style = MaterialTheme.typography.bodyMedium,
+                                                fontWeight = FontWeight.Bold,
+                                                color = Color(0xFF10B981)
+                                            )
+                                        }
+                                        Box(
+                                            modifier = Modifier
+                                                .width(1.dp)
+                                                .height(30.dp)
+                                                .background(if (isDark) Color(0xFF0F172A) else Color(0xFFF1F5F9))
+                                        )
+                                        Spacer(modifier = Modifier.width(12.dp))
+                                        Column(modifier = Modifier.weight(1f)) {
+                                            Text(
+                                                text = if (currentLanguage == "bn") "মোট ব্যয়" else "Total Expense",
+                                                style = MaterialTheme.typography.labelSmall,
+                                                color = if (isDark) Color(0xFF94A3B8) else Color(0xFF64748B)
+                                            )
+                                            Text(
+                                                text = "৳ ${"%,.2f".format(totalExpense)}",
+                                                style = MaterialTheme.typography.bodyMedium,
+                                                fontWeight = FontWeight.Bold,
+                                                color = Color(0xFFEF4444)
+                                            )
+                                        }
+                                    }
+                                }
+                            }
+
+                            item {
+                                Text(
+                                    text = if (currentLanguage == "bn") "লেনদেন বিবরণী" else "Transactions List",
+                                    style = MaterialTheme.typography.labelMedium,
+                                    fontWeight = FontWeight.Bold,
+                                    color = if (isDark) Color(0xFF94A3B8) else Color(0xFF475569)
+                                )
+                            }
+
+                            if (transactions.isEmpty()) {
+                                item {
+                                    Box(
+                                        modifier = Modifier
+                                            .fillMaxWidth()
+                                            .padding(vertical = 24.dp),
+                                        contentAlignment = Alignment.Center
+                                    ) {
+                                        Text(
+                                            text = if (currentLanguage == "bn") "কোন লেনদেন পাওয়া যায়নি" else "No transactions found",
+                                            style = MaterialTheme.typography.bodySmall,
+                                            color = if (isDark) Color(0xFF475569) else Color(0xFF94A3B8)
+                                        )
+                                    }
+                                }
+                            } else {
+                                items(transactions) { tx ->
+                                    Row(
+                                        modifier = Modifier
+                                            .fillMaxWidth()
+                                            .background(
+                                                color = if (isDark) Color(0xFF1E293B).copy(alpha = 0.3f) else Color.White,
+                                                shape = RoundedCornerShape(8.dp)
+                                            )
+                                            .padding(10.dp),
+                                        horizontalArrangement = Arrangement.SpaceBetween,
+                                        verticalAlignment = Alignment.CenterVertically
+                                    ) {
+                                        Column(modifier = Modifier.weight(1f)) {
+                                            Text(
+                                                text = tx.category,
+                                                style = MaterialTheme.typography.bodySmall,
+                                                fontWeight = FontWeight.Bold,
+                                                color = if (isDark) Color.White else Color(0xFF1E293B)
+                                            )
+                                            Text(
+                                                text = formatDate(tx.dateLong, currentLanguage),
+                                                style = MaterialTheme.typography.labelSmall,
+                                                color = if (isDark) Color(0xFF64748B) else Color(0xFF94A3B8)
+                                            )
+                                        }
+                                        
+                                        val prefix = if (tx.type == "INCOME") "+" else "-"
+                                        val tint = if (tx.type == "INCOME") Color(0xFF10B981) else Color(0xFFEF4444)
+                                        
+                                        Text(
+                                            text = "$prefix৳ ${"%,.2f".format(tx.amount)}",
+                                            style = MaterialTheme.typography.bodySmall,
+                                            fontWeight = FontWeight.Bold,
+                                            color = tint
+                                        )
+                                    }
+                                }
+                            }
+                        }
+                    }
+
+                    Spacer(modifier = Modifier.height(16.dp))
+
+                    // Buttons Panel at bottom of Dialog
+                    Row(
+                        modifier = Modifier.fillMaxWidth(),
+                        horizontalArrangement = Arrangement.spacedBy(8.dp)
+                    ) {
+                        OutlinedButton(
+                            onClick = onSharePdf,
+                            shape = RoundedCornerShape(12.dp),
+                            border = BorderStroke(1.dp, if (isDark) Color(0xFF334155) else Color(0xFFCBD5E1)),
+                            modifier = Modifier
+                                .weight(1.5f)
+                                .height(46.dp)
+                        ) {
+                            Icon(
+                                imageVector = Icons.Default.Share,
+                                contentDescription = null,
+                                modifier = Modifier.size(16.dp),
+                                tint = if (isDark) Color.White else Color(0xFF475569)
+                            )
+                            Spacer(modifier = Modifier.width(6.dp))
+                            Text(
+                                text = if (currentLanguage == "bn") "শেয়ার করুন" else "Share Report",
+                                style = MaterialTheme.typography.labelMedium.copy(fontWeight = FontWeight.Bold),
+                                color = if (isDark) Color.White else Color(0xFF475569),
+                                maxLines = 1
+                            )
+                        }
+
+                        Button(
+                            onClick = onDownloadPdf,
+                            shape = RoundedCornerShape(12.dp),
+                            colors = ButtonDefaults.buttonColors(
+                                containerColor = if (isDark) MaterialTheme.colorScheme.primary else Color(0xFF2563EB),
+                                contentColor = Color.White
+                            ),
+                            modifier = Modifier
+                                .weight(1.8f)
+                                .height(46.dp)
+                                .android16Clickable(shape = RoundedCornerShape(12.dp)) {}
+                        ) {
+                            Icon(
+                                imageVector = Icons.Default.Download,
+                                contentDescription = null,
+                                modifier = Modifier.size(16.dp),
+                                tint = Color.White
+                            )
+                            Spacer(modifier = Modifier.width(6.dp))
+                            Text(
+                                text = if (currentLanguage == "bn") "ডাউনলোড ও সেভ" else "Download & Save",
+                                style = MaterialTheme.typography.labelMedium.copy(fontWeight = FontWeight.Bold),
+                                color = Color.White,
+                                maxLines = 1
+                            )
+                        }
+                    }
+                }
             }
         }
     }
