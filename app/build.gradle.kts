@@ -20,13 +20,6 @@ android {
     testInstrumentationRunner = "androidx.test.runner.AndroidJUnitRunner"
   }
 
-  applicationVariants.all { variant ->
-        variant.outputs.all {
-            outputFileName = "Mobile.Wallet.v1.5.0.apk"
-        }
-    }
-}
-
   signingConfigs {
     create("release") {
       val keystorePath = System.getenv("KEYSTORE_PATH") ?: "${rootDir}/my-upload-key.jks"
