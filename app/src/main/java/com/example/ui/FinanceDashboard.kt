@@ -1420,12 +1420,12 @@ fun TransactionListItem(
         "${if (isExpense) "-" else "+"}${formatCurrency(transaction.amount, lang)}"
     }
 
-    val itemBg = if (isDark) MaterialTheme.colorScheme.surface else Color.White
-    val itemBorder = MaterialTheme.colorScheme.outlineVariant
-    val titleColor = if (isDark) MaterialTheme.colorScheme.onSurface else Color(0xFF1E293B)
-    val noteColor = if (isDark) MaterialTheme.colorScheme.onSurfaceVariant else Color(0xFF64748B)
-    val dateColor = if (isDark) MaterialTheme.colorScheme.onSurfaceVariant.copy(alpha = 0.8f) else Color(0xFF94A3B8)
-    val amountColor = if (isExpense) Color(0xFFE11D48) else { if (isDark) Color(0xFF34D399) else Color(0xFF10B981) }
+    val itemBg = remember(isDark) { if (isDark) Color(0xFF1E293B) else Color.White }
+    val itemBorder = remember(isDark) { if (isDark) Color(0xFF334155) else Color(0xFFE2E8F0) }
+    val titleColor = remember(isDark) { if (isDark) Color(0xFFF8FAFC) else Color(0xFF0F172A) }
+    val noteColor = remember(isDark) { if (isDark) Color(0xFF94A3B8) else Color(0xFF64748B) }
+    val dateColor = remember(isDark) { if (isDark) Color(0xFF64748B) else Color(0xFF94A3B8) }
+    val amountColor = remember(isDark, isExpense) { if (isExpense) Color(0xFFEF4444) else { if (isDark) Color(0xFF34D399) else Color(0xFF10B981) } }
 
     // Map categories to modern design colors for icons
     val categoryColor = remember(transaction.category) {
@@ -1460,7 +1460,8 @@ fun TransactionListItem(
         modifier = Modifier
             .fillMaxWidth()
             .padding(horizontal = 16.dp)
-            .android16Clickable(shape = RoundedCornerShape(20.dp)) { expanded = !expanded },
+            .clip(RoundedCornerShape(20.dp))
+            .clickable { expanded = !expanded },
         shape = RoundedCornerShape(20.dp),
         border = BorderStroke(1.dp, itemBorder), // white/40 as in design HTML
         colors = CardDefaults.cardColors(containerColor = itemBg), // white/60 backdrop glass
@@ -1592,14 +1593,7 @@ fun TransactionListItem(
                                 ),
                                 shape = RoundedCornerShape(8.dp),
                                 contentPadding = PaddingValues(horizontal = 12.dp, vertical = 6.dp),
-                                modifier = Modifier
-                                    .height(32.dp)
-                                    .android16Clickable(shape = RoundedCornerShape(8.dp)) {
-                                        val clipboard = context.getSystemService(Context.CLIPBOARD_SERVICE) as android.content.ClipboardManager
-                                        val clip = android.content.ClipData.newPlainText("Transaction Note", transaction.note)
-                                        clipboard.setPrimaryClip(clip)
-                                        Toast.makeText(context, if (lang == "bn") "নোট কপি করা হয়েছে" else "Note copied to clipboard", Toast.LENGTH_SHORT).show()
-                                    }
+                                modifier = Modifier.height(32.dp)
                             ) {
                                 Icon(Icons.Default.ContentCopy, contentDescription = "Copy", modifier = Modifier.size(12.dp))
                                 Spacer(modifier = Modifier.width(4.dp))
@@ -1615,9 +1609,7 @@ fun TransactionListItem(
                             ),
                             shape = RoundedCornerShape(8.dp),
                             contentPadding = PaddingValues(horizontal = 12.dp, vertical = 6.dp),
-                            modifier = Modifier
-                                .height(32.dp)
-                                .android16Clickable(shape = RoundedCornerShape(8.dp)) { onEdit(transaction) }
+                            modifier = Modifier.height(32.dp)
                         ) {
                             Icon(Icons.Default.Edit, contentDescription = "Edit", modifier = Modifier.size(12.dp))
                             Spacer(modifier = Modifier.width(4.dp))
@@ -1632,9 +1624,7 @@ fun TransactionListItem(
                             ),
                             shape = RoundedCornerShape(8.dp),
                             contentPadding = PaddingValues(horizontal = 12.dp, vertical = 6.dp),
-                            modifier = Modifier
-                                .height(32.dp)
-                                .android16Clickable(shape = RoundedCornerShape(8.dp)) { onDelete(transaction) }
+                            modifier = Modifier.height(32.dp)
                         ) {
                             Icon(Icons.Default.DeleteOutline, contentDescription = "Delete", modifier = Modifier.size(12.dp))
                             Spacer(modifier = Modifier.width(4.dp))
