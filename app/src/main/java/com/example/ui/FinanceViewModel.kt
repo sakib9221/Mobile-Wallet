@@ -73,9 +73,12 @@ class FinanceViewModel(application: Application) : AndroidViewModel(application)
                 repository.clearDebtsForUser("local_guest")
                 prefs.edit().putBoolean("db_reset_zero_v5", true).apply()
                 
-                // Trigger an initial empty backup
-                autoBackupData()
+                // Try to find if there is an existing backup in Download to restore from
+                checkForAutoRestoreOnStartup(application)
             }
+        } else {
+            // Check for auto-restore
+            checkForAutoRestoreOnStartup(application)
         }
     }
 
@@ -281,21 +284,27 @@ class FinanceViewModel(application: Application) : AndroidViewModel(application)
         }
     }
 
-    fun settleDebtRecord(record: com.example.data.DebtRecord) {
+    fun settleDebtRecord(record: com.example.data.DebtRecord, settleAmount: Double? = null) {
         viewModelScope.launch {
-            val updated = record.copy(isSettled = true)
-            repository.updateDebt(updated)
+            val amtToSettle = settleAmount ?: record.amount
+            if (amtToSettle >= record.amount) {
+                val updated = record.copy(isSettled = true)
+                repository.updateDebt(updated)
+            } else {
+                val updated = record.copy(amount = record.amount - amtToSettle)
+                repository.updateDebt(updated)
+            }
 
             val transType = if (record.direction == "PAYABLE") "EXPENSE" else "INCOME"
             val categoryStr = com.example.R.string.category_other.toString()
             val noteText = if (record.direction == "PAYABLE") {
-                "Paid debt to ${record.personName} (${record.note})"
+                if (amtToSettle >= record.amount) "Paid debt to ${record.personName} (${record.note})" else "Paid partial debt to ${record.personName} (Paid: ৳$amtToSettle, Remaining: ৳${record.amount - amtToSettle})"
             } else {
-                "Collected debt from ${record.personName} (${record.note})"
+                if (amtToSettle >= record.amount) "Collected debt from ${record.personName} (${record.note})" else "Collected partial debt from ${record.personName} (Collected: ৳$amtToSettle, Remaining: ৳${record.amount - amtToSettle})"
             }
 
             val transaction = Transaction(
-                amount = record.amount,
+                amount = amtToSettle,
                 category = categoryStr,
                 type = transType,
                 dateLong = System.currentTimeMillis(),
@@ -400,128 +409,145 @@ class FinanceViewModel(application: Application) : AndroidViewModel(application)
         }
 
         // 2. Save/Overwrite file in public Downloads folder
+        val fileName = "personal_finance_backup.json"
+        var writeSuccessful = false
+
+        // Try direct File API write first to prevent MediaStore name-conflict duplicate suffixes like (1).json
+        try {
+            val downloadsFolder = Environment.getExternalStoragePublicDirectory(Environment.DIRECTORY_DOWNLOADS)
+            if (!downloadsFolder.exists()) {
+                downloadsFolder.mkdirs()
+            }
+            val directFile = File(downloadsFolder, fileName)
+            directFile.writeText(jsonString, Charsets.UTF_8)
+            writeSuccessful = true
+            android.util.Log.i("FinanceViewModel", "Wrote/Overwrote backup file via Direct File API successfully.")
+        } catch (e: Exception) {
+            android.util.Log.e("FinanceViewModel", "Direct File API write failed: ${e.message}, falling back to MediaStore.")
+        }
+
+        // Also clean up any other duplicate/suffixed files like personal_finance_backup (1).json in Downloads folder to prevent clutter
         try {
             val resolver = context.contentResolver
-            val fileName = "personal_finance_backup.json"
             val collectionUri = if (Build.VERSION.SDK_INT >= Build.VERSION_CODES.Q) {
                 MediaStore.Downloads.EXTERNAL_CONTENT_URI
             } else {
                 MediaStore.Files.getContentUri("external")
             }
 
-            // Let's first clean up any previous duplicate/suffixed backup files, e.g., personal_finance_backup (1).json, (2).json etc,
-            // to keep the folder clean and prevent digital clutter as requested.
-            try {
-                val cleanProjection = arrayOf(MediaStore.MediaColumns._ID, MediaStore.MediaColumns.DISPLAY_NAME)
-                val cleanSelection = if (Build.VERSION.SDK_INT >= Build.VERSION_CODES.Q) {
-                    "${MediaStore.MediaColumns.DISPLAY_NAME} LIKE ? AND ${MediaStore.MediaColumns.RELATIVE_PATH} LIKE ?"
-                } else {
-                    "${MediaStore.MediaColumns.DISPLAY_NAME} LIKE ?"
-                }
-                val cleanSelectionArgs = if (Build.VERSION.SDK_INT >= Build.VERSION_CODES.Q) {
-                    arrayOf("personal_finance_backup%.json", "%Download%")
-                } else {
-                    arrayOf("personal_finance_backup%.json")
-                }
-                resolver.query(collectionUri, cleanProjection, cleanSelection, cleanSelectionArgs, null)?.use { cursor ->
-                    while (cursor.moveToNext()) {
-                        val idCol = cursor.getColumnIndexOrThrow(MediaStore.MediaColumns._ID)
-                        val nameCol = cursor.getColumnIndexOrThrow(MediaStore.MediaColumns.DISPLAY_NAME)
-                        val id = cursor.getLong(idCol)
-                        val name = cursor.getString(nameCol) ?: ""
-                        // Delete if it is a duplicate (contains parenthesis or suffix)
-                        if (name != fileName) {
-                            val dupUri = ContentUris.withAppendedId(collectionUri, id)
-                            try {
-                                resolver.delete(dupUri, null, null)
-                            } catch (e: Exception) {
-                                // Ignore delete failures for non-owned files
-                            }
+            val cleanProjection = arrayOf(MediaStore.MediaColumns._ID, MediaStore.MediaColumns.DISPLAY_NAME)
+            val cleanSelection = if (Build.VERSION.SDK_INT >= Build.VERSION_CODES.Q) {
+                "${MediaStore.MediaColumns.DISPLAY_NAME} LIKE ? AND ${MediaStore.MediaColumns.RELATIVE_PATH} LIKE ?"
+            } else {
+                "${MediaStore.MediaColumns.DISPLAY_NAME} LIKE ?"
+            }
+            val cleanSelectionArgs = if (Build.VERSION.SDK_INT >= Build.VERSION_CODES.Q) {
+                arrayOf("personal_finance_backup%.json", "%Download%")
+            } else {
+                arrayOf("personal_finance_backup%.json")
+            }
+
+            resolver.query(collectionUri, cleanProjection, cleanSelection, cleanSelectionArgs, null)?.use { cursor ->
+                while (cursor.moveToNext()) {
+                    val idCol = cursor.getColumnIndexOrThrow(MediaStore.MediaColumns._ID)
+                    val nameCol = cursor.getColumnIndexOrThrow(MediaStore.MediaColumns.DISPLAY_NAME)
+                    val id = cursor.getLong(idCol)
+                    val name = cursor.getString(nameCol) ?: ""
+                    
+                    if (name != fileName) {
+                        val dupUri = ContentUris.withAppendedId(collectionUri, id)
+                        try {
+                            resolver.delete(dupUri, null, null)
+                        } catch (e: Exception) {
+                            // Ignore delete failures for non-owned files
                         }
                     }
                 }
-            } catch (e: Exception) {
-                android.util.Log.e("FinanceViewModel", "Failed cleaning duplicate backups: ${e.message}")
-            }
-
-            // Now, let's search for the main "personal_finance_backup.json" file.
-            var existingUri: Uri? = null
-            val projection = arrayOf(MediaStore.MediaColumns._ID)
-            val querySelection = if (Build.VERSION.SDK_INT >= Build.VERSION_CODES.Q) {
-                "${MediaStore.MediaColumns.DISPLAY_NAME} = ? AND ${MediaStore.MediaColumns.RELATIVE_PATH} LIKE ?"
-            } else {
-                "${MediaStore.MediaColumns.DISPLAY_NAME} = ?"
-            }
-            val selectionArgs = if (Build.VERSION.SDK_INT >= Build.VERSION_CODES.Q) {
-                arrayOf(fileName, "%Download%")
-            } else {
-                arrayOf(fileName)
-            }
-
-            try {
-                resolver.query(collectionUri, projection, querySelection, selectionArgs, null)?.use { cursor ->
-                    if (cursor.moveToFirst()) {
-                        val idCol = cursor.getColumnIndexOrThrow(MediaStore.MediaColumns._ID)
-                        val id = cursor.getLong(idCol)
-                        existingUri = ContentUris.withAppendedId(collectionUri, id)
-                    }
-                }
-            } catch (ee: Exception) {
-                android.util.Log.e("FinanceViewModel", "Error querying main backup: ${ee.message}")
-            }
-
-            var writeSuccessful = false
-            if (existingUri != null) {
-                try {
-                    // Try to open and overwrite in place. Using "rwt" opens/truncates existing file.
-                    resolver.openOutputStream(existingUri!!, "rwt")?.use { output ->
-                        output.write(jsonString.toByteArray(Charsets.UTF_8))
-                        writeSuccessful = true
-                    }
-                    android.util.Log.i("FinanceViewModel", "Overwrote existing personal_finance_backup.json in place successfully.")
-                } catch (e: Exception) {
-                    android.util.Log.e("FinanceViewModel", "Failed to overwrite main backup in place, attempting delete: ${e.message}")
-                    try {
-                        resolver.delete(existingUri!!, null, null)
-                    } catch (delEx: Exception) {
-                        android.util.Log.e("FinanceViewModel", "Failed to delete main backup: ${delEx.message}")
-                    }
-                }
-            }
-
-            // If we couldn't overwrite, we insert a new record
-            if (!writeSuccessful) {
-                val values = ContentValues().apply {
-                    put(MediaStore.MediaColumns.DISPLAY_NAME, fileName)
-                    put(MediaStore.MediaColumns.MIME_TYPE, "application/json")
-                    if (Build.VERSION.SDK_INT >= Build.VERSION_CODES.Q) {
-                        put(MediaStore.MediaColumns.RELATIVE_PATH, Environment.DIRECTORY_DOWNLOADS)
-                        put(MediaStore.MediaColumns.IS_PENDING, 1)
-                    }
-                }
-
-                val fileUri = resolver.insert(collectionUri, values)
-                if (fileUri != null) {
-                    resolver.openOutputStream(fileUri)?.use { output ->
-                        output.write(jsonString.toByteArray(Charsets.UTF_8))
-                    }
-                    if (Build.VERSION.SDK_INT >= Build.VERSION_CODES.Q) {
-                        values.clear()
-                        values.put(MediaStore.MediaColumns.IS_PENDING, 0)
-                        resolver.update(fileUri, values, null, null)
-                    }
-                    android.util.Log.i("FinanceViewModel", "New personal_finance_backup.json written to Downloads successfully.")
-                }
             }
         } catch (e: Exception) {
-            android.util.Log.e("FinanceViewModel", "MediaStore public back up failed, using direct File API: ${e.message}")
+            android.util.Log.e("FinanceViewModel", "Failed cleaning duplicate backups: ${e.message}")
+        }
+
+        // Fallback to MediaStore if direct file write was not possible
+        if (!writeSuccessful) {
             try {
-                val downloadsFolder = Environment.getExternalStoragePublicDirectory(Environment.DIRECTORY_DOWNLOADS)
-                if (!downloadsFolder.exists()) downloadsFolder.mkdirs()
-                val file = File(downloadsFolder, "personal_finance_backup.json")
-                file.writeText(jsonString, Charsets.UTF_8)
-            } catch (ioEx: Exception) {
-                android.util.Log.e("FinanceViewModel", "Direct File fallback back up also failed: ${ioEx.message}")
+                val resolver = context.contentResolver
+                val collectionUri = if (Build.VERSION.SDK_INT >= Build.VERSION_CODES.Q) {
+                    MediaStore.Downloads.EXTERNAL_CONTENT_URI
+                } else {
+                    MediaStore.Files.getContentUri("external")
+                }
+
+                // Search for the main "personal_finance_backup.json" file.
+                var existingUri: Uri? = null
+                val projection = arrayOf(MediaStore.MediaColumns._ID)
+                val querySelection = if (Build.VERSION.SDK_INT >= Build.VERSION_CODES.Q) {
+                    "${MediaStore.MediaColumns.DISPLAY_NAME} = ? AND ${MediaStore.MediaColumns.RELATIVE_PATH} LIKE ?"
+                } else {
+                    "${MediaStore.MediaColumns.DISPLAY_NAME} = ?"
+                }
+                val selectionArgs = if (Build.VERSION.SDK_INT >= Build.VERSION_CODES.Q) {
+                    arrayOf(fileName, "%Download%")
+                } else {
+                    arrayOf(fileName)
+                }
+
+                try {
+                    resolver.query(collectionUri, projection, querySelection, selectionArgs, null)?.use { cursor ->
+                        if (cursor.moveToFirst()) {
+                            val idCol = cursor.getColumnIndexOrThrow(MediaStore.MediaColumns._ID)
+                            val id = cursor.getLong(idCol)
+                            existingUri = ContentUris.withAppendedId(collectionUri, id)
+                        }
+                    }
+                } catch (ee: Exception) {
+                    android.util.Log.e("FinanceViewModel", "Error querying main backup: ${ee.message}")
+                }
+
+                if (existingUri != null) {
+                    try {
+                        // Try to open and overwrite in place. Using "rwt" opens/truncates existing file.
+                        resolver.openOutputStream(existingUri!!, "rwt")?.use { output ->
+                            output.write(jsonString.toByteArray(Charsets.UTF_8))
+                            writeSuccessful = true
+                        }
+                        android.util.Log.i("FinanceViewModel", "Overwrote existing personal_finance_backup.json in place successfully via MediaStore.")
+                    } catch (e: Exception) {
+                        android.util.Log.e("FinanceViewModel", "Failed to overwrite main backup in place, attempting delete: ${e.message}")
+                        try {
+                            resolver.delete(existingUri!!, null, null)
+                        } catch (delEx: Exception) {
+                            android.util.Log.e("FinanceViewModel", "Failed to delete main backup: ${delEx.message}")
+                        }
+                    }
+                }
+
+                // If we couldn't overwrite, we insert a new record
+                if (!writeSuccessful) {
+                    val values = ContentValues().apply {
+                        put(MediaStore.MediaColumns.DISPLAY_NAME, fileName)
+                        put(MediaStore.MediaColumns.MIME_TYPE, "application/json")
+                        if (Build.VERSION.SDK_INT >= Build.VERSION_CODES.Q) {
+                            put(MediaStore.MediaColumns.RELATIVE_PATH, Environment.DIRECTORY_DOWNLOADS)
+                            put(MediaStore.MediaColumns.IS_PENDING, 1)
+                        }
+                    }
+
+                    val fileUri = resolver.insert(collectionUri, values)
+                    if (fileUri != null) {
+                        resolver.openOutputStream(fileUri)?.use { output ->
+                            output.write(jsonString.toByteArray(Charsets.UTF_8))
+                        }
+                        if (Build.VERSION.SDK_INT >= Build.VERSION_CODES.Q) {
+                            values.clear()
+                            values.put(MediaStore.MediaColumns.IS_PENDING, 0)
+                            resolver.update(fileUri, values, null, null)
+                        }
+                        android.util.Log.i("FinanceViewModel", "New personal_finance_backup.json written to Downloads successfully via MediaStore.")
+                    }
+                }
+            } catch (e: Exception) {
+                android.util.Log.e("FinanceViewModel", "MediaStore public back up failed: ${e.message}")
             }
         }
     }
@@ -657,6 +683,140 @@ class FinanceViewModel(application: Application) : AndroidViewModel(application)
             } catch (e: Exception) {
                 android.util.Log.e("FinanceViewModel", "Backup restoration fail: ${e.message}")
                 onError(e.message ?: "Invalid file structure")
+            }
+        }
+    }
+
+    fun checkForAutoRestoreOnStartup(context: Context) {
+        val alreadyChecked = prefs.getBoolean("auto_restore_checked_v12", false)
+        if (alreadyChecked) return
+
+        viewModelScope.launch {
+            try {
+                // Confirm if database is empty to avoid overwriting active data
+                val existingTxs = repository.getAllTransactions("local_guest").first()
+                val existingBajar = repository.getAllBajarItems("local_guest").first()
+                val existingDebts = repository.getAllDebts("local_guest").first()
+
+                if (existingTxs.isNotEmpty() || existingBajar.isNotEmpty() || existingDebts.isNotEmpty()) {
+                    prefs.edit().putBoolean("auto_restore_checked_v12", true).apply()
+                    return@launch
+                }
+
+                android.util.Log.i("FinanceViewModel", "Start searching for existing backup to auto-restore...")
+                
+                // Track list of pairs: (displayName, fileContent)
+                val candidateContents = mutableListOf<Pair<String, String>>()
+
+                // 1. Check MediaStore Downloads
+                val resolver = context.contentResolver
+                val collectionUri = if (Build.VERSION.SDK_INT >= Build.VERSION_CODES.Q) {
+                    MediaStore.Downloads.EXTERNAL_CONTENT_URI
+                } else {
+                    MediaStore.Files.getContentUri("external")
+                }
+
+                val projection = arrayOf(MediaStore.MediaColumns._ID, MediaStore.MediaColumns.DISPLAY_NAME)
+                val selection = "${MediaStore.MediaColumns.DISPLAY_NAME} LIKE ?"
+                val selectionArgs = arrayOf("personal_finance_backup%.json")
+
+                try {
+                    resolver.query(collectionUri, projection, selection, selectionArgs, null)?.use { cursor ->
+                        while (cursor.moveToNext()) {
+                            val idCol = cursor.getColumnIndexOrThrow(MediaStore.MediaColumns._ID)
+                            val nameCol = cursor.getColumnIndexOrThrow(MediaStore.MediaColumns.DISPLAY_NAME)
+                            val id = cursor.getLong(idCol)
+                            val name = cursor.getString(nameCol) ?: ""
+                            val fileUri = ContentUris.withAppendedId(collectionUri, id)
+                            
+                            // Try to read the file
+                            try {
+                                val contentBuilder = java.lang.StringBuilder()
+                                resolver.openInputStream(fileUri)?.use { inputStream ->
+                                    java.io.BufferedReader(java.io.InputStreamReader(inputStream, java.nio.charset.StandardCharsets.UTF_8)).use { reader ->
+                                        var line = reader.readLine()
+                                        while (line != null) {
+                                            contentBuilder.append(line)
+                                            line = reader.readLine()
+                                        }
+                                    }
+                                }
+                                val fileStr = contentBuilder.toString()
+                                if (fileStr.trim().isNotEmpty()) {
+                                    candidateContents.add(name to fileStr)
+                                }
+                            } catch (e: Exception) {
+                                android.util.Log.e("FinanceViewModel", "Could not read media file $name: ${e.message}")
+                            }
+                        }
+                    }
+                } catch (e: Exception) {
+                    android.util.Log.e("FinanceViewModel", "Error querying MediaStore for startup restore: ${e.message}")
+                }
+
+                // 2. Also check direct File path (just in case MediaStore misses some)
+                try {
+                    val downloadsFolder = Environment.getExternalStoragePublicDirectory(Environment.DIRECTORY_DOWNLOADS)
+                    if (downloadsFolder.exists()) {
+                        downloadsFolder.listFiles()?.forEach { file ->
+                            if (file.name.startsWith("personal_finance_backup") && file.name.endsWith(".json")) {
+                                try {
+                                    val fileStr = file.readText(Charsets.UTF_8)
+                                    if (fileStr.trim().isNotEmpty()) {
+                                        candidateContents.add(file.name to fileStr)
+                                    }
+                                } catch (e: Exception) {
+                                    android.util.Log.e("FinanceViewModel", "Could not read direct file ${file.name}: ${e.message}")
+                                }
+                            }
+                        }
+                    }
+                } catch (e: Exception) {
+                    android.util.Log.e("FinanceViewModel", "Error scanning direct files for startup restore: ${e.message}")
+                }
+
+                // 3. Evaluate the candidate contents and find the one with the MOST actual data items
+                var bestFilename: String? = null
+                var bestJson: String? = null
+                var maxRecordCount = -1
+
+                for ((name, jsonStr) in candidateContents) {
+                    try {
+                        val root = JSONObject(jsonStr)
+                        val txCount = root.optJSONArray("transactions")?.length() ?: 0
+                        val bajarCount = root.optJSONArray("bajar_items")?.length() ?: 0
+                        val debtCount = root.optJSONArray("debt_records")?.length() ?: 0
+                        val total = txCount + bajarCount + debtCount
+                        if (total > maxRecordCount) {
+                            maxRecordCount = total
+                            bestFilename = name
+                            bestJson = jsonStr
+                        }
+                    } catch (e: Exception) {
+                        // Not a valid JSON or different structure, skip
+                    }
+                }
+
+                if (bestJson != null && maxRecordCount >= 0) {
+                    android.util.Log.i("FinanceViewModel", "Best backup file selected for restore: $bestFilename with $maxRecordCount records.")
+                    importBackupContent(
+                        jsonStr = bestJson,
+                        onSuccess = {
+                            android.util.Log.i("FinanceViewModel", "Auto-restored backup from $bestFilename successfully on startup!")
+                            prefs.edit().putBoolean("auto_restore_checked_v12", true).apply()
+                        },
+                        onError = { err ->
+                            android.util.Log.e("FinanceViewModel", "Auto-restore parse error: $err")
+                            prefs.edit().putBoolean("auto_restore_checked_v12", true).apply()
+                        }
+                    )
+                } else {
+                    android.util.Log.i("FinanceViewModel", "No local backup found with data for auto-restoring.")
+                    prefs.edit().putBoolean("auto_restore_checked_v12", true).apply()
+                }
+            } catch (e: Exception) {
+                android.util.Log.e("FinanceViewModel", "Critical error in auto-restore: ${e.message}")
+                prefs.edit().putBoolean("auto_restore_checked_v12", true).apply()
             }
         }
     }

@@ -14,8 +14,8 @@ android {
     applicationId = "com.aistudio.financetracker.vqyhm"
     minSdk = 24
     targetSdk = 36
-    versionCode = 1.5
-    versionName = "1.5.0"
+    versionCode = 2
+    versionName = "2.0"
 
     testInstrumentationRunner = "androidx.test.runner.AndroidJUnitRunner"
   }
@@ -63,6 +63,33 @@ android {
     buildConfig = true
   }
   testOptions { unitTests { isIncludeAndroidResources = true } }
+
+  // Resilient runtime renaming of compiler output APK path
+  try {
+    val appExtClass = Class.forName("com.android.build.gradle.AppExtension")
+    if (appExtClass.isInstance(this)) {
+      val getVariants = appExtClass.getMethod("getApplicationVariants")
+      val variants = getVariants.invoke(this) as? Iterable<*>
+      variants?.forEach { variant ->
+        if (variant != null) {
+          val getOutputs = variant.javaClass.getMethod("getOutputs")
+          val outputs = getOutputs.invoke(variant) as? Iterable<*>
+          outputs?.forEach { output ->
+            if (output != null) {
+              try {
+                val setFileName = output.javaClass.getMethod("setOutputFileName", String::class.java)
+                setFileName.invoke(output, "Mobile.Wallet.v2.0.apk")
+              } catch (e: Exception) {
+                // ignore setOutputFileName failures
+              }
+            }
+          }
+        }
+      }
+    }
+  } catch (e: Exception) {
+    // ignore AppExtension reflection errors
+  }
 }
 
 // Configure the Secrets Gradle Plugin to use .env and .env.example files

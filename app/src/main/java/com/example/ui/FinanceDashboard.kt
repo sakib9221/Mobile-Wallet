@@ -775,7 +775,7 @@ fun FinanceDashboardScreen(
             debtRecords = debtRecords,
             lang = currentLanguage,
             onAddDebt = { name, amt, dir, note -> viewModel.addDebtRecord(name, amt, dir, note) },
-            onSettleDebt = { record -> viewModel.settleDebtRecord(record) },
+            onSettleDebt = { record, amount -> viewModel.settleDebtRecord(record, amount) },
             onDeleteDebt = { record -> viewModel.deleteDebtRecord(record) },
             onDismiss = { showDebtListDialog = false }
         )
@@ -5960,7 +5960,7 @@ fun DebtListDialog(
     debtRecords: List<com.example.data.DebtRecord>,
     lang: String,
     onAddDebt: (personName: String, amount: Double, direction: String, note: String) -> Unit,
-    onSettleDebt: (com.example.data.DebtRecord) -> Unit,
+    onSettleDebt: (com.example.data.DebtRecord, Double) -> Unit,
     onDeleteDebt: (com.example.data.DebtRecord) -> Unit,
     onDismiss: () -> Unit
 ) {
@@ -5968,6 +5968,9 @@ fun DebtListDialog(
     var amountInput by remember { mutableStateOf("") }
     var noteInput by remember { mutableStateOf("") }
     var selectedDirection by remember { mutableStateOf("PAYABLE") } // "PAYABLE" or "RECEIVABLE"
+
+    var partialSettleTarget by remember { mutableStateOf<com.example.data.DebtRecord?>(null) }
+    var partialSettleAmount by remember { mutableStateOf("") }
 
     val isDark = isAppDark()
 
@@ -6235,7 +6238,10 @@ fun DebtListDialog(
                                         ) {
                                             // Settle button
                                             Button(
-                                                onClick = { onSettleDebt(item) },
+                                                onClick = { 
+                                                    partialSettleTarget = item
+                                                    partialSettleAmount = item.amount.toString()
+                                                },
                                                 contentPadding = PaddingValues(horizontal = 8.dp, vertical = 4.dp),
                                                 colors = ButtonDefaults.buttonColors(
                                                     containerColor = if (item.direction == "PAYABLE") Color(0xFFEF4444) else Color(0xFF10B981)
@@ -6243,7 +6249,10 @@ fun DebtListDialog(
                                                 shape = RoundedCornerShape(8.dp),
                                                 modifier = Modifier
                                                     .height(28.dp)
-                                                    .android16Clickable(shape = RoundedCornerShape(8.dp)) { onSettleDebt(item) }
+                                                    .android16Clickable(shape = RoundedCornerShape(8.dp)) { 
+                                                        partialSettleTarget = item
+                                                        partialSettleAmount = item.amount.toString()
+                                                    }
                                             ) {
                                                 Text(
                                                     text = if (lang == "bn") "শোধ" else "Settle",
@@ -6269,6 +6278,100 @@ fun DebtListDialog(
                                     }
                                 }
                             }
+                        }
+                    }
+                }
+            }
+        }
+    }
+
+    if (partialSettleTarget != null) {
+        val target = partialSettleTarget!!
+        Dialog(onDismissRequest = { partialSettleTarget = null }) {
+            Card(
+                modifier = Modifier.fillMaxWidth().padding(16.dp),
+                shape = RoundedCornerShape(16.dp),
+                border = BorderStroke(1.dp, MaterialTheme.colorScheme.outlineVariant),
+                colors = CardDefaults.cardColors(containerColor = if (isDark) MaterialTheme.colorScheme.surface else Color.White)
+            ) {
+                Column(
+                    modifier = Modifier.padding(18.dp),
+                    verticalArrangement = Arrangement.spacedBy(12.dp)
+                ) {
+                    Text(
+                        text = if (lang == "bn") "দেন-পাওনা সমন্বয়" else "Settle Debt/Credit",
+                        style = MaterialTheme.typography.titleMedium,
+                        fontWeight = FontWeight.Bold,
+                        color = MaterialTheme.colorScheme.onSurface
+                    )
+                    
+                    val directionText = if (target.direction == "PAYABLE") {
+                        if (lang == "bn") "পাওনাদার: ${target.personName}" else "Creditor: ${target.personName}"
+                    } else {
+                        if (lang == "bn") "খাতক: ${target.personName}" else "Debtor: ${target.personName}"
+                    }
+                    
+                    Column {
+                        Text(
+                            text = directionText,
+                            style = MaterialTheme.typography.bodyMedium,
+                            fontWeight = FontWeight.SemiBold,
+                            color = MaterialTheme.colorScheme.onSurfaceVariant
+                        )
+                        Text(
+                            text = if (lang == "bn") "মোট পরিমাণ: ৳${target.amount}" else "Total Amount: ৳${target.amount}",
+                            style = MaterialTheme.typography.bodySmall,
+                            color = MaterialTheme.colorScheme.onSurfaceVariant.copy(alpha = 0.8f)
+                        )
+                    }
+
+                    // Input field for partial payment
+                    OutlinedTextField(
+                        value = partialSettleAmount,
+                        onValueChange = { partialSettleAmount = it },
+                        label = { 
+                            Text(
+                                text = if (lang == "bn") "পরিশোধের পরিমাণ লিখুন" else "Settle Amount"
+                            )
+                        },
+                        singleLine = true,
+                        keyboardOptions = androidx.compose.foundation.text.KeyboardOptions(
+                            keyboardType = androidx.compose.ui.text.input.KeyboardType.Number
+                        ),
+                        modifier = Modifier.fillMaxWidth(),
+                        shape = RoundedCornerShape(12.dp),
+                        placeholder = { Text(target.amount.toString()) }
+                    )
+
+                    Row(
+                        modifier = Modifier.fillMaxWidth(),
+                        horizontalArrangement = Arrangement.End,
+                        verticalAlignment = Alignment.CenterVertically
+                    ) {
+                        TextButton(onClick = { partialSettleTarget = null }) {
+                           Text(text = if (lang == "bn") "বাতিল" else "Cancel")
+                        }
+                        Spacer(modifier = Modifier.width(8.dp))
+                        Button(
+                            onClick = {
+                                val amt = partialSettleAmount.toDoubleOrNull() ?: target.amount
+                                if (amt > 0.0) {
+                                    val cappedAmt = if (amt > target.amount) target.amount else amt
+                                    onSettleDebt(target, cappedAmt)
+                                    partialSettleTarget = null
+                                    partialSettleAmount = ""
+                                }
+                            },
+                            colors = ButtonDefaults.buttonColors(
+                                containerColor = if (target.direction == "PAYABLE") Color(0xFFEF4444) else Color(0xFF10B981)
+                            ),
+                            shape = RoundedCornerShape(10.dp)
+                        ) {
+                            Text(
+                                text = if (lang == "bn") "সমন্বয় করুন" else "Settle",
+                                fontWeight = FontWeight.Bold,
+                                color = Color.White
+                            )
                         }
                     }
                 }
@@ -6599,15 +6702,20 @@ fun AppUpdateDialog(
                             onClick = onDismiss,
                             shape = RoundedCornerShape(12.dp),
                             border = BorderStroke(1.dp, if (isDark) Color(0xFF334155) else Color(0xFFCBD5E1)),
+                            contentPadding = PaddingValues(horizontal = 4.dp, vertical = 8.dp),
                             modifier = Modifier
                                 .weight(1f)
-                                .height(48.dp)
+                                .height(46.dp)
                         ) {
                             Text(
                                 text = if (currentLanguage == "bn") "পরে করব" else "Maybe Later",
-                                style = MaterialTheme.typography.labelLarge.copy(fontWeight = FontWeight.Bold),
+                                style = MaterialTheme.typography.labelMedium.copy(
+                                    fontWeight = FontWeight.Bold,
+                                    fontSize = 12.sp
+                                ),
                                 color = if (isDark) Color(0xFF94A3B8) else Color(0xFF475569),
-                                maxLines = 1
+                                maxLines = 1,
+                                textAlign = androidx.compose.ui.text.style.TextAlign.Center
                             )
                         }
                         
@@ -6626,21 +6734,26 @@ fun AppUpdateDialog(
                                 containerColor = Color(0xFF10B981),
                                 contentColor = Color.White
                             ),
+                            contentPadding = PaddingValues(horizontal = 4.dp, vertical = 8.dp),
                             modifier = Modifier
                                 .weight(1.2f)
-                                .height(48.dp)
+                                .height(46.dp)
                                 .android16Clickable(shape = RoundedCornerShape(12.dp)) {}
                         ) {
                             Icon(
                                 imageVector = Icons.Default.Download,
                                 contentDescription = null,
-                                modifier = Modifier.size(16.dp)
+                                modifier = Modifier.size(14.dp)
                             )
-                            Spacer(modifier = Modifier.width(6.dp))
+                            Spacer(modifier = Modifier.width(4.dp))
                             Text(
-                                text = if (currentLanguage == "bn") "আপডেট করুন" else "Update Now",
-                                style = MaterialTheme.typography.labelLarge.copy(fontWeight = FontWeight.Bold),
-                                maxLines = 1
+                                text = if (currentLanguage == "bn") "এখনই আপডেট" else "Update Now",
+                                style = MaterialTheme.typography.labelMedium.copy(
+                                    fontWeight = FontWeight.Bold,
+                                    fontSize = 12.sp
+                                ),
+                                maxLines = 1,
+                                textAlign = androidx.compose.ui.text.style.TextAlign.Center
                             )
                         }
                     }
