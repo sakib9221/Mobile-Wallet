@@ -2,8 +2,10 @@ package com.example.data
 
 import androidx.room.Entity
 import androidx.room.PrimaryKey
+import androidx.compose.runtime.Immutable
 import java.io.Serializable
 
+@Immutable
 @Entity(tableName = "debt_records")
 data class DebtRecord(
     @PrimaryKey(autoGenerate = true) val id: Long = 0,

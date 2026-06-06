@@ -53,6 +53,7 @@ import com.example.data.Transaction
 import com.example.ui.theme.LocalThemeState
 import kotlinx.coroutines.launch
 import kotlinx.coroutines.withContext
+import kotlinx.coroutines.isActive
 import java.text.SimpleDateFormat
 import java.util.*
 import android.app.Activity
@@ -1369,7 +1370,7 @@ fun TransactionsTabContent(
             }
         }
     } else {
-        val listState = remember { androidx.compose.foundation.lazy.LazyListState() }
+        val listState = androidx.compose.foundation.lazy.rememberLazyListState()
         LazyColumn(
             state = listState,
             modifier = Modifier.fillMaxSize(),
@@ -1405,6 +1406,10 @@ fun TransactionListItem(
     onEdit: (Transaction) -> Unit
 ) {
     var expanded by remember { mutableStateOf(false) }
+    var hasBeenExpanded by remember { mutableStateOf(false) }
+    if (expanded && !hasBeenExpanded) {
+        hasBeenExpanded = true
+    }
 
     val isExpense = transaction.type == "EXPENSE"
     val categoryName = remember(transaction.category, lang) {
@@ -1457,11 +1462,10 @@ fun TransactionListItem(
     }
 
     Card(
+        onClick = { expanded = !expanded },
         modifier = Modifier
             .fillMaxWidth()
-            .padding(horizontal = 16.dp)
-            .clip(RoundedCornerShape(20.dp))
-            .clickable { expanded = !expanded },
+            .padding(horizontal = 16.dp),
         shape = RoundedCornerShape(20.dp),
         border = BorderStroke(1.dp, itemBorder), // white/40 as in design HTML
         colors = CardDefaults.cardColors(containerColor = itemBg), // white/60 backdrop glass
@@ -1549,86 +1553,88 @@ fun TransactionListItem(
                 enter = expandVertically(animationSpec = spring(dampingRatio = 0.8f, stiffness = Spring.StiffnessMediumLow)) + fadeIn(),
                 exit = shrinkVertically(animationSpec = spring(dampingRatio = 0.8f, stiffness = Spring.StiffnessMediumLow)) + fadeOut()
             ) {
-                // Expandable panel with quick options
-                Column(
-                    modifier = Modifier
-                        .fillMaxWidth()
-                        .padding(start = 16.dp, end = 16.dp, bottom = 16.dp)
-                ) {
-                    HorizontalDivider(
-                        modifier = Modifier.padding(bottom = 12.dp),
-                        color = MaterialTheme.colorScheme.outlineVariant.copy(alpha = 0.5f)
-                    )
-                    Text(
-                        text = if (lang == "bn") "লেনদেনের তথ্য ও অপশনসমূহ" else "Transaction Details & Options",
-                        style = MaterialTheme.typography.labelMedium,
-                        fontWeight = FontWeight.Bold,
-                        color = MaterialTheme.colorScheme.primary
-                    )
-                    Spacer(modifier = Modifier.height(6.dp))
-                    if (transaction.note.isNotBlank()) {
-                        Text(
-                            text = "${if (lang == "bn") "মন্তব্য / নোট:" else "Note / Description:"} ${transaction.note}",
-                            style = MaterialTheme.typography.bodySmall,
-                            color = if (isDark) MaterialTheme.colorScheme.onSurface else Color(0xFF334155)
-                        )
-                        Spacer(modifier = Modifier.height(10.dp))
-                    }
-                    Row(
-                        modifier = Modifier.fillMaxWidth(),
-                        horizontalArrangement = Arrangement.spacedBy(8.dp)
+                if (hasBeenExpanded) {
+                    // Expandable panel with quick options
+                    Column(
+                        modifier = Modifier
+                            .fillMaxWidth()
+                            .padding(start = 16.dp, end = 16.dp, bottom = 16.dp)
                     ) {
-                        val context = LocalContext.current
+                        HorizontalDivider(
+                            modifier = Modifier.padding(bottom = 12.dp),
+                            color = MaterialTheme.colorScheme.outlineVariant.copy(alpha = 0.5f)
+                        )
+                        Text(
+                            text = if (lang == "bn") "লেনদেনের তথ্য ও অপশনসমূহ" else "Transaction Details & Options",
+                            style = MaterialTheme.typography.labelMedium,
+                            fontWeight = FontWeight.Bold,
+                            color = MaterialTheme.colorScheme.primary
+                        )
+                        Spacer(modifier = Modifier.height(6.dp))
                         if (transaction.note.isNotBlank()) {
+                            Text(
+                                text = "${if (lang == "bn") "মন্তব্য / নোট:" else "Note / Description:"} ${transaction.note}",
+                                style = MaterialTheme.typography.bodySmall,
+                                color = if (isDark) MaterialTheme.colorScheme.onSurface else Color(0xFF334155)
+                            )
+                            Spacer(modifier = Modifier.height(10.dp))
+                        }
+                        Row(
+                            modifier = Modifier.fillMaxWidth(),
+                            horizontalArrangement = Arrangement.spacedBy(8.dp)
+                        ) {
+                            val context = LocalContext.current
+                            if (transaction.note.isNotBlank()) {
+                                Button(
+                                    onClick = {
+                                        val clipboard = context.getSystemService(Context.CLIPBOARD_SERVICE) as android.content.ClipboardManager
+                                        val clip = android.content.ClipData.newPlainText("Transaction Note", transaction.note)
+                                        clipboard.setPrimaryClip(clip)
+                                        Toast.makeText(context, if (lang == "bn") "নোট কপি করা হয়েছে" else "Note copied to clipboard", Toast.LENGTH_SHORT).show()
+                                    },
+                                    colors = ButtonDefaults.buttonColors(
+                                        containerColor = MaterialTheme.colorScheme.primaryContainer.copy(alpha = 0.3f),
+                                        contentColor = MaterialTheme.colorScheme.primary
+                                    ),
+                                    shape = RoundedCornerShape(8.dp),
+                                    contentPadding = PaddingValues(horizontal = 12.dp, vertical = 6.dp),
+                                    modifier = Modifier.height(32.dp)
+                                ) {
+                                    Icon(Icons.Default.ContentCopy, contentDescription = "Copy", modifier = Modifier.size(12.dp))
+                                    Spacer(modifier = Modifier.width(4.dp))
+                                    Text(if (lang == "bn") "সব তথ্য কপি" else "Copy Note", fontSize = 11.sp, fontWeight = FontWeight.Bold)
+                                }
+                            }
+
                             Button(
-                                onClick = {
-                                    val clipboard = context.getSystemService(Context.CLIPBOARD_SERVICE) as android.content.ClipboardManager
-                                    val clip = android.content.ClipData.newPlainText("Transaction Note", transaction.note)
-                                    clipboard.setPrimaryClip(clip)
-                                    Toast.makeText(context, if (lang == "bn") "নোট কপি করা হয়েছে" else "Note copied to clipboard", Toast.LENGTH_SHORT).show()
-                                },
+                                onClick = { onEdit(transaction) },
                                 colors = ButtonDefaults.buttonColors(
-                                    containerColor = MaterialTheme.colorScheme.primaryContainer.copy(alpha = 0.3f),
-                                    contentColor = MaterialTheme.colorScheme.primary
+                                    containerColor = MaterialTheme.colorScheme.secondaryContainer,
+                                    contentColor = MaterialTheme.colorScheme.onSecondaryContainer
                                 ),
                                 shape = RoundedCornerShape(8.dp),
                                 contentPadding = PaddingValues(horizontal = 12.dp, vertical = 6.dp),
                                 modifier = Modifier.height(32.dp)
                             ) {
-                                Icon(Icons.Default.ContentCopy, contentDescription = "Copy", modifier = Modifier.size(12.dp))
+                                Icon(Icons.Default.Edit, contentDescription = "Edit", modifier = Modifier.size(12.dp))
                                 Spacer(modifier = Modifier.width(4.dp))
-                                Text(if (lang == "bn") "সব তথ্য কপি" else "Copy Note", fontSize = 11.sp, fontWeight = FontWeight.Bold)
+                                Text(if (lang == "bn") "সম্পাদনা" else "Edit", fontSize = 11.sp, fontWeight = FontWeight.Bold)
                             }
-                        }
 
-                        Button(
-                            onClick = { onEdit(transaction) },
-                            colors = ButtonDefaults.buttonColors(
-                                containerColor = MaterialTheme.colorScheme.secondaryContainer,
-                                contentColor = MaterialTheme.colorScheme.onSecondaryContainer
-                            ),
-                            shape = RoundedCornerShape(8.dp),
-                            contentPadding = PaddingValues(horizontal = 12.dp, vertical = 6.dp),
-                            modifier = Modifier.height(32.dp)
-                        ) {
-                            Icon(Icons.Default.Edit, contentDescription = "Edit", modifier = Modifier.size(12.dp))
-                            Spacer(modifier = Modifier.width(4.dp))
-                            Text(if (lang == "bn") "সম্পাদনা" else "Edit", fontSize = 11.sp, fontWeight = FontWeight.Bold)
-                        }
-
-                        Button(
-                            onClick = { onDelete(transaction) },
-                            colors = ButtonDefaults.buttonColors(
-                                containerColor = MaterialTheme.colorScheme.errorContainer.copy(alpha = 0.8f),
-                                contentColor = MaterialTheme.colorScheme.onErrorContainer
-                            ),
-                            shape = RoundedCornerShape(8.dp),
-                            contentPadding = PaddingValues(horizontal = 12.dp, vertical = 6.dp),
-                            modifier = Modifier.height(32.dp)
-                        ) {
-                            Icon(Icons.Default.DeleteOutline, contentDescription = "Delete", modifier = Modifier.size(12.dp))
-                            Spacer(modifier = Modifier.width(4.dp))
-                            Text(if (lang == "bn") "মুছে ফেলুন" else "Delete", fontSize = 11.sp, fontWeight = FontWeight.Bold)
+                            Button(
+                                onClick = { onDelete(transaction) },
+                                colors = ButtonDefaults.buttonColors(
+                                    containerColor = MaterialTheme.colorScheme.errorContainer.copy(alpha = 0.8f),
+                                    contentColor = MaterialTheme.colorScheme.onErrorContainer
+                                ),
+                                shape = RoundedCornerShape(8.dp),
+                                contentPadding = PaddingValues(horizontal = 12.dp, vertical = 6.dp),
+                                modifier = Modifier.height(32.dp)
+                            ) {
+                                Icon(Icons.Default.DeleteOutline, contentDescription = "Delete", modifier = Modifier.size(12.dp))
+                                Spacer(modifier = Modifier.width(4.dp))
+                                Text(if (lang == "bn") "মুছে ফেলুন" else "Delete", fontSize = 11.sp, fontWeight = FontWeight.Bold)
+                            }
                         }
                     }
                 }
@@ -1728,7 +1734,11 @@ fun SummaryTabContent(
                 contentPadding = PaddingValues(bottom = 84.dp),
                 modifier = Modifier.weight(1f)
             ) {
-                items(activeList, key = { it.first }) { (categoryResId, totalAmount) ->
+                items(
+                    items = activeList,
+                    key = { it.first },
+                    contentType = { "category_summary" }
+                ) { (categoryResId, totalAmount) ->
                     val percentage = if (totalSum > 0) (totalAmount / totalSum * 100) else 0.0
                     CategorySummaryItem(
                         categoryResId = categoryResId,
@@ -5729,7 +5739,11 @@ fun BajarListDialog(
                                 verticalArrangement = Arrangement.spacedBy(8.dp),
                                 modifier = Modifier.fillMaxWidth()
                             ) {
-                                items(bajarItems, key = { it.id }) { item ->
+                                items(
+                                    items = bajarItems,
+                                    key = { it.id },
+                                    contentType = { "bajar_item" }
+                                ) { item ->
                                     Row(
                                         modifier = Modifier
                                             .fillMaxWidth()
@@ -6144,7 +6158,11 @@ fun DebtListDialog(
                             verticalArrangement = Arrangement.spacedBy(8.dp),
                             modifier = Modifier.fillMaxWidth()
                         ) {
-                            items(activeDebts, key = { it.id }) { item ->
+                            items(
+                                items = activeDebts,
+                                key = { it.id },
+                                contentType = { "debt_item" }
+                            ) { item ->
                                 Row(
                                     modifier = Modifier
                                         .fillMaxWidth()
@@ -6584,6 +6602,108 @@ fun checkForUpdatesAsync(
     }
 }
 
+class AppUpdaterDownloader(
+    private val context: android.content.Context,
+    private val downloadUrl: String,
+    private val onProgress: (Float, Long, Long) -> Unit, // progress, downloaded, total
+    private val onCompleted: (java.io.File) -> Unit,
+    private val onError: (String) -> Unit
+) {
+    private var job: kotlinx.coroutines.Job? = null
+
+    fun start() {
+        job = kotlinx.coroutines.CoroutineScope(kotlinx.coroutines.Dispatchers.IO).launch {
+            var connection: java.net.HttpURLConnection? = null
+            var input: java.io.BufferedInputStream? = null
+            var output: java.io.FileOutputStream? = null
+            try {
+                val apkFile = java.io.File(context.cacheDir, "MobileWallet_update.apk")
+                if (apkFile.exists()) {
+                    apkFile.delete()
+                }
+
+                val url = java.net.URL(downloadUrl)
+                connection = url.openConnection() as java.net.HttpURLConnection
+                connection.connectTimeout = 15000
+                connection.readTimeout = 15000
+                connection.connect()
+
+                if (connection.responseCode != java.net.HttpURLConnection.HTTP_OK) {
+                    kotlinx.coroutines.withContext(kotlinx.coroutines.Dispatchers.Main) {
+                        onError("Server returned response code " + connection.responseCode)
+                    }
+                    return@launch
+                }
+
+                val fileLength = connection.contentLengthLong
+                input = java.io.BufferedInputStream(connection.inputStream)
+                output = java.io.FileOutputStream(apkFile)
+
+                val data = ByteArray(4096)
+                var total: Long = 0
+                var count: Int
+                var lastProgressUpdate = 0L
+
+                while (input.read(data).also { count = it } != -1) {
+                    if (!isActive) {
+                        apkFile.delete()
+                        return@launch
+                    }
+                    total += count.toLong()
+                    val currentProgress = if (fileLength > 0) total.toFloat() / fileLength.toFloat() else -1f
+                    
+                    val now = System.currentTimeMillis()
+                    if (now - lastProgressUpdate > 50 || total == fileLength) {
+                        lastProgressUpdate = now
+                        val currentDownloaded = total
+                        val currentLength = fileLength
+                        kotlinx.coroutines.withContext(kotlinx.coroutines.Dispatchers.Main) {
+                            onProgress(currentProgress, currentDownloaded, currentLength)
+                        }
+                    }
+                    output.write(data, 0, count)
+                }
+
+                output.flush()
+                kotlinx.coroutines.withContext(kotlinx.coroutines.Dispatchers.Main) {
+                    onCompleted(apkFile)
+                }
+            } catch (e: Exception) {
+                kotlinx.coroutines.withContext(kotlinx.coroutines.Dispatchers.Main) {
+                    onError(e.localizedMessage ?: "Unknown download error")
+                }
+            } finally {
+                try { output?.close() } catch (e: Exception) {}
+                try { input?.close() } catch (e: Exception) {}
+                connection?.disconnect()
+            }
+        }
+    }
+
+    fun cancel() {
+        job?.cancel()
+    }
+}
+
+fun installApk(context: android.content.Context, apkFile: java.io.File) {
+    try {
+        if (!apkFile.exists()) {
+            android.widget.Toast.makeText(context, "APK file not found", android.widget.Toast.LENGTH_SHORT).show()
+            return
+        }
+        val authority = "${context.packageName}.provider"
+        val apkUri = androidx.core.content.FileProvider.getUriForFile(context, authority, apkFile)
+        val intent = android.content.Intent(android.content.Intent.ACTION_VIEW).apply {
+            setDataAndType(apkUri, "application/vnd.android.package-archive")
+            addFlags(android.content.Intent.FLAG_GRANT_READ_URI_PERMISSION)
+            addFlags(android.content.Intent.FLAG_ACTIVITY_NEW_TASK)
+        }
+        context.startActivity(intent)
+    } catch (e: Exception) {
+        android.widget.Toast.makeText(context, "Installation failed: ${e.localizedMessage}", android.widget.Toast.LENGTH_LONG).show()
+    }
+}
+
 @Composable
 fun AppUpdateDialog(
     updateInfo: AppUpdateInfo,
@@ -6593,7 +6713,27 @@ fun AppUpdateDialog(
     val context = LocalContext.current
     val isDark = isAppDark()
     
-    Dialog(onDismissRequest = onDismiss) {
+    var isDownloading by remember { mutableStateOf(false) }
+    var downloadProgress by remember { mutableStateOf(0f) }
+    var downloadedBytes by remember { mutableStateOf(0L) }
+    var totalBytes by remember { mutableStateOf(0L) }
+    var downloadError by remember { mutableStateOf<String?>(null) }
+    var activeDownloader by remember { mutableStateOf<AppUpdaterDownloader?>(null) }
+
+    DisposableEffect(Unit) {
+        onDispose {
+            activeDownloader?.cancel()
+        }
+    }
+    
+    Dialog(
+        onDismissRequest = {
+            if (!isDownloading) {
+                activeDownloader?.cancel()
+                onDismiss()
+            }
+        }
+    ) {
         AnimatedDialogContent {
             val dialogBg = if (isDark) Color(0xFF1E293B).copy(alpha = 0.95f) else Color.White.copy(alpha = 0.95f)
             val borderColor = if (isDark) Color(0xFF334155).copy(alpha = 0.8f) else Color(0xFFE2E8F0).copy(alpha = 0.8f)
@@ -6607,142 +6747,321 @@ fun AppUpdateDialog(
                 colors = CardDefaults.cardColors(containerColor = dialogBg),
                 elevation = CardDefaults.cardElevation(defaultElevation = 16.dp)
             ) {
-                Column(
-                    modifier = Modifier
-                        .fillMaxWidth()
-                        .padding(24.dp),
-                    horizontalAlignment = Alignment.CenterHorizontally
-                ) {
-                    Box(
+                if (isDownloading) {
+                    Column(
                         modifier = Modifier
-                            .size(56.dp)
-                            .background(
-                                color = if (isDark) Color(0x2410B981) else Color(0x1610B981),
-                                shape = CircleShape
-                            ),
-                        contentAlignment = Alignment.Center
+                            .fillMaxWidth()
+                            .padding(24.dp)
                     ) {
-                        Icon(
-                            imageVector = Icons.Default.SystemUpdate,
-                            contentDescription = null,
-                            tint = Color(0xFF10B981),
-                            modifier = Modifier.size(28.dp)
+                        Text(
+                            text = if (currentLanguage == "bn") "আপডেট ডাউনলোড হচ্ছে" else "Downloading update",
+                            style = MaterialTheme.typography.titleMedium,
+                            fontWeight = FontWeight.ExtraBold,
+                            color = if (isDark) Color.White else Color(0xFF1E293B)
                         )
-                    }
-                    
-                    Spacer(modifier = Modifier.height(16.dp))
-                    
-                    Text(
-                        text = if (currentLanguage == "bn") "নতুন আপডেট এসেছে!" else "New Update Available!",
-                        style = MaterialTheme.typography.titleMedium,
-                        fontWeight = FontWeight.ExtraBold,
-                        color = if (isDark) Color.White else Color(0xFF1E293B)
-                    )
-                    
-                    Spacer(modifier = Modifier.height(8.dp))
-                    
-                    Text(
-                        text = if (currentLanguage == "bn") "ভার্সন: ${updateInfo.latestVersionName}" else "Version: ${updateInfo.latestVersionName}",
-                        style = MaterialTheme.typography.bodySmall,
-                        fontWeight = FontWeight.Bold,
-                        color = if (isDark) Color(0xFF94A3B8) else Color(0xFF64748B)
-                    )
-                    
-                    Spacer(modifier = Modifier.height(16.dp))
-                    
-                    if (updateInfo.changelog.isNotEmpty()) {
-                        Card(
-                            modifier = Modifier.fillMaxWidth(),
-                            colors = CardDefaults.cardColors(
-                                containerColor = if (isDark) Color(0xFF0F172A).copy(alpha = 0.5f) else Color(0xFFF1F5F9).copy(alpha = 0.70f)
-                            ),
-                            shape = RoundedCornerShape(12.dp),
-                            border = BorderStroke(1.dp, if (isDark) Color(0xFF334155).copy(alpha = 0.5f) else Color(0xFFE2E8F0).copy(alpha = 0.5f))
-                        ) {
-                            Column(
-                                modifier = Modifier
-                                    .fillMaxWidth()
-                                    .padding(12.dp)
-                            ) {
-                                Text(
-                                    text = if (currentLanguage == "bn") "কী পরিবর্তন করা হয়েছে:" else "What's New:",
-                                    style = MaterialTheme.typography.labelMedium,
-                                    fontWeight = FontWeight.Bold,
-                                    color = if (isDark) Color(0xFF38BDF8) else Color(0xFF0284C7)
-                                )
-                                Spacer(modifier = Modifier.height(6.dp))
-                                Text(
-                                    text = updateInfo.changelog,
-                                    style = MaterialTheme.typography.bodySmall,
-                                    color = if (isDark) Color(0xFFCBD5E1) else Color(0xFF334155),
-                                    lineHeight = 18.sp
-                                )
+                        
+                        Spacer(modifier = Modifier.height(20.dp))
+                        
+                        // Progress Bar
+                        val animatedProgress by animateFloatAsState(
+                            targetValue = if (downloadProgress >= 0f) downloadProgress else 0.0f,
+                            animationSpec = spring(stiffness = Spring.StiffnessLow),
+                            label = "download_progress"
+                        )
+                        
+                        LinearProgressIndicator(
+                            progress = { animatedProgress },
+                            modifier = Modifier
+                                .fillMaxWidth()
+                                .height(6.dp)
+                                .clip(RoundedCornerShape(3.dp)),
+                            color = Color(0xFF10B981),
+                            trackColor = if (isDark) Color(0xFF334155) else Color(0xFFE2E8F0)
+                        )
+                        
+                        Spacer(modifier = Modifier.height(12.dp))
+                        
+                        // Format dynamic counts, e.g. "81.5 / 107.1 MB"
+                        val downloadedText = remember(downloadedBytes, totalBytes) {
+                            val downloadedMB = downloadedBytes.toDouble() / (1024 * 1024)
+                            val totalMB = totalBytes.toDouble() / (1024 * 1024)
+                            if (totalBytes > 0) {
+                                String.format(java.util.Locale.US, "%.1f / %.1f MB", downloadedMB, totalMB)
+                            } else {
+                                String.format(java.util.Locale.US, "%.1f MB", downloadedMB)
                             }
                         }
-                        Spacer(modifier = Modifier.height(20.dp))
-                    }
-                    
-                    Row(
-                        modifier = Modifier.fillMaxWidth(),
-                        horizontalArrangement = Arrangement.spacedBy(10.dp)
-                    ) {
-                        OutlinedButton(
-                            onClick = onDismiss,
-                            shape = RoundedCornerShape(12.dp),
-                            border = BorderStroke(1.dp, if (isDark) Color(0xFF334155) else Color(0xFFCBD5E1)),
-                            contentPadding = PaddingValues(horizontal = 4.dp, vertical = 8.dp),
-                            modifier = Modifier
-                                .weight(1f)
-                                .height(46.dp)
+                        
+                        Row(
+                            modifier = Modifier.fillMaxWidth(),
+                            horizontalArrangement = Arrangement.SpaceBetween,
+                            verticalAlignment = Alignment.CenterVertically
                         ) {
                             Text(
-                                text = if (currentLanguage == "bn") "পরে করব" else "Maybe Later",
-                                style = MaterialTheme.typography.labelMedium.copy(
-                                    fontWeight = FontWeight.Bold,
-                                    fontSize = 12.sp
-                                ),
-                                color = if (isDark) Color(0xFF94A3B8) else Color(0xFF475569),
-                                maxLines = 1,
-                                textAlign = androidx.compose.ui.text.style.TextAlign.Center
+                                text = downloadedText,
+                                style = MaterialTheme.typography.bodySmall,
+                                color = if (isDark) Color(0xFF94A3B8) else Color(0xFF64748B),
+                                fontWeight = FontWeight.Bold
+                            )
+                            
+                            // Show percentage on the right, e.g., "76%"
+                            val pct = if (totalBytes > 0) "${(downloadProgress * 100).toInt()}%" else ""
+                            Text(
+                                text = pct,
+                                style = MaterialTheme.typography.bodySmall,
+                                color = if (isDark) Color(0xFF94A3B8) else Color(0xFF64748B),
+                                fontWeight = FontWeight.Black
                             )
                         }
                         
-                        Button(
-                            onClick = {
-                                try {
-                                    val intent = android.content.Intent(android.content.Intent.ACTION_VIEW, android.net.Uri.parse(updateInfo.downloadUrl))
-                                    context.startActivity(intent)
-                                } catch (e: Exception) {
-                                    Toast.makeText(context, "Cannot open browser", Toast.LENGTH_SHORT).show()
+                        Spacer(modifier = Modifier.height(24.dp))
+                        
+                        // Cancel button on bottom-right
+                        Row(
+                            modifier = Modifier.fillMaxWidth(),
+                            horizontalArrangement = Arrangement.End
+                        ) {
+                            TextButton(
+                                onClick = {
+                                    activeDownloader?.cancel()
+                                    isDownloading = false
                                 }
-                                onDismiss()
-                            },
-                            shape = RoundedCornerShape(12.dp),
-                            colors = ButtonDefaults.buttonColors(
-                                containerColor = Color(0xFF10B981),
-                                contentColor = Color.White
-                            ),
-                            contentPadding = PaddingValues(horizontal = 4.dp, vertical = 8.dp),
+                            ) {
+                                Text(
+                                    text = if (currentLanguage == "bn") "বাতিল" else "Cancel",
+                                    style = MaterialTheme.typography.labelMedium.copy(fontWeight = FontWeight.Bold),
+                                    color = if (isDark) Color(0xFFCBD5E1) else Color(0xFFDC2626)
+                                )
+                            }
+                        }
+                    }
+                } else if (downloadError != null) {
+                    Column(
+                        modifier = Modifier
+                            .fillMaxWidth()
+                            .padding(24.dp),
+                        horizontalAlignment = Alignment.CenterHorizontally
+                    ) {
+                        Icon(
+                            imageVector = Icons.Default.ErrorOutline,
+                            contentDescription = null,
+                            tint = Color(0xFFEF4444),
+                            modifier = Modifier.size(48.dp)
+                        )
+                        Spacer(modifier = Modifier.height(16.dp))
+                        Text(
+                            text = if (currentLanguage == "bn") "ডাউনলোড ব্যর্থ হয়েছে" else "Download Failed",
+                            style = MaterialTheme.typography.titleMedium,
+                            fontWeight = FontWeight.Bold,
+                            color = if (isDark) Color.White else Color(0xFF1E293B)
+                        )
+                        Spacer(modifier = Modifier.height(8.dp))
+                        Text(
+                            text = downloadError ?: "",
+                            style = MaterialTheme.typography.bodySmall,
+                            color = if (isDark) Color(0xFF94A3B8) else Color(0xFF64748B),
+                            textAlign = androidx.compose.ui.text.style.TextAlign.Center
+                        )
+                        Spacer(modifier = Modifier.height(20.dp))
+                        Row(
+                            modifier = Modifier.fillMaxWidth(),
+                            horizontalArrangement = Arrangement.spacedBy(10.dp)
+                        ) {
+                            OutlinedButton(
+                                onClick = {
+                                    downloadError = null
+                                    isDownloading = false
+                                },
+                                shape = RoundedCornerShape(12.dp),
+                                modifier = Modifier.weight(1f)
+                            ) {
+                                Text(if (currentLanguage == "bn") "বন্ধ করুন" else "Close")
+                            }
+                            
+                            Button(
+                                onClick = {
+                                    downloadError = null
+                                    isDownloading = true
+                                    val downloader = AppUpdaterDownloader(
+                                        context = context,
+                                        downloadUrl = updateInfo.downloadUrl,
+                                        onProgress = { p, downloaded, total ->
+                                            downloadProgress = p
+                                            downloadedBytes = downloaded
+                                            totalBytes = total
+                                        },
+                                        onCompleted = { file ->
+                                            isDownloading = false
+                                            installApk(context, file)
+                                            onDismiss()
+                                        },
+                                        onError = { err ->
+                                            downloadError = err
+                                            isDownloading = false
+                                        }
+                                    )
+                                    activeDownloader = downloader
+                                    downloader.start()
+                                },
+                                shape = RoundedCornerShape(12.dp),
+                                modifier = Modifier.weight(1f),
+                                colors = ButtonDefaults.buttonColors(containerColor = Color(0xFF10B981))
+                            ) {
+                                Text(if (currentLanguage == "bn") "আবার চেষ্টা করুন" else "Retry")
+                            }
+                        }
+                    }
+                } else {
+                    Column(
+                        modifier = Modifier
+                            .fillMaxWidth()
+                            .padding(24.dp),
+                        horizontalAlignment = Alignment.CenterHorizontally
+                    ) {
+                        Box(
                             modifier = Modifier
-                                .weight(1.2f)
-                                .height(46.dp)
-                                .android16Clickable(shape = RoundedCornerShape(12.dp)) {}
+                                .size(56.dp)
+                                .background(
+                                    color = if (isDark) Color(0x2410B981) else Color(0x1610B981),
+                                    shape = CircleShape
+                                ),
+                            contentAlignment = Alignment.Center
                         ) {
                             Icon(
-                                imageVector = Icons.Default.Download,
+                                imageVector = Icons.Default.SystemUpdate,
                                 contentDescription = null,
-                                modifier = Modifier.size(14.dp)
+                                tint = Color(0xFF10B981),
+                                modifier = Modifier.size(28.dp)
                             )
-                            Spacer(modifier = Modifier.width(4.dp))
-                            Text(
-                                text = if (currentLanguage == "bn") "এখনই আপডেট" else "Update Now",
-                                style = MaterialTheme.typography.labelMedium.copy(
-                                    fontWeight = FontWeight.Bold,
-                                    fontSize = 12.sp
+                        }
+                        
+                        Spacer(modifier = Modifier.height(16.dp))
+                        
+                        Text(
+                            text = if (currentLanguage == "bn") "নতুন আপডেট এসেছে!" else "New Update Available!",
+                            style = MaterialTheme.typography.titleMedium,
+                            fontWeight = FontWeight.ExtraBold,
+                            color = if (isDark) Color.White else Color(0xFF1E293B)
+                        )
+                        
+                        Spacer(modifier = Modifier.height(8.dp))
+                        
+                        Text(
+                            text = if (currentLanguage == "bn") "ভার্সন: ${updateInfo.latestVersionName}" else "Version: ${updateInfo.latestVersionName}",
+                            style = MaterialTheme.typography.bodySmall,
+                            fontWeight = FontWeight.Bold,
+                            color = if (isDark) Color(0xFF94A3B8) else Color(0xFF64748B)
+                        )
+                        
+                        Spacer(modifier = Modifier.height(16.dp))
+                        
+                        if (updateInfo.changelog.isNotEmpty()) {
+                            Card(
+                                modifier = Modifier.fillMaxWidth(),
+                                colors = CardDefaults.cardColors(
+                                    containerColor = if (isDark) Color(0xFF0F172A).copy(alpha = 0.5f) else Color(0xFFF1F5F9).copy(alpha = 0.70f)
                                 ),
-                                maxLines = 1,
-                                textAlign = androidx.compose.ui.text.style.TextAlign.Center
-                            )
+                                shape = RoundedCornerShape(12.dp),
+                                border = BorderStroke(1.dp, if (isDark) Color(0xFF334155).copy(alpha = 0.5f) else Color(0xFFE2E8F0).copy(alpha = 0.5f))
+                            ) {
+                                Column(
+                                    modifier = Modifier
+                                        .fillMaxWidth()
+                                        .padding(12.dp)
+                                ) {
+                                    Text(
+                                        text = if (currentLanguage == "bn") "কী পরিবর্তন করা হয়েছে:" else "What's New:",
+                                        style = MaterialTheme.typography.labelMedium,
+                                        fontWeight = FontWeight.Bold,
+                                        color = if (isDark) Color(0xFF38BDF8) else Color(0xFF0284C7)
+                                    )
+                                    Spacer(modifier = Modifier.height(6.dp))
+                                    Text(
+                                        text = updateInfo.changelog,
+                                        style = MaterialTheme.typography.bodySmall,
+                                        color = if (isDark) Color(0xFFCBD5E1) else Color(0xFF334155),
+                                        lineHeight = 18.sp
+                                    )
+                                }
+                            }
+                            Spacer(modifier = Modifier.height(20.dp))
+                        }
+                        
+                        Row(
+                            modifier = Modifier.fillMaxWidth(),
+                            horizontalArrangement = Arrangement.spacedBy(10.dp)
+                        ) {
+                            OutlinedButton(
+                                onClick = onDismiss,
+                                shape = RoundedCornerShape(12.dp),
+                                border = BorderStroke(1.dp, if (isDark) Color(0xFF334155) else Color(0xFFCBD5E1)),
+                                contentPadding = PaddingValues(horizontal = 4.dp, vertical = 8.dp),
+                                modifier = Modifier
+                                    .weight(1f)
+                                    .height(46.dp)
+                            ) {
+                                Text(
+                                    text = if (currentLanguage == "bn") "পরে করব" else "Maybe Later",
+                                    style = MaterialTheme.typography.labelMedium.copy(
+                                        fontWeight = FontWeight.Bold,
+                                        fontSize = 12.sp
+                                    ),
+                                    color = if (isDark) Color(0xFF94A3B8) else Color(0xFF475569),
+                                    maxLines = 1,
+                                    textAlign = androidx.compose.ui.text.style.TextAlign.Center
+                                )
+                            }
+                            
+                            Button(
+                                onClick = {
+                                    isDownloading = true
+                                    val downloader = AppUpdaterDownloader(
+                                        context = context,
+                                        downloadUrl = updateInfo.downloadUrl,
+                                        onProgress = { p, downloaded, total ->
+                                            downloadProgress = p
+                                            downloadedBytes = downloaded
+                                            totalBytes = total
+                                        },
+                                        onCompleted = { file ->
+                                            isDownloading = false
+                                            installApk(context, file)
+                                            onDismiss()
+                                        },
+                                        onError = { err ->
+                                            downloadError = err
+                                            isDownloading = false
+                                        }
+                                    )
+                                    activeDownloader = downloader
+                                    downloader.start()
+                                },
+                                shape = RoundedCornerShape(12.dp),
+                                colors = ButtonDefaults.buttonColors(
+                                    containerColor = Color(0xFF10B981),
+                                    contentColor = Color.White
+                                ),
+                                contentPadding = PaddingValues(horizontal = 4.dp, vertical = 8.dp),
+                                modifier = Modifier
+                                    .weight(1.2f)
+                                    .height(46.dp)
+                            ) {
+                                Icon(
+                                    imageVector = Icons.Default.Download,
+                                    contentDescription = null,
+                                    modifier = Modifier.size(14.dp)
+                                )
+                                Spacer(modifier = Modifier.width(4.dp))
+                                Text(
+                                    text = if (currentLanguage == "bn") "এখনই আপডেট" else "Update Now",
+                                    style = MaterialTheme.typography.labelMedium.copy(
+                                        fontWeight = FontWeight.Bold,
+                                        fontSize = 12.sp
+                                    ),
+                                    maxLines = 1,
+                                    textAlign = androidx.compose.ui.text.style.TextAlign.Center
+                                )
+                            }
                         }
                     }
                 }
