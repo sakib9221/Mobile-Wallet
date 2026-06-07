@@ -438,12 +438,18 @@ fun FinanceDashboardScreen(
                 )
             }
         ) { innerPadding ->
-            Column(
+            Box(
                 modifier = Modifier
                     .fillMaxSize()
-                    .padding(innerPadding)
-                    .verticalScroll(androidx.compose.foundation.rememberScrollState())
+                    .padding(innerPadding),
+                contentAlignment = Alignment.TopCenter
             ) {
+                Column(
+                    modifier = Modifier
+                        .fillMaxWidth()
+                        .widthIn(max = 600.dp)
+                        .verticalScroll(androidx.compose.foundation.rememberScrollState())
+                ) {
             // Local Auto-Backup & Manual Import Status Card
             LocalBackupStatusCard(
                 currentLanguage = currentLanguage,
@@ -472,6 +478,7 @@ fun FinanceDashboardScreen(
 
             Spacer(modifier = Modifier.height(16.dp))
         }
+    }
     }
     }
 
@@ -737,6 +744,13 @@ fun DashboardSummaryCard(
     val expenseLabel = if (isDark) Color(0xFFFDA4AF) else Color(0xFFB91C1C)
     val expenseValue = if (isDark) Color(0xFFFECDD3) else Color(0xFF7F1D1D)
 
+    val configuration = androidx.compose.ui.platform.LocalConfiguration.current
+    val screenWidthDp = configuration.screenWidthDp
+    val cardPadding = if (screenWidthDp < 360) 14.dp else 24.dp
+    val dynamicFontSize = if (screenWidthDp < 340) 24.sp else if (screenWidthDp < 380) 32.sp else 40.sp
+    val spaceGap = if (screenWidthDp < 360) 12.dp else 24.dp
+    val incomeExpenseGap = if (screenWidthDp < 360) 8.dp else 16.dp
+
     Card(
         modifier = Modifier
             .fillMaxWidth()
@@ -750,7 +764,7 @@ fun DashboardSummaryCard(
         Column(
             modifier = Modifier
                 .fillMaxWidth()
-                .padding(24.dp)
+                .padding(cardPadding)
         ) {
             // Remaining Balance Section
             Text(
@@ -776,7 +790,7 @@ fun DashboardSummaryCard(
                         text = wholePart,
                         style = MaterialTheme.typography.headlineLarge.copy(
                             fontWeight = FontWeight.Black,
-                            fontSize = 40.sp,
+                            fontSize = dynamicFontSize,
                             letterSpacing = (-1).sp
                         ),
                         color = if (stats.balance >= 0) MaterialTheme.colorScheme.onSurface else Color(0xFFE11D48)
@@ -785,7 +799,7 @@ fun DashboardSummaryCard(
                         text = ".$decimalPart",
                         style = MaterialTheme.typography.titleLarge.copy(
                             fontWeight = FontWeight.Bold,
-                            fontSize = 20.sp
+                            fontSize = if (screenWidthDp < 360) 16.sp else 20.sp
                         ),
                         color = if (isDark) MaterialTheme.colorScheme.onSurfaceVariant else Color(0xFF475569),
                         modifier = Modifier.padding(bottom = 4.dp)
@@ -795,7 +809,7 @@ fun DashboardSummaryCard(
                         text = formattedTotal,
                         style = MaterialTheme.typography.headlineLarge.copy(
                             fontWeight = FontWeight.Black,
-                            fontSize = 40.sp,
+                            fontSize = dynamicFontSize,
                             letterSpacing = (-1).sp
                         ),
                         color = if (stats.balance >= 0) MaterialTheme.colorScheme.onSurface else Color(0xFFE11D48)
@@ -803,12 +817,12 @@ fun DashboardSummaryCard(
                 }
             }
 
-            Spacer(modifier = Modifier.height(24.dp))
+            Spacer(modifier = Modifier.height(spaceGap))
 
             // Income / Expense Side-by-Side Panels with tinted background borders matching HTML
             Row(
                 modifier = Modifier.fillMaxWidth(),
-                horizontalArrangement = Arrangement.spacedBy(16.dp)
+                horizontalArrangement = Arrangement.spacedBy(incomeExpenseGap)
             ) {
                 // Income Column (Emerald theme)
                 Card(
@@ -1237,7 +1251,7 @@ fun TransactionListItem(
         hasBeenExpanded = true
     }
 
-    val isExpense = transaction.type == "EXPENSE"
+    val isExpense = remember(transaction.type) { transaction.type == "EXPENSE" }
     val categoryName = remember(transaction.category, lang) {
         val resId = transaction.category.toIntOrNull()
         if (resId != null) getString(resId) else transaction.category
@@ -1251,8 +1265,8 @@ fun TransactionListItem(
         "${if (isExpense) "-" else "+"}${formatCurrency(transaction.amount, lang)}"
     }
 
-    val itemBg = remember(isDark) { if (isDark) Color(0xFF1E293B).copy(alpha = 0.55f) else Color.White.copy(alpha = 0.72f) }
-    val itemBorder = remember(isDark) { if (isDark) Color(0xFF475569).copy(alpha = 0.5f) else Color(0xFFCBD5E1).copy(alpha = 0.7f) }
+    val itemBg = remember(isDark) { if (isDark) Color(0xFF1E293B) else Color(0xFFF8FAFC) }
+    val itemBorder = remember(isDark) { if (isDark) Color(0xFF334155) else Color(0xFFE2E8F0) }
     val titleColor = remember(isDark) { if (isDark) Color(0xFFF8FAFC) else Color(0xFF0F172A) }
     val noteColor = remember(isDark) { if (isDark) Color(0xFFCBD5E1) else Color(0xFF475569) }
     val dateColor = remember(isDark) { if (isDark) Color(0xFF94A3B8) else Color(0xFF64748B) }
@@ -1287,15 +1301,33 @@ fun TransactionListItem(
         }
     }
 
-    Card(
-        onClick = { expanded = !expanded },
+    val baseTitleStyle = MaterialTheme.typography.titleMedium
+    val titleStyle = remember(baseTitleStyle, titleColor) { baseTitleStyle.copy(fontWeight = FontWeight.ExtraBold, color = titleColor) }
+
+    val baseNoteStyle = MaterialTheme.typography.bodySmall
+    val noteStyle = remember(baseNoteStyle, noteColor) { baseNoteStyle.copy(color = noteColor) }
+
+    val baseDateStyle = MaterialTheme.typography.labelSmall
+    val dateStyle = remember(baseDateStyle, dateColor) { baseDateStyle.copy(fontWeight = FontWeight.Bold, color = dateColor) }
+
+    val baseAmountStyle = MaterialTheme.typography.titleMedium
+    val amountStyle = remember(baseAmountStyle, amountColor) { baseAmountStyle.copy(fontWeight = FontWeight.Black, color = amountColor) }
+
+    val iconBoxBg = remember(categoryColor) { categoryColor.copy(alpha = 0.15f) }
+    val iconBoxShape = remember { RoundedCornerShape(14.dp) }
+
+    val cardShape = remember { RoundedCornerShape(20.dp) }
+    val cardBorder = remember(itemBorder) { BorderStroke(1.dp, itemBorder) }
+
+    Column(
         modifier = Modifier
             .fillMaxWidth()
-            .padding(horizontal = 16.dp),
-        shape = RoundedCornerShape(20.dp),
-        border = BorderStroke(1.dp, itemBorder), // white/40 as in design HTML
-        colors = CardDefaults.cardColors(containerColor = itemBg), // white/60 backdrop glass
-        elevation = CardDefaults.cardElevation(defaultElevation = 0.dp)
+            .padding(horizontal = 16.dp)
+            .background(itemBg, cardShape)
+            .border(cardBorder, cardShape)
+            .clickable(
+                onClick = { expanded = !expanded }
+            )
     ) {
         Column {
             Row(
@@ -1304,12 +1336,11 @@ fun TransactionListItem(
                     .padding(16.dp),
                 verticalAlignment = Alignment.CenterVertically
             ) {
-                // Rounded color emblem for Category
+                // Rounded color emblem for Category (Drawing background directly without drawing expensive clipping planes)
                 Box(
                     modifier = Modifier
                         .size(48.dp)
-                        .clip(RoundedCornerShape(14.dp)) // rounded-2xl style icon backgrounds
-                        .background(categoryColor.copy(alpha = 0.15f)),
+                        .background(iconBoxBg, iconBoxShape),
                     contentAlignment = Alignment.Center
                 ) {
                     Icon(
@@ -1326,23 +1357,19 @@ fun TransactionListItem(
                 Column(modifier = Modifier.weight(1f)) {
                     Text(
                         text = categoryName,
-                        style = MaterialTheme.typography.titleMedium.copy(fontWeight = FontWeight.ExtraBold),
-                        color = titleColor
+                        style = titleStyle
                     )
                     if (transaction.note.isNotBlank()) {
                         Text(
                             text = transaction.note,
-                            style = MaterialTheme.typography.bodySmall,
-                            color = noteColor,
+                            style = noteStyle,
                             maxLines = 1,
                             overflow = TextOverflow.Ellipsis
                         )
                     }
                     Text(
                         text = formattedDate,
-                        style = MaterialTheme.typography.labelSmall,
-                        color = dateColor,
-                        fontWeight = FontWeight.Bold
+                        style = dateStyle
                     )
                 }
 
@@ -1355,8 +1382,7 @@ fun TransactionListItem(
                 ) {
                     Text(
                         text = formattedAmount,
-                        style = MaterialTheme.typography.titleMedium.copy(fontWeight = FontWeight.Black),
-                        color = amountColor
+                        style = amountStyle
                     )
                     Spacer(modifier = Modifier.height(4.dp))
                     IconButton(
@@ -1374,12 +1400,12 @@ fun TransactionListItem(
                 }
             }
 
-            AnimatedVisibility(
-                visible = expanded,
-                enter = expandVertically(animationSpec = spring(dampingRatio = 0.8f, stiffness = Spring.StiffnessMediumLow)) + fadeIn(),
-                exit = shrinkVertically(animationSpec = spring(dampingRatio = 0.8f, stiffness = Spring.StiffnessMediumLow)) + fadeOut()
-            ) {
-                if (hasBeenExpanded) {
+            if (expanded || hasBeenExpanded) {
+                AnimatedVisibility(
+                    visible = expanded,
+                    enter = expandVertically(animationSpec = spring(dampingRatio = 0.8f, stiffness = Spring.StiffnessMediumLow)) + fadeIn(),
+                    exit = shrinkVertically(animationSpec = spring(dampingRatio = 0.8f, stiffness = Spring.StiffnessMediumLow)) + fadeOut()
+                ) {
                     // Expandable panel with quick options
                     Column(
                         modifier = Modifier
@@ -1411,6 +1437,7 @@ fun TransactionListItem(
                         ) {
                             val context = LocalContext.current
                             if (transaction.note.isNotBlank()) {
+                                val copyInt = remember { MutableInteractionSource() }
                                 Button(
                                     onClick = {
                                         val clipboard = context.getSystemService(Context.CLIPBOARD_SERVICE) as android.content.ClipboardManager
@@ -1418,13 +1445,16 @@ fun TransactionListItem(
                                         clipboard.setPrimaryClip(clip)
                                         Toast.makeText(context, if (lang == "bn") "নোট কপি করা হয়েছে" else "Note copied to clipboard", Toast.LENGTH_SHORT).show()
                                     },
+                                    interactionSource = copyInt,
                                     colors = ButtonDefaults.buttonColors(
                                         containerColor = MaterialTheme.colorScheme.primaryContainer.copy(alpha = 0.3f),
                                         contentColor = MaterialTheme.colorScheme.primary
                                     ),
                                     shape = RoundedCornerShape(8.dp),
                                     contentPadding = PaddingValues(horizontal = 12.dp, vertical = 6.dp),
-                                    modifier = Modifier.height(32.dp)
+                                    modifier = Modifier
+                                        .height(32.dp)
+                                        .android16ScalePress(copyInt)
                                 ) {
                                     Icon(Icons.Default.ContentCopy, contentDescription = "Copy", modifier = Modifier.size(12.dp))
                                     Spacer(modifier = Modifier.width(4.dp))
@@ -1432,30 +1462,38 @@ fun TransactionListItem(
                                 }
                             }
 
+                            val editBtnInt = remember { MutableInteractionSource() }
                             Button(
                                 onClick = { onEdit(transaction) },
+                                interactionSource = editBtnInt,
                                 colors = ButtonDefaults.buttonColors(
                                     containerColor = MaterialTheme.colorScheme.secondaryContainer,
                                     contentColor = MaterialTheme.colorScheme.onSecondaryContainer
                                 ),
                                 shape = RoundedCornerShape(8.dp),
                                 contentPadding = PaddingValues(horizontal = 12.dp, vertical = 6.dp),
-                                modifier = Modifier.height(32.dp)
+                                modifier = Modifier
+                                    .height(32.dp)
+                                    .android16ScalePress(editBtnInt)
                             ) {
                                 Icon(Icons.Default.Edit, contentDescription = "Edit", modifier = Modifier.size(12.dp))
                                 Spacer(modifier = Modifier.width(4.dp))
                                 Text(if (lang == "bn") "সম্পাদনা" else "Edit", fontSize = 11.sp, fontWeight = FontWeight.Bold)
                             }
 
+                            val deleteBtnInt = remember { MutableInteractionSource() }
                             Button(
                                 onClick = { onDelete(transaction) },
+                                interactionSource = deleteBtnInt,
                                 colors = ButtonDefaults.buttonColors(
                                     containerColor = MaterialTheme.colorScheme.errorContainer.copy(alpha = 0.8f),
                                     contentColor = MaterialTheme.colorScheme.onErrorContainer
                                 ),
                                 shape = RoundedCornerShape(8.dp),
                                 contentPadding = PaddingValues(horizontal = 12.dp, vertical = 6.dp),
-                                modifier = Modifier.height(32.dp)
+                                modifier = Modifier
+                                    .height(32.dp)
+                                    .android16ScalePress(deleteBtnInt)
                             ) {
                                 Icon(Icons.Default.DeleteOutline, contentDescription = "Delete", modifier = Modifier.size(12.dp))
                                 Spacer(modifier = Modifier.width(4.dp))
@@ -3899,7 +3937,7 @@ fun AboutAppDialog(
                                 color = MaterialTheme.colorScheme.onSurface
                             )
                             Text(
-                                text = "Mobile Wallet v2.0",
+                                text = "Mobile Wallet v3.5",
                                 style = MaterialTheme.typography.labelSmall,
                                 color = MaterialTheme.colorScheme.onSurfaceVariant.copy(alpha = 0.7f),
                                 fontWeight = FontWeight.Bold
@@ -6361,6 +6399,10 @@ fun DropdownItem(
     onClick: () -> Unit,
     isLarge: Boolean = false
 ) {
+    val configuration = androidx.compose.ui.platform.LocalConfiguration.current
+    val screenWidthDp = configuration.screenWidthDp
+    val isNarrow = screenWidthDp < 360
+
     val cornerRadius = if (isLarge) 18.dp else 12.dp
     val containerColor = if (isLarge) {
         if (isDark) Color(0xFF1E293B).copy(alpha = 0.55f) else Color.White.copy(alpha = 0.72f)
@@ -6374,6 +6416,27 @@ fun DropdownItem(
     }
     val borderWidth = if (isLarge) 2.dp else 1.dp
 
+    val outerPadding = if (isNarrow) 10.dp else if (isLarge) 15.dp else 10.dp
+    val dynamicIconBoxSize = if (isNarrow) 32.dp else if (isLarge) 46.dp else 32.dp
+    val dynamicIconSize = if (isNarrow) 16.dp else if (isLarge) 24.dp else 16.dp
+    val spacerWidth = if (isNarrow) 10.dp else if (isLarge) 14.dp else 10.dp
+
+    val titleStyle = if (isNarrow) {
+        MaterialTheme.typography.bodyMedium
+    } else if (isLarge) {
+        MaterialTheme.typography.titleMedium
+    } else {
+        MaterialTheme.typography.bodyMedium
+    }
+
+    val descStyle = if (isNarrow) {
+        MaterialTheme.typography.labelSmall
+    } else if (isLarge) {
+        MaterialTheme.typography.bodySmall
+    } else {
+        MaterialTheme.typography.labelSmall
+    }
+
     Card(
         modifier = Modifier
             .fillMaxWidth()
@@ -6385,12 +6448,12 @@ fun DropdownItem(
         border = BorderStroke(borderWidth, borderColor)
     ) {
         Row(
-            modifier = Modifier.padding(if (isLarge) 15.dp else 10.dp),
+            modifier = Modifier.padding(outerPadding),
             verticalAlignment = Alignment.CenterVertically
         ) {
             Box(
                 modifier = Modifier
-                    .size(if (isLarge) 46.dp else 32.dp)
+                    .size(dynamicIconBoxSize)
                     .clip(CircleShape)
                     .background(iconBg),
                 contentAlignment = Alignment.Center
@@ -6399,20 +6462,20 @@ fun DropdownItem(
                     imageVector = icon,
                     contentDescription = null,
                     tint = Color.White,
-                    modifier = Modifier.size(if (isLarge) 24.dp else 16.dp)
+                    modifier = Modifier.size(dynamicIconSize)
                 )
             }
-            Spacer(modifier = Modifier.width(if (isLarge) 14.dp else 10.dp))
+            Spacer(modifier = Modifier.width(spacerWidth))
             Column(modifier = Modifier.weight(1f)) {
                 Text(
                     text = title,
-                    style = if (isLarge) MaterialTheme.typography.titleMedium else MaterialTheme.typography.bodyMedium,
+                    style = titleStyle,
                     fontWeight = FontWeight.Bold,
                     color = if (isDark) Color.White else Color(0xFF0F172A)
                 )
                 Text(
                     text = desc,
-                    style = if (isLarge) MaterialTheme.typography.bodySmall else MaterialTheme.typography.labelSmall,
+                    style = descStyle,
                     color = if (isDark) Color(0xFFCBD5E1) else Color(0xFF475569),
                     maxLines = 1,
                     overflow = TextOverflow.Ellipsis
@@ -7443,21 +7506,38 @@ fun TransactionsHistoryDialog(
     val dialogBg = if (isDark) Color(0xFF0F172A) else Color.White
     val isBn = currentLanguage == "bn"
 
+    val configuration = androidx.compose.ui.platform.LocalConfiguration.current
+    val screenWidthDp = configuration.screenWidthDp
+    val isTablet = screenWidthDp >= 600
+
     Dialog(
         onDismissRequest = onDismiss,
         properties = androidx.compose.ui.window.DialogProperties(usePlatformDefaultWidth = false)
     ) {
-        Surface(
-            modifier = Modifier.fillMaxSize(),
-            color = dialogBg,
-            contentColor = if (isDark) Color.White else Color(0xFF0F172A)
+        Box(
+            modifier = Modifier
+                .fillMaxSize()
+                .background(Color.Black.copy(alpha = 0.4f))
+                .clickable { onDismiss() },
+            contentAlignment = Alignment.Center
         ) {
-            Column(
+            Surface(
                 modifier = Modifier
-                    .fillMaxSize()
-                    .windowInsetsPadding(WindowInsets.statusBars)
-                    .navigationBarsPadding()
+                    .fillMaxHeight(if (isTablet) 0.85f else 1f)
+                    .fillMaxWidth(if (isTablet) 0.85f else 1f)
+                    .widthIn(max = 600.dp)
+                    .clickable(enabled = false, onClick = {}),
+                shape = if (isTablet) RoundedCornerShape(28.dp) else RoundedCornerShape(0.dp),
+                color = dialogBg,
+                contentColor = if (isDark) Color.White else Color(0xFF0F172A),
+                border = if (isTablet) BorderStroke(1.dp, if (isDark) Color(0xFF334155) else Color(0xFFE2E8F0)) else null
             ) {
+                Column(
+                    modifier = Modifier
+                        .fillMaxSize()
+                        .windowInsetsPadding(WindowInsets.statusBars)
+                        .navigationBarsPadding()
+                ) {
                 // Header Row
                 Row(
                     modifier = Modifier
@@ -7578,19 +7658,26 @@ fun TransactionsHistoryDialog(
 
                 // Filter Logic
                 val filteredList = remember(transactions, searchQuery, selectedFilter, currentLanguage) {
-                    transactions.filter { transaction ->
-                        val categoryName = {
-                            val resId = transaction.category.toIntOrNull()
-                            if (resId != null) getString(resId) else transaction.category
-                        }().lowercase()
-                        val matchesSearch = transaction.note.lowercase().contains(searchQuery.lowercase()) ||
-                                categoryName.contains(searchQuery.lowercase())
-                        val matchesType = when (selectedFilter) {
-                            "INCOME" -> transaction.type == "INCOME"
-                            "EXPENSE" -> transaction.type == "EXPENSE"
-                            else -> true
+                    val query = searchQuery.trim().lowercase()
+                    if (query.isEmpty() && selectedFilter == "ALL") {
+                        transactions
+                    } else {
+                        transactions.filter { transaction ->
+                            val categoryName = {
+                                val resId = transaction.category.toIntOrNull()
+                                if (resId != null) getString(resId) else transaction.category
+                            }()
+                            val matchesSearch = if (query.isEmpty()) true else {
+                                transaction.note.lowercase().contains(query) ||
+                                        categoryName.lowercase().contains(query)
+                            }
+                            val matchesType = when (selectedFilter) {
+                                "INCOME" -> transaction.type == "INCOME"
+                                "EXPENSE" -> transaction.type == "EXPENSE"
+                                else -> true
+                            }
+                            matchesSearch && matchesType
                         }
-                        matchesSearch && matchesType
                     }
                 }
 
@@ -7647,4 +7734,5 @@ fun TransactionsHistoryDialog(
             }
         }
     }
+}
 }
