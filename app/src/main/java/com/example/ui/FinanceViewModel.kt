@@ -51,6 +51,15 @@ class FinanceViewModel(application: Application) : AndroidViewModel(application)
     private val _selectedTheme = MutableStateFlow("system")
     val selectedTheme: StateFlow<String> = _selectedTheme.asStateFlow()
 
+    // Daily Expense Limit (default to 150)
+    private val _dailyExpenseLimit = MutableStateFlow(prefs.getFloat("daily_expense_limit", 150f))
+    val dailyExpenseLimit: StateFlow<Float> = _dailyExpenseLimit.asStateFlow()
+
+    fun setDailyExpenseLimit(limit: Float) {
+        _dailyExpenseLimit.value = limit
+        prefs.edit().putFloat("daily_expense_limit", limit).apply()
+    }
+
     private val _autoSyncOnChanges = MutableStateFlow(true)
     val autoSyncOnChanges: StateFlow<Boolean> = _autoSyncOnChanges.asStateFlow()
 
@@ -122,11 +131,18 @@ class FinanceViewModel(application: Application) : AndroidViewModel(application)
             initialValue = emptyList()
         )
 
-    // Calculate stats dynamically
+    // Calculate stats dynamically using high performance single-pass O(N) allocation-free loop
     val stats: StateFlow<Stats> = transactions
         .map { transactionList ->
-            val income = transactionList.filter { it.type == "INCOME" }.sumOf { it.amount }
-            val expense = transactionList.filter { it.type == "EXPENSE" }.sumOf { it.amount }
+            var income = 0.0
+            var expense = 0.0
+            for (t in transactionList) {
+                if (t.type == "INCOME") {
+                    income += t.amount
+                } else if (t.type == "EXPENSE") {
+                    expense += t.amount
+                }
+            }
             Stats(
                 totalIncome = income,
                 totalExpense = expense,
@@ -280,6 +296,13 @@ class FinanceViewModel(application: Application) : AndroidViewModel(application)
     fun deleteDebtRecord(record: com.example.data.DebtRecord) {
         viewModelScope.launch {
             repository.deleteDebt(record)
+            autoBackupData()
+        }
+    }
+
+    fun updateDebtRecord(record: com.example.data.DebtRecord) {
+        viewModelScope.launch {
+            repository.updateDebt(record)
             autoBackupData()
         }
     }

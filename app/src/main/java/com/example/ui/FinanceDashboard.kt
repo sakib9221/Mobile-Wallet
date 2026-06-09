@@ -22,6 +22,11 @@ import androidx.compose.foundation.lazy.items
 import androidx.compose.foundation.shape.CircleShape
 import androidx.compose.foundation.shape.RoundedCornerShape
 import androidx.compose.foundation.text.KeyboardOptions
+import androidx.compose.foundation.text.BasicTextField
+import androidx.compose.foundation.text.KeyboardActions
+import androidx.compose.ui.text.input.ImeAction
+import androidx.compose.ui.graphics.SolidColor
+import androidx.compose.ui.text.TextStyle
 import androidx.compose.material.icons.Icons
 import androidx.compose.material.icons.filled.*
 import androidx.compose.material.icons.outlined.*
@@ -87,11 +92,12 @@ fun Modifier.android16Clickable(
     val interactionSource = remember { MutableInteractionSource() }
     val isPressed by interactionSource.collectIsPressedAsState()
 
-    val pressProgress by animateFloatAsState(
+    // Highly optimized spring animation with high stiffness to settle in 3 frames, saving enormous CPU/GPU cycles
+    val pressProgressState = animateFloatAsState(
         targetValue = if (isPressed) 1f else 0f,
         animationSpec = spring(
-            dampingRatio = 0.5f,
-            stiffness = Spring.StiffnessMediumLow
+            dampingRatio = 0.6f,
+            stiffness = Spring.StiffnessHigh
         ),
         label = "press_progress"
     )
@@ -107,11 +113,14 @@ fun Modifier.android16Clickable(
     }
 
     contentModifier
+        // DEFERRED READ OPTIMIZATION: Reading pressProgressState.value ONLY inside the graphicsLayer block
+        // completely prevents any recomposition of the parent composable or item contents during click/gesture animations.
         .graphicsLayer {
-            val s = 1f - (pressProgress * 0.10f)
+            val progress = pressProgressState.value
+            val s = 1f - (progress * 0.05f)
             scaleX = s
             scaleY = s
-            this.alpha = 1f - (pressProgress * 0.18f)
+            this.alpha = 1f - (progress * 0.10f)
         }
         .clickable(
             interactionSource = interactionSource,
@@ -124,19 +133,20 @@ fun Modifier.android16Clickable(
 fun Modifier.android16ScalePress(customInteractionSource: MutableInteractionSource? = null): Modifier = composed {
     val interactionSource = customInteractionSource ?: remember { MutableInteractionSource() }
     val isPressed by interactionSource.collectIsPressedAsState()
-    val pressProgress by animateFloatAsState(
+    val pressProgressState = animateFloatAsState(
         targetValue = if (isPressed) 1f else 0f,
         animationSpec = spring(
-            dampingRatio = 0.5f,
-            stiffness = Spring.StiffnessMediumLow
+            dampingRatio = 0.6f,
+            stiffness = Spring.StiffnessHigh
         ),
         label = "scale_press_progress"
     )
     this.graphicsLayer {
-        val s = 1f - (pressProgress * 0.08f)
+        val progress = pressProgressState.value
+        val s = 1f - (progress * 0.04f)
         scaleX = s
         scaleY = s
-        this.alpha = 1f - (pressProgress * 0.12f)
+        this.alpha = 1f - (progress * 0.06f)
     }
 }
 
@@ -188,6 +198,7 @@ fun FinanceDashboardScreen(
     val stats by viewModel.stats.collectAsStateWithLifecycle()
     val currentTab by viewModel.uiTab.collectAsStateWithLifecycle()
     val selectedTheme by viewModel.selectedTheme.collectAsStateWithLifecycle()
+    val dailyExpenseLimit by viewModel.dailyExpenseLimit.collectAsStateWithLifecycle()
 
     val localizedContext = remember(currentLanguage) {
         LocaleHelper.getLocalizedContext(context, currentLanguage)
@@ -340,14 +351,81 @@ fun FinanceDashboardScreen(
             topBar = {
                 CenterAlignedTopAppBar(
                     title = {
-                        Text(
-                            text = getStringResource(R.string.app_name),
-                            fontWeight = FontWeight.ExtraBold,
-                            style = MaterialTheme.typography.titleLarge.copy(
-                                letterSpacing = (-0.5).sp,
-                                color = MaterialTheme.colorScheme.onBackground
+                        val isDark = isAppDark()
+                        val textGradient = remember(isDark) {
+                            Brush.linearGradient(
+                                colors = if (isDark) {
+                                    listOf(Color(0xFF34D399), Color(0xFF60A5FA)) // Mint emerald to light blue
+                                } else {
+                                    listOf(Color(0xFF047857), Color(0xFF1D4ED8)) // Rich forest to deep corporate blue
+                                }
                             )
-                        )
+                        }
+                        Row(
+                            verticalAlignment = Alignment.CenterVertically,
+                            horizontalArrangement = Arrangement.Center,
+                            modifier = Modifier
+                                .clip(RoundedCornerShape(16.dp))
+                                .background(
+                                    if (isDark) Color(0xFF1E293B).copy(alpha = 0.45f) 
+                                    else Color(0xFFFFFFFF).copy(alpha = 0.85f)
+                                )
+                                .border(
+                                    border = BorderStroke(
+                                        width = 1.dp,
+                                        brush = Brush.linearGradient(
+                                            colors = if (isDark) {
+                                                listOf(Color(0xFF334155).copy(alpha = 0.4f), Color(0xFF10B981).copy(alpha = 0.15f))
+                                            } else {
+                                                listOf(Color(0xFFE2E8F0).copy(alpha = 0.8f), Color(0xFF10B981).copy(alpha = 0.20f))
+                                            }
+                                        )
+                                    ),
+                                    shape = RoundedCornerShape(16.dp)
+                                )
+                                .padding(horizontal = 16.dp, vertical = 8.dp)
+                        ) {
+                            // Modern dual-tone logo background box with emerald theme
+                            Box(
+                                modifier = Modifier
+                                    .size(32.dp)
+                                    .background(
+                                        brush = Brush.linearGradient(
+                                            colors = listOf(
+                                                Color(0xFF059669), // Emerald
+                                                Color(0xFF2563EB)  // Electric blue
+                                            )
+                                        ),
+                                        shape = RoundedCornerShape(10.dp)
+                                    ),
+                                contentAlignment = Alignment.Center
+                            ) {
+                                Icon(
+                                    imageVector = Icons.Default.Wallet,
+                                    contentDescription = null,
+                                    tint = Color.White,
+                                    modifier = Modifier.size(18.dp)
+                                )
+                            }
+                            Spacer(modifier = Modifier.width(10.dp))
+                            Text(
+                                text = getStringResource(R.string.app_name),
+                                fontWeight = FontWeight.Black,
+                                style = androidx.compose.ui.text.TextStyle(
+                                    brush = textGradient,
+                                    fontSize = 16.sp,
+                                    letterSpacing = 0.5.sp
+                                )
+                            )
+                            Spacer(modifier = Modifier.width(8.dp))
+                            // Three-dimensional active status dot
+                            Box(
+                                modifier = Modifier
+                                    .size(8.dp)
+                                    .background(Color(0xFF10B981), CircleShape)
+                                    .border(1.5.dp, if (isDark) Color(0xFF111827) else Color.White, CircleShape)
+                            )
+                        }
                     },
                     navigationIcon = {
                         // Language Switch Glass Pill Button
@@ -450,17 +528,12 @@ fun FinanceDashboardScreen(
                         .widthIn(max = 600.dp)
                         .verticalScroll(androidx.compose.foundation.rememberScrollState())
                 ) {
-            // Local Auto-Backup & Manual Import Status Card
-            LocalBackupStatusCard(
-                currentLanguage = currentLanguage,
-                onImportClick = {
-                    filePickerLauncher.launch("application/json")
-                }
-            )
-
             // Minimalist Monthly balance summary card
             DashboardSummaryCard(
                 stats = stats,
+                transactions = transactions,
+                dailyLimit = dailyExpenseLimit,
+                onUpdateLimit = { limit -> viewModel.setDailyExpenseLimit(limit) },
                 lang = currentLanguage,
                 getString = getStringResource
             )
@@ -554,6 +627,10 @@ fun FinanceDashboardScreen(
             currentLanguage = currentLanguage,
             selectedTheme = selectedTheme,
             onThemeChange = onThemeChange,
+            onImportBackup = {
+                showSettingsDialog = false
+                filePickerLauncher.launch("application/json")
+            },
             onDismiss = { showSettingsDialog = false }
         )
     }
@@ -621,6 +698,7 @@ fun FinanceDashboardScreen(
             onAddDebt = { name, amt, dir, note -> viewModel.addDebtRecord(name, amt, dir, note) },
             onSettleDebt = { record, amount -> viewModel.settleDebtRecord(record, amount) },
             onDeleteDebt = { record -> viewModel.deleteDebtRecord(record) },
+            onUpdateDebt = { record -> viewModel.updateDebtRecord(record) },
             onDismiss = { showDebtListDialog = false }
         )
     }
@@ -714,12 +792,34 @@ fun UserSessionBanner(
 @Composable
 fun DashboardSummaryCard(
     stats: Stats,
+    transactions: List<Transaction>,
+    dailyLimit: Float,
+    onUpdateLimit: (Float) -> Unit,
     lang: String,
     getString: (Int) -> String
 ) {
     val isDark = isAppDark()
-    val cardBg = if (isDark) Color(0xFF1E293B).copy(alpha = 0.55f) else Color.White.copy(alpha = 0.72f)
     val cardBorder = if (isDark) Color(0xFF475569).copy(alpha = 0.5f) else Color(0xFFCBD5E1).copy(alpha = 0.7f)
+
+    // Premium shimmery background gradient matching global modern design theme
+    val premiumGradient = remember(isDark) {
+        if (isDark) {
+            Brush.linearGradient(
+                colors = listOf(
+                    Color(0xFF1E293B), // Premium Slate Grey
+                    Color(0xFF0F172A), // Midnight Dark
+                    Color(0xFF0F2633)  // Midnight Blue-Teal Tint
+                )
+            )
+        } else {
+            Brush.linearGradient(
+                colors = listOf(
+                    Color(0xFFFFFFFF), // Pure Crisp White
+                    Color(0xFFF0FDFA)  // Super light soft Teal-Mint Breeze
+                )
+            )
+        }
+    }
 
     // Cache currency formatting strings in remember block to maximize rendering performance
     val formattedTotal = remember(stats.balance, lang) {
@@ -751,14 +851,22 @@ fun DashboardSummaryCard(
     val spaceGap = if (screenWidthDp < 360) 12.dp else 24.dp
     val incomeExpenseGap = if (screenWidthDp < 360) 8.dp else 16.dp
 
+    // Calculate Today's Cost details safely
+    val todayCost = remember(transactions) {
+        transactions
+            .filter { it.type == "EXPENSE" && isSameDay(it.dateLong, System.currentTimeMillis()) }
+            .sumOf { it.amount }
+    }
+
     Card(
         modifier = Modifier
             .fillMaxWidth()
             .padding(horizontal = 16.dp, vertical = 8.dp)
+            .background(premiumGradient, RoundedCornerShape(32.dp))
             .testTag("dashboard_summary_card"),
         shape = RoundedCornerShape(32.dp),
         border = BorderStroke(1.dp, cardBorder),
-        colors = CardDefaults.cardColors(containerColor = cardBg),
+        colors = CardDefaults.cardColors(containerColor = Color.Transparent),
         elevation = CardDefaults.cardElevation(defaultElevation = 0.dp)
     ) {
         Column(
@@ -814,6 +922,228 @@ fun DashboardSummaryCard(
                         ),
                         color = if (stats.balance >= 0) MaterialTheme.colorScheme.onSurface else Color(0xFFE11D48)
                     )
+                }
+            }
+
+            // Daily cost and expense progress bar, placed under Remaining Balance as requested!
+            val isBn = lang == "bn"
+            val formattedTodayCost = remember(todayCost, lang) {
+                formatCurrency(todayCost, lang)
+            }
+            val formattedLimit = remember(dailyLimit, lang) {
+                if (lang == "bn") {
+                    convertDigitsToBengali(dailyLimit.toInt().toString())
+                } else {
+                    dailyLimit.toInt().toString()
+                }
+            }
+
+            Spacer(modifier = Modifier.height(12.dp))
+
+            Card(
+                modifier = Modifier.fillMaxWidth(),
+                shape = RoundedCornerShape(16.dp),
+                border = BorderStroke(
+                    1.dp, 
+                    if (isDark) Color(0xFF334155).copy(alpha = 0.4f) else Color(0xFFCBD5E1).copy(alpha = 0.5f)
+                ),
+                colors = CardDefaults.cardColors(
+                    containerColor = if (isDark) Color(0xFF0F172A).copy(alpha = 0.40f) else Color(0xFFF1F5F9).copy(alpha = 0.60f)
+                ),
+                elevation = CardDefaults.cardElevation(defaultElevation = 0.dp)
+            ) {
+                Column(
+                    modifier = Modifier
+                        .fillMaxWidth()
+                        .padding(14.dp)
+                ) {
+                    Row(
+                        modifier = Modifier.fillMaxWidth(),
+                        horizontalArrangement = Arrangement.SpaceBetween,
+                        verticalAlignment = Alignment.CenterVertically
+                    ) {
+                        Column {
+                            Text(
+                                text = if (isBn) "দৈনিক খরচ (আজ)" else "TODAY'S COST",
+                                style = MaterialTheme.typography.labelSmall.copy(
+                                    fontWeight = FontWeight.Bold,
+                                    letterSpacing = 0.5.sp,
+                                    color = if (isDark) Color(0xFF94A3B8) else Color(0xFF475569)
+                                )
+                            )
+                            Spacer(modifier = Modifier.height(2.dp))
+                            Text(
+                                text = formattedTodayCost,
+                                style = MaterialTheme.typography.titleMedium.copy(
+                                    fontWeight = FontWeight.Black,
+                                    color = if (todayCost >= dailyLimit && dailyLimit > 0) Color(0xFFEF4444) else if (isDark) Color.White else Color(0xFF0F172A)
+                                )
+                            )
+                        }
+
+                        // Daily limit config input
+                        Column(horizontalAlignment = Alignment.End) {
+                            Text(
+                                text = if (isBn) "খরচের সীমা (লিমিট)" else "DAILY LIMIT",
+                                style = MaterialTheme.typography.labelSmall.copy(
+                                    fontWeight = FontWeight.Bold,
+                                    letterSpacing = 0.5.sp,
+                                    color = if (isDark) Color(0xFF94A3B8) else Color(0xFF475569)
+                                )
+                            )
+                            Spacer(modifier = Modifier.height(2.dp))
+
+                            var isEditing by remember { mutableStateOf(false) }
+                            var limitInputText by remember(dailyLimit) { mutableStateOf(dailyLimit.toInt().toString()) }
+
+                            if (isEditing) {
+                                BasicTextField(
+                                    value = limitInputText,
+                                    onValueChange = { newValue ->
+                                        // Allow only digits
+                                        val filtered = newValue.filter { it.isDigit() }
+                                        limitInputText = filtered
+                                    },
+                                    textStyle = TextStyle(
+                                        color = if (isDark) Color.White else Color(0xFF0F172A),
+                                        fontWeight = FontWeight.Bold,
+                                        fontSize = 14.sp,
+                                        textAlign = TextAlign.End
+                                    ),
+                                    cursorBrush = SolidColor(MaterialTheme.colorScheme.primary),
+                                    modifier = Modifier
+                                        .width(70.dp)
+                                        .background(
+                                            color = if (isDark) Color(0xFF1E293B) else Color(0xFFE2E8F0),
+                                            shape = RoundedCornerShape(6.dp)
+                                        )
+                                        .padding(horizontal = 6.dp, vertical = 3.dp),
+                                    keyboardOptions = KeyboardOptions(
+                                        keyboardType = KeyboardType.Number,
+                                        imeAction = ImeAction.Done
+                                    ),
+                                    keyboardActions = KeyboardActions(
+                                        onDone = {
+                                            isEditing = false
+                                            val cleanEng = limitInputText.trim()
+                                            val newLimit = cleanEng.toFloatOrNull() ?: 150f
+                                            onUpdateLimit(newLimit)
+                                        }
+                                    ),
+                                    singleLine = true
+                                )
+                            } else {
+                                Row(
+                                    verticalAlignment = Alignment.CenterVertically,
+                                    modifier = Modifier
+                                        .android16Clickable(shape = RoundedCornerShape(6.dp)) {
+                                            isEditing = true
+                                        }
+                                        .padding(horizontal = 4.dp, vertical = 2.dp)
+                                ) {
+                                    Text(
+                                        text = if (isBn) "৳$formattedLimit" else "$$formattedLimit",
+                                        style = MaterialTheme.typography.titleMedium.copy(
+                                            fontWeight = FontWeight.ExtraBold,
+                                            color = MaterialTheme.colorScheme.primary
+                                        )
+                                    )
+                                    Spacer(modifier = Modifier.width(4.dp))
+                                    Icon(
+                                        imageVector = Icons.Default.Edit,
+                                        contentDescription = "Edit Limit",
+                                        tint = MaterialTheme.colorScheme.primary,
+                                        modifier = Modifier.size(13.dp)
+                                    )
+                                }
+                            }
+                        }
+                    }
+
+                    Spacer(modifier = Modifier.height(10.dp))
+
+                    val limitSafe = if (dailyLimit <= 0) 150f else dailyLimit
+                    val progress = (todayCost / limitSafe).toFloat().coerceIn(0f, 1f)
+
+                    val progressColor = when {
+                        todayCost >= limitSafe -> Color(0xFFEF4444) // alarm red
+                        todayCost >= limitSafe * 0.8f -> Color(0xFFF59E0B) // amber warning
+                        else -> Color(0xFF10B981) // safe green
+                    }
+
+                    val animatedProgress by animateFloatAsState(
+                        targetValue = progress,
+                        animationSpec = spring(dampingRatio = 0.75f, stiffness = Spring.StiffnessLow),
+                        label = "daily_expense_progress"
+                    )
+
+                    Box(
+                        modifier = Modifier
+                            .fillMaxWidth()
+                            .height(6.dp)
+                            .background(
+                                color = if (isDark) Color(0xFF1E293B) else Color(0xFFE2E8F0),
+                                shape = CircleShape
+                            )
+                    ) {
+                        Box(
+                            modifier = Modifier
+                                .fillMaxWidth(animatedProgress)
+                                .fillMaxHeight()
+                                .background(color = progressColor, shape = CircleShape)
+                        )
+                    }
+
+                    Spacer(modifier = Modifier.height(6.dp))
+
+                    Row(
+                        modifier = Modifier.fillMaxWidth(),
+                        horizontalArrangement = Arrangement.SpaceBetween,
+                        verticalAlignment = Alignment.CenterVertically
+                    ) {
+                        val percentageStr = remember(todayCost, limitSafe, lang) {
+                            val pct = ((todayCost / limitSafe) * 100).toInt()
+                            if (lang == "bn") {
+                                convertDigitsToBengali("$pct%")
+                            } else {
+                                "$pct%"
+                            }
+                        }
+                        Text(
+                            text = if (todayCost >= limitSafe) {
+                                if (isBn) "সীমা অতিক্রম করেছেন!" else "Limit Exceeded!"
+                            } else {
+                                if (isBn) "বাজেটের $percentageStr খরচ হয়েছে" else "Spent $percentageStr of budget"
+                            },
+                            style = MaterialTheme.typography.bodySmall.copy(
+                                fontWeight = FontWeight.Bold,
+                                color = progressColor,
+                                fontSize = 11.sp
+                            )
+                        )
+
+                        val remainingAmount = kotlin.math.max(0.0, limitSafe - todayCost)
+                        val formattedRemaining = remember(remainingAmount, lang) {
+                            if (lang == "bn") {
+                                convertDigitsToBengali(remainingAmount.toInt().toString())
+                            } else {
+                                remainingAmount.toInt().toString()
+                            }
+                        }
+
+                        Text(
+                            text = if (todayCost >= limitSafe) {
+                                if (isBn) "০ টাকা বাকি" else "0 left"
+                            } else {
+                                if (isBn) "বাকি ৳$formattedRemaining" else "Left $$formattedRemaining"
+                            },
+                            style = MaterialTheme.typography.bodySmall.copy(
+                                fontWeight = FontWeight.Black,
+                                color = if (todayCost >= limitSafe) Color(0xFFEF4444) else if (isDark) Color(0xFF94A3B8) else Color(0xFF475569),
+                                fontSize = 11.sp
+                            )
+                        )
+                    }
                 }
             }
 
@@ -1236,6 +1566,23 @@ fun TransactionsTabContent(
 }
 
 // Single Transaction List Row
+// Thread-safe cached static gradients and colors to avoid GC allocation stutter during scrolling lists
+private val OptDarkExpenseBrush = Brush.linearGradient(
+    colors = listOf(Color(0xFF1E293B).copy(alpha = 0.55f), Color(0xFF271313).copy(alpha = 0.45f))
+)
+private val OptDarkIncomeBrush = Brush.linearGradient(
+    colors = listOf(Color(0xFF1E293B).copy(alpha = 0.55f), Color(0xFF0B2921).copy(alpha = 0.45f))
+)
+private val OptLightExpenseBrush = Brush.linearGradient(
+    colors = listOf(Color.White.copy(alpha = 0.85f), Color(0xFFFFF1F2).copy(alpha = 0.70f))
+)
+private val OptLightIncomeBrush = Brush.linearGradient(
+    colors = listOf(Color.White.copy(alpha = 0.85f), Color(0xFFF0FDF4).copy(alpha = 0.70f))
+)
+private val OptDarkBorderColor = Color(0xFF334155).copy(alpha = 0.5f)
+private val OptLightBorderColor = Color(0xFFE2E8F0).copy(alpha = 0.7f)
+private val OptCardShape = RoundedCornerShape(20.dp)
+
 @Composable
 fun TransactionListItem(
     transaction: Transaction,
@@ -1246,10 +1593,6 @@ fun TransactionListItem(
     onEdit: (Transaction) -> Unit
 ) {
     var expanded by remember { mutableStateOf(false) }
-    var hasBeenExpanded by remember { mutableStateOf(false) }
-    if (expanded && !hasBeenExpanded) {
-        hasBeenExpanded = true
-    }
 
     val isExpense = remember(transaction.type) { transaction.type == "EXPENSE" }
     val categoryName = remember(transaction.category, lang) {
@@ -1265,25 +1608,31 @@ fun TransactionListItem(
         "${if (isExpense) "-" else "+"}${formatCurrency(transaction.amount, lang)}"
     }
 
-    val itemBg = remember(isDark) { if (isDark) Color(0xFF1E293B) else Color(0xFFF8FAFC) }
-    val itemBorder = remember(isDark) { if (isDark) Color(0xFF334155) else Color(0xFFE2E8F0) }
+    val itemBg = remember(isDark, isExpense) {
+        if (isDark) {
+            if (isExpense) OptDarkExpenseBrush else OptDarkIncomeBrush
+        } else {
+            if (isExpense) OptLightExpenseBrush else OptLightIncomeBrush
+        }
+    }
+    val itemBorder = remember(isDark) { if (isDark) OptDarkBorderColor else OptLightBorderColor }
     val titleColor = remember(isDark) { if (isDark) Color(0xFFF8FAFC) else Color(0xFF0F172A) }
     val noteColor = remember(isDark) { if (isDark) Color(0xFFCBD5E1) else Color(0xFF475569) }
     val dateColor = remember(isDark) { if (isDark) Color(0xFF94A3B8) else Color(0xFF64748B) }
-    val amountColor = remember(isDark, isExpense) { if (isExpense) Color(0xFFEF4444) else { if (isDark) Color(0xFF34D399) else Color(0xFF0D9488) } }
+    val amountColor = remember(isDark, isExpense) { if (isExpense) Color(0xFFEF4444) else (if (isDark) Color(0xFF14B8A6) else Color(0xFF0D9488)) }
 
     // Map categories to modern design colors for icons
     val categoryColor = remember(transaction.category) {
         val resId = transaction.category.toIntOrNull()
         when (resId) {
-            R.string.category_salary -> Color(0xFF00C853) // Green
-            R.string.category_food -> Color(0xFFFF9100) // Orange
-            R.string.category_groceries -> Color(0xFFFFD600) // Yellow
-            R.string.category_utilities -> Color(0xFFD500F9) // Purple
-            R.string.category_entertainment -> Color(0xFFF50057) // Pink
-            R.string.category_transport -> Color(0xFF00E5FF) // Cyan
-            R.string.category_freelance -> Color(0xFF2979FF) // Blue
-            else -> Color(0xFF9E9E9E) // Others
+            R.string.category_salary -> Color(0xFF10B981) // Emerald Green
+            R.string.category_food -> Color(0xFFF59E0B) // Golden Amber
+            R.string.category_groceries -> Color(0xFF84CC16) // Lime Green
+            R.string.category_utilities -> Color(0xFF6366F1) // Indigo Blue
+            R.string.category_entertainment -> Color(0xFFEC4899) // Hot Pink
+            R.string.category_transport -> Color(0xFF06B6D4) // Cyan
+            R.string.category_freelance -> Color(0xFF3B82F6) // Electric Blue
+            else -> Color(0xFF64748B) // Slate Gray
         }
     }
 
@@ -1301,23 +1650,23 @@ fun TransactionListItem(
         }
     }
 
-    val baseTitleStyle = MaterialTheme.typography.titleMedium
-    val titleStyle = remember(baseTitleStyle, titleColor) { baseTitleStyle.copy(fontWeight = FontWeight.ExtraBold, color = titleColor) }
-
-    val baseNoteStyle = MaterialTheme.typography.bodySmall
-    val noteStyle = remember(baseNoteStyle, noteColor) { baseNoteStyle.copy(color = noteColor) }
-
-    val baseDateStyle = MaterialTheme.typography.labelSmall
-    val dateStyle = remember(baseDateStyle, dateColor) { baseDateStyle.copy(fontWeight = FontWeight.Bold, color = dateColor) }
-
-    val baseAmountStyle = MaterialTheme.typography.titleMedium
-    val amountStyle = remember(baseAmountStyle, amountColor) { baseAmountStyle.copy(fontWeight = FontWeight.Black, color = amountColor) }
-
     val iconBoxBg = remember(categoryColor) { categoryColor.copy(alpha = 0.15f) }
     val iconBoxShape = remember { RoundedCornerShape(14.dp) }
 
-    val cardShape = remember { RoundedCornerShape(20.dp) }
+    val radialBrush = remember(categoryColor) {
+        Brush.radialGradient(
+            colors = listOf(categoryColor.copy(alpha = 0.22f), categoryColor.copy(alpha = 0.04f))
+        )
+    }
+    val linearBorderBrush = remember(categoryColor) {
+        Brush.linearGradient(
+            colors = listOf(categoryColor.copy(alpha = 0.45f), Color.Transparent)
+        )
+    }
+
+    val cardShape = OptCardShape
     val cardBorder = remember(itemBorder) { BorderStroke(1.dp, itemBorder) }
+    val cardInteractionSource = remember { MutableInteractionSource() }
 
     Column(
         modifier = Modifier
@@ -1325,51 +1674,74 @@ fun TransactionListItem(
             .padding(horizontal = 16.dp)
             .background(itemBg, cardShape)
             .border(cardBorder, cardShape)
-            .clickable(
-                onClick = { expanded = !expanded }
-            )
+            .clip(cardShape)
+            .clickable { expanded = !expanded }
     ) {
         Column {
             Row(
                 modifier = Modifier
                     .fillMaxWidth()
-                    .padding(16.dp),
+                    .padding(vertical = 12.dp, horizontal = 14.dp),
                 verticalAlignment = Alignment.CenterVertically
             ) {
-                // Rounded color emblem for Category (Drawing background directly without drawing expensive clipping planes)
+                // Modern vertical accent pill representing Transaction Type (Income = Teal, Expense = Red)
                 Box(
                     modifier = Modifier
-                        .size(48.dp)
-                        .background(iconBoxBg, iconBoxShape),
+                        .width(4.dp)
+                        .height(28.dp)
+                        .clip(CircleShape)
+                        .background(amountColor)
+                )
+
+                Spacer(modifier = Modifier.width(10.dp))
+
+                // Glowing circular ring category emblem for elite modern finish
+                Box(
+                    modifier = Modifier
+                        .size(44.dp)
+                        .background(
+                            brush = radialBrush,
+                            shape = CircleShape
+                        )
+                        .border(
+                            width = 1.dp,
+                            brush = linearBorderBrush,
+                            shape = CircleShape
+                        ),
                     contentAlignment = Alignment.Center
                 ) {
                     Icon(
                         imageVector = categoryIcon,
                         contentDescription = categoryName,
                         tint = categoryColor,
-                        modifier = Modifier.size(24.dp)
+                        modifier = Modifier.size(20.dp)
                     )
                 }
 
-                Spacer(modifier = Modifier.width(16.dp))
+                Spacer(modifier = Modifier.width(12.dp))
 
                 // Text section
                 Column(modifier = Modifier.weight(1f)) {
                     Text(
                         text = categoryName,
-                        style = titleStyle
+                        style = MaterialTheme.typography.titleMedium,
+                        fontWeight = FontWeight.ExtraBold,
+                        color = titleColor
                     )
                     if (transaction.note.isNotBlank()) {
                         Text(
                             text = transaction.note,
-                            style = noteStyle,
+                            style = MaterialTheme.typography.bodySmall,
+                            color = noteColor,
                             maxLines = 1,
                             overflow = TextOverflow.Ellipsis
                         )
                     }
                     Text(
                         text = formattedDate,
-                        style = dateStyle
+                        style = MaterialTheme.typography.labelSmall,
+                        fontWeight = FontWeight.Bold,
+                        color = dateColor
                     )
                 }
 
@@ -1382,7 +1754,9 @@ fun TransactionListItem(
                 ) {
                     Text(
                         text = formattedAmount,
-                        style = amountStyle
+                        style = MaterialTheme.typography.titleMedium,
+                        fontWeight = FontWeight.Black,
+                        color = amountColor
                     )
                     Spacer(modifier = Modifier.height(4.dp))
                     IconButton(
@@ -1400,12 +1774,11 @@ fun TransactionListItem(
                 }
             }
 
-            if (expanded || hasBeenExpanded) {
-                AnimatedVisibility(
-                    visible = expanded,
-                    enter = expandVertically(animationSpec = spring(dampingRatio = 0.8f, stiffness = Spring.StiffnessMediumLow)) + fadeIn(),
-                    exit = shrinkVertically(animationSpec = spring(dampingRatio = 0.8f, stiffness = Spring.StiffnessMediumLow)) + fadeOut()
-                ) {
+            AnimatedVisibility(
+                visible = expanded,
+                enter = expandVertically(animationSpec = tween(durationMillis = 180)) + fadeIn(animationSpec = tween(180)),
+                exit = shrinkVertically(animationSpec = tween(durationMillis = 150)) + fadeOut(animationSpec = tween(150))
+            ) {
                     // Expandable panel with quick options
                     Column(
                         modifier = Modifier
@@ -1495,7 +1868,7 @@ fun TransactionListItem(
                                     .height(32.dp)
                                     .android16ScalePress(deleteBtnInt)
                             ) {
-                                Icon(Icons.Default.DeleteOutline, contentDescription = "Delete", modifier = Modifier.size(12.dp))
+                                 Icon(Icons.Default.DeleteOutline, contentDescription = "Delete", modifier = Modifier.size(12.dp))
                                 Spacer(modifier = Modifier.width(4.dp))
                                 Text(if (lang == "bn") "মুছে ফেলুন" else "Delete", fontSize = 11.sp, fontWeight = FontWeight.Bold)
                             }
@@ -1505,7 +1878,6 @@ fun TransactionListItem(
             }
         }
     }
-}
 
 // Tab 2: Category wise summarize statistics
 @Composable
@@ -1630,7 +2002,7 @@ fun CategorySummaryItem(
     isDark: Boolean,
     isExpense: Boolean
 ) {
-    val categoryName = getString(categoryResId)
+    val categoryName = remember(categoryResId, lang) { getString(categoryResId) }
 
     // Cache formatting computations inside remember states to guarantee stable 120Hz scrolling frames
     val formattedAmount = remember(amount, lang) {
@@ -1640,23 +2012,25 @@ fun CategorySummaryItem(
         String.format(Locale.US, "%.1f%%", percentage)
     }
 
-    val colorAccent = when (categoryResId) {
-        R.string.category_salary -> Color(0xFF00C853)
-        R.string.category_food -> Color(0xFFFF9100)
-        R.string.category_groceries -> Color(0xFFFFD600)
-        R.string.category_utilities -> Color(0xFFD500F9)
-        R.string.category_entertainment -> Color(0xFFF50057)
-        R.string.category_transport -> Color(0xFF00E5FF)
-        R.string.category_freelance -> Color(0xFF2979FF)
-        else -> Color(0xFF9E9E9E)
+    val colorAccent = remember(categoryResId) {
+        when (categoryResId) {
+            R.string.category_salary -> Color(0xFF10B981) // Emerald Green
+            R.string.category_food -> Color(0xFFF59E0B) // Golden Amber
+            R.string.category_groceries -> Color(0xFF84CC16) // Lime Green
+            R.string.category_utilities -> Color(0xFF6366F1) // Indigo Blue
+            R.string.category_entertainment -> Color(0xFFEC4899) // Hot Pink
+            R.string.category_transport -> Color(0xFF06B6D4) // Cyan
+            R.string.category_freelance -> Color(0xFF3B82F6) // Electric Blue
+            else -> Color(0xFF64748B) // Slate Gray
+        }
     }
 
-    val itemBg = if (isDark) Color(0xFF1E293B).copy(alpha = 0.55f) else Color.White.copy(alpha = 0.72f)
-    val itemBorder = if (isDark) Color(0xFF475569).copy(alpha = 0.5f) else Color(0xFFCBD5E1).copy(alpha = 0.7f)
-    val titleColor = if (isDark) MaterialTheme.colorScheme.onSurface else Color(0xFF0F172A)
-    val amountColor = if (isExpense) Color(0xFFEF4444) else { if (isDark) Color(0xFF34D399) else Color(0xFF0D9488) }
-    val progressTrackBg = if (isDark) Color(0x33FFFFFF) else Color(0xFFE2E8F0)
-    val percentTextColor = if (isDark) MaterialTheme.colorScheme.onSurfaceVariant else Color(0xFF475569)
+    val itemBg = remember(isDark) { if (isDark) Color(0xFF1E293B).copy(alpha = 0.55f) else Color.White.copy(alpha = 0.72f) }
+    val itemBorder = remember(isDark) { if (isDark) Color(0xFF475569).copy(alpha = 0.5f) else Color(0xFFCBD5E1).copy(alpha = 0.7f) }
+    val titleColor = remember(isDark) { if (isDark) Color(0xFFF8FAFC) else Color(0xFF0F172A) }
+    val amountColor = remember(isDark, isExpense) { if (isExpense) Color(0xFFEF4444) else { if (isDark) Color(0xFF34D399) else Color(0xFF0D9488) } }
+    val progressTrackBg = remember(isDark) { if (isDark) Color(0x33FFFFFF) else Color(0xFFE2E8F0) }
+    val percentTextColor = remember(isDark) { if (isDark) Color(0xFF94A3B8) else Color(0xFF475569) }
 
     Card(
         shape = RoundedCornerShape(20.dp),
@@ -2194,6 +2568,7 @@ fun AddTransactionDialog(
             Card(
                 modifier = Modifier
                     .fillMaxWidth()
+                    .widthIn(max = 500.dp)
                     .padding(horizontal = 8.dp)
                     .testTag("add_transaction_dialog_surface"),
                 shape = RoundedCornerShape(24.dp),
@@ -2521,6 +2896,7 @@ fun EditTransactionDialog(
             Card(
                 modifier = Modifier
                     .fillMaxWidth()
+                    .widthIn(max = 500.dp)
                     .padding(horizontal = 8.dp)
                     .testTag("edit_transaction_dialog_surface"),
                 shape = RoundedCornerShape(24.dp),
@@ -3891,6 +4267,7 @@ fun AboutAppDialog(
             Card(
                 modifier = Modifier
                     .fillMaxWidth()
+                    .widthIn(max = 500.dp)
                     .fillMaxHeight(0.85f)
                     .padding(horizontal = 4.dp)
                     .testTag("about_app_dialog_surface"),
@@ -4141,6 +4518,7 @@ fun SettingsDialog(
     currentLanguage: String,
     selectedTheme: String,
     onThemeChange: (String) -> Unit,
+    onImportBackup: () -> Unit,
     onDismiss: () -> Unit
 ) {
     val isDark = isAppDark()
@@ -4154,6 +4532,7 @@ fun SettingsDialog(
         Card(
             modifier = Modifier
                 .fillMaxWidth()
+                .widthIn(max = 500.dp)
                 .padding(16.dp)
                 .testTag("settings_dialog_surface"),
             shape = RoundedCornerShape(24.dp),
@@ -4211,7 +4590,15 @@ fun SettingsDialog(
                     }
                 }
 
-                Spacer(modifier = Modifier.height(20.dp))
+                Spacer(modifier = Modifier.height(16.dp))
+
+                // Auto backup info card placed at the very top of Settings, as requested by the user!
+                LocalBackupStatusCard(
+                    currentLanguage = currentLanguage,
+                    onImportClick = onImportBackup
+                )
+
+                Spacer(modifier = Modifier.height(24.dp))
 
                 // Theme section label
                 Text(
@@ -4469,312 +4856,283 @@ fun DeveloperCreditDialog(
 
     Dialog(onDismissRequest = onDismiss) {
         AnimatedDialogContent {
-            val dialogSurfaceBg = if (isDark) Color(0xFF1E293B).copy(alpha = 0.92f) else Color.White.copy(alpha = 0.95f)
-            val dialogBorder = BorderStroke(1.dp, if (isDark) Color(0xFF475569).copy(alpha = 0.5f) else Color(0xFFCBD5E1).copy(alpha = 0.7f))
+            val dialogSurfaceBg = if (isDark) Color(0xFF0F172A) else Color.White
+            val dialogBorderColor = if (isDark) Color(0xFF334155) else Color(0xFFE2E8F0)
+            
             Card(
                 modifier = Modifier
                     .fillMaxWidth()
                     .padding(horizontal = 8.dp)
                     .testTag("developer_credit_dialog_surface"),
-                shape = RoundedCornerShape(28.dp),
-                border = dialogBorder,
+                shape = RoundedCornerShape(24.dp),
+                border = BorderStroke(1.dp, dialogBorderColor),
                 colors = CardDefaults.cardColors(
                     containerColor = dialogSurfaceBg,
-                    contentColor = if (isDark) Color.White else Color(0xFF0F172A)
-                )
+                    contentColor = if (isDark) Color.White else Color(0xFF1E293B)
+                ),
+                elevation = CardDefaults.cardElevation(defaultElevation = 12.dp)
             ) {
-            Column(
-                modifier = Modifier
-                    .padding(24.dp)
-                    .fillMaxWidth(),
-                horizontalAlignment = Alignment.CenterHorizontally
-            ) {
-                // Glowing Code symbol container
-                Box(
-                    modifier = Modifier
-                        .size(72.dp)
-                        .background(
-                            brush = Brush.radialGradient(
-                                colors = if (isDark) listOf(Color(0x3310B981), Color.Transparent) else listOf(Color(0x223B82F6), Color.Transparent)
-                            ),
-                            shape = CircleShape
-                        ),
-                    contentAlignment = Alignment.Center
+                Column(
+                    modifier = Modifier.fillMaxWidth(),
+                    horizontalAlignment = Alignment.CenterHorizontally
                 ) {
+                    // Modern Abstract Design Banner
                     Box(
                         modifier = Modifier
-                            .size(56.dp)
+                            .fillMaxWidth()
+                            .height(110.dp)
                             .background(
-                                color = if (isDark) Color(0x1F10B981) else Color(0x123B82F6),
-                                shape = CircleShape
-                            )
-                            .border(
-                                width = 1.dp,
-                                color = if (isDark) Color(0x5010B981) else Color(0x403B82F6),
-                                shape = CircleShape
+                                brush = Brush.linearGradient(
+                                    colors = if (isDark) {
+                                        listOf(Color(0xFF0F172A), Color(0xFF1E1B4B), Color(0xFF311042))
+                                    } else {
+                                        listOf(Color(0xFFEFF6FF), Color(0xFFE0E7FF), Color(0xFFF3E8FF))
+                                    }
+                                )
                             ),
                         contentAlignment = Alignment.Center
                     ) {
-                        Icon(
-                            imageVector = Icons.Default.Code,
-                            contentDescription = "Code badge",
-                            tint = if (isDark) Color(0xFF10B981) else Color(0xFF2563EB),
-                            modifier = Modifier.size(28.dp)
+                        // Futuristic code patterns/lines styled elegantly
+                        Canvas(modifier = Modifier.fillMaxSize()) {
+                            val lineColor = if (isDark) Color(0xFF10B981).copy(alpha = 0.08f) else Color(0xFF2563EB).copy(alpha = 0.05f)
+                            drawCircle(
+                                color = lineColor,
+                                radius = size.minDimension * 0.6f,
+                                center = androidx.compose.ui.geometry.Offset(size.width * 0.8f, size.height * 0.2f)
+                            )
+                            drawCircle(
+                                color = lineColor,
+                                radius = size.minDimension * 0.4f,
+                                center = androidx.compose.ui.geometry.Offset(size.width * 0.1f, size.height * 0.8f)
+                            )
+                        }
+
+                        // Floating dynamic icon circle
+                        Box(
+                            modifier = Modifier
+                                .size(56.dp)
+                                .background(
+                                    color = if (isDark) Color(0x3310B981) else Color(0x222563EB),
+                                    shape = CircleShape
+                                )
+                                .border(
+                                    width = 1.5.dp,
+                                    color = if (isDark) Color(0xFF10B981).copy(alpha = 0.6f) else Color(0xFF2563EB).copy(alpha = 0.5f),
+                                    shape = CircleShape
+                                ),
+                            contentAlignment = Alignment.Center
+                        ) {
+                            Icon(
+                                imageVector = Icons.Default.Code,
+                                contentDescription = null,
+                                tint = if (isDark) Color(0xFF10B981) else Color(0xFF2563EB),
+                                modifier = Modifier.size(26.dp)
+                            )
+                        }
+                    }
+
+                    Column(
+                        modifier = Modifier
+                            .padding(horizontal = 20.dp, vertical = 18.dp)
+                            .fillMaxWidth(),
+                        horizontalAlignment = Alignment.CenterHorizontally
+                    ) {
+                        Text(
+                            text = if (lang == "bn") "ডেভেলপার ক্রেডিট" else "Developer Credit",
+                            style = MaterialTheme.typography.titleMedium,
+                            fontWeight = FontWeight.ExtraBold,
+                            color = if (isDark) Color.White else Color(0xFF0F172A)
                         )
-                    }
-                }
 
-                Spacer(modifier = Modifier.height(12.dp))
+                        Text(
+                            text = if (lang == "bn") "অ্যাপ্লিকেশন আর্কিটেক্ট এবং ক্রিয়েটর" else "Application Architect & Creator",
+                            style = MaterialTheme.typography.labelSmall.copy(letterSpacing = 0.5.sp),
+                            fontWeight = FontWeight.Bold,
+                            color = if (isDark) Color(0xFF10B981) else Color(0xFF2563EB)
+                        )
 
-                Text(
-                    text = "Developer Credit",
-                    style = MaterialTheme.typography.titleLarge.copy(letterSpacing = 1.5.sp),
-                    fontWeight = FontWeight.ExtraBold,
-                    color = if (isDark) MaterialTheme.colorScheme.onSurface else Color(0xFF0F172A)
-                )
+                        Spacer(modifier = Modifier.height(18.dp))
 
-                Text(
-                    text = "Application Architect & Creator",
-                    style = MaterialTheme.typography.labelMedium.copy(letterSpacing = 0.5.sp),
-                    fontWeight = FontWeight.Bold,
-                    color = if (isDark) Color(0xFF10B981) else Color(0xFF2563EB)
-                )
-
-                Spacer(modifier = Modifier.height(24.dp))
-
-                // Detail display list cards with elegant layout and representative icons
-                Column(
-                    modifier = Modifier.fillMaxWidth(),
-                    verticalArrangement = Arrangement.spacedBy(10.dp)
-                ) {
-                    val labelColor = MaterialTheme.colorScheme.onSurfaceVariant.copy(alpha = 0.8f)
-                    val valueColor = MaterialTheme.colorScheme.onSurface
-                    val blockBorder = BorderStroke(1.dp, MaterialTheme.colorScheme.outlineVariant.copy(alpha = 0.3f))
-                    val blockBg = CardDefaults.cardColors(containerColor = MaterialTheme.colorScheme.surfaceVariant.copy(alpha = 0.15f))
-
-                    // Name Info block
-                    Card(
-                        modifier = Modifier.fillMaxWidth(),
-                        shape = RoundedCornerShape(16.dp),
-                        border = blockBorder,
-                        colors = blockBg
-                    ) {
-                        Row(
-                            modifier = Modifier.padding(14.dp),
-                            verticalAlignment = Alignment.CenterVertically
+                        // Unified Cards display
+                        Column(
+                            modifier = Modifier.fillMaxWidth(),
+                            verticalArrangement = Arrangement.spacedBy(10.dp)
                         ) {
-                            Box(
+                            CreditItemCard(
+                                isDark = isDark,
+                                icon = Icons.Default.Person,
+                                accentColor = Color(0xFF10B981),
+                                title = if (lang == "bn") "নাম" else "NAME",
+                                value = "Md. Robiul Islam Sakib"
+                            )
+
+                            CreditItemCard(
+                                isDark = isDark,
+                                icon = Icons.Default.Computer,
+                                accentColor = Color(0xFFA855F7),
+                                title = if (lang == "bn") "ডিপার্টমেন্ট" else "DEPARTMENT",
+                                value = "Computer Science and Technology"
+                            )
+
+                            CreditItemCard(
+                                isDark = isDark,
+                                icon = Icons.Default.School,
+                                accentColor = Color(0xFF3B82F6),
+                                title = if (lang == "bn") "ইনস্টিটিউট" else "INSTITUTE",
+                                value = "Park Polytechnic Institute"
+                            )
+                        }
+
+                        Spacer(modifier = Modifier.height(20.dp))
+
+                        var showDonationDialog by remember { mutableStateOf(false) }
+
+                        if (showDonationDialog) {
+                            SupportDeveloperDonationDialog(
+                                lang = lang,
+                                onDismiss = { showDonationDialog = false }
+                            )
+                        }
+
+                        // Primary Action: Elegant support button
+                        Button(
+                            onClick = { showDonationDialog = true },
+                            shape = RoundedCornerShape(12.dp),
+                            colors = ButtonDefaults.buttonColors(
+                                containerColor = if (isDark) Color(0xFFDB2777) else Color(0xFFFCE7F3),
+                                contentColor = if (isDark) Color.White else Color(0xFF9D174D)
+                            ),
+                            border = BorderStroke(1.dp, if (isDark) Color(0xFFF472B6) else Color(0xFFFBCFE8)),
+                            modifier = Modifier
+                                .fillMaxWidth()
+                                .height(50.dp)
+                                .testTag("support_developer_donation_button")
+                        ) {
+                            Icon(
+                                imageVector = Icons.Default.Favorite,
+                                contentDescription = "Support Icon",
+                                modifier = Modifier.size(18.dp),
+                                tint = if (isDark) Color.White else Color(0xFFEC4899)
+                            )
+                            Spacer(modifier = Modifier.width(8.dp))
+                            Text(
+                                text = if (lang == "bn") "ডেভেলপারকে সাপোর্ট করুন (বিকাশ / নগদ)" else "Support Developer (bKash / Nagad)",
+                                style = MaterialTheme.typography.labelLarge.copy(fontWeight = FontWeight.ExtraBold, fontSize = 13.sp)
+                            )
+                        }
+
+                        Spacer(modifier = Modifier.height(8.dp))
+
+                        // Secondary actions layout
+                        Row(
+                            modifier = Modifier.fillMaxWidth(),
+                            horizontalArrangement = Arrangement.spacedBy(8.dp)
+                        ) {
+                            Button(
+                                onClick = { showContactDialog = true },
+                                shape = RoundedCornerShape(12.dp),
+                                colors = ButtonDefaults.buttonColors(
+                                    containerColor = if (isDark) Color(0xFF1E293B) else Color(0xFFF1F5F9),
+                                    contentColor = if (isDark) Color(0xFF94A3B8) else Color(0xFF475569)
+                                ),
+                                border = BorderStroke(1.dp, if (isDark) Color(0xFF334155) else Color(0xFFE2E8F0)),
                                 modifier = Modifier
-                                    .size(42.dp)
-                                    .background(
-                                        color = if (isDark) Color(0x2910B981) else Color(0x1A2563EB),
-                                        shape = CircleShape
-                                    ),
-                                contentAlignment = Alignment.Center
+                                    .weight(1.5f)
+                                    .height(46.dp)
                             ) {
                                 Icon(
-                                    imageVector = Icons.Default.Person,
+                                    imageVector = Icons.Default.Chat,
                                     contentDescription = null,
-                                    tint = if (isDark) Color(0xFF10B981) else Color(0xFF2563EB),
-                                    modifier = Modifier.size(22.dp)
+                                    modifier = Modifier.size(16.dp)
+                                )
+                                Spacer(modifier = Modifier.width(6.dp))
+                                Text(
+                                    text = if (lang == "bn") "যোগাযোগ" else "Contact",
+                                    style = MaterialTheme.typography.labelMedium.copy(fontWeight = FontWeight.Bold)
                                 )
                             }
-                            Spacer(modifier = Modifier.width(14.dp))
-                            Column {
+
+                            Button(
+                                onClick = onDismiss,
+                                shape = RoundedCornerShape(12.dp),
+                                colors = ButtonDefaults.buttonColors(
+                                    containerColor = if (isDark) Color(0xFF334155) else Color(0xFFE2E8F0),
+                                    contentColor = if (isDark) Color.White else Color(0xFF1E293B)
+                                ),
+                                modifier = Modifier
+                                    .weight(1f)
+                                    .height(46.dp)
+                            ) {
                                 Text(
-                                    text = "NAME",
-                                    style = MaterialTheme.typography.labelSmall.copy(letterSpacing = 1.sp),
-                                    fontWeight = FontWeight.Bold,
-                                    color = labelColor
-                                )
-                                Spacer(modifier = Modifier.height(2.dp))
-                                Text(
-                                    text = "Md. Robiul Islam Sakib",
-                                    style = MaterialTheme.typography.titleMedium,
-                                    fontWeight = FontWeight.ExtraBold,
-                                    color = valueColor
+                                    text = if (lang == "bn") "বন্ধ করুন" else "Close",
+                                    style = MaterialTheme.typography.labelMedium.copy(fontWeight = FontWeight.Bold)
                                 )
                             }
                         }
                     }
-
-                    // Department Info block
-                    Card(
-                        modifier = Modifier.fillMaxWidth(),
-                        shape = RoundedCornerShape(16.dp),
-                        border = blockBorder,
-                        colors = blockBg
-                    ) {
-                        Row(
-                            modifier = Modifier.padding(14.dp),
-                            verticalAlignment = Alignment.CenterVertically
-                        ) {
-                            Box(
-                                modifier = Modifier
-                                    .size(42.dp)
-                                    .background(
-                                        color = if (isDark) Color(0x24A855F7) else Color(0x16A855F7),
-                                        shape = CircleShape
-                                    ),
-                                contentAlignment = Alignment.Center
-                            ) {
-                                Icon(
-                                    imageVector = Icons.Default.Computer,
-                                    contentDescription = null,
-                                    tint = if (isDark) Color(0xFFA855F7) else Color(0xFF9333EA),
-                                    modifier = Modifier.size(22.dp)
-                                )
-                            }
-                            Spacer(modifier = Modifier.width(14.dp))
-                            Column {
-                                Text(
-                                    text = "DEPARTMENT",
-                                    style = MaterialTheme.typography.labelSmall.copy(letterSpacing = 1.sp),
-                                    fontWeight = FontWeight.Bold,
-                                    color = labelColor
-                                )
-                                Spacer(modifier = Modifier.height(2.dp))
-                                Text(
-                                    text = "Computer Science and Technology",
-                                    style = MaterialTheme.typography.titleMedium,
-                                    fontWeight = FontWeight.ExtraBold,
-                                    color = valueColor
-                                )
-                            }
-                        }
-                    }
-
-                    // Institute Info block
-                    Card(
-                        modifier = Modifier.fillMaxWidth(),
-                        shape = RoundedCornerShape(16.dp),
-                        border = blockBorder,
-                        colors = blockBg
-                    ) {
-                        Row(
-                            modifier = Modifier.padding(14.dp),
-                            verticalAlignment = Alignment.CenterVertically
-                        ) {
-                            Box(
-                                modifier = Modifier
-                                    .size(42.dp)
-                                    .background(
-                                        color = if (isDark) Color(0x243B82F6) else Color(0x163B82F6),
-                                        shape = CircleShape
-                                    ),
-                                contentAlignment = Alignment.Center
-                            ) {
-                                Icon(
-                                    imageVector = Icons.Default.School,
-                                    contentDescription = null,
-                                    tint = if (isDark) Color(0xFF3B82F6) else Color(0xFF1D4ED8),
-                                    modifier = Modifier.size(22.dp)
-                                )
-                            }
-                            Spacer(modifier = Modifier.width(14.dp))
-                            Column {
-                                Text(
-                                    text = "INSTITUTE",
-                                    style = MaterialTheme.typography.labelSmall.copy(letterSpacing = 1.sp),
-                                    fontWeight = FontWeight.Bold,
-                                    color = labelColor
-                                )
-                                Spacer(modifier = Modifier.height(2.dp))
-                                Text(
-                                    text = "Park Polytechnic Institute",
-                                    style = MaterialTheme.typography.titleMedium,
-                                    fontWeight = FontWeight.ExtraBold,
-                                    color = valueColor
-                                )
-                            }
-                        }
-                    }
-                }
-
-                Spacer(modifier = Modifier.height(24.dp))
-
-                // Support Developer options
-                var showDonationDialog by remember { mutableStateOf(false) }
-
-                if (showDonationDialog) {
-                    SupportDeveloperDonationDialog(
-                        lang = lang,
-                        onDismiss = { showDonationDialog = false }
-                    )
-                }
-
-                // New Premium Single Support Button
-                Button(
-                    onClick = { showDonationDialog = true },
-                    shape = RoundedCornerShape(14.dp),
-                    colors = ButtonDefaults.buttonColors(
-                        containerColor = if (isDark) Color(0xFFEC4899) else Color(0xFFFCE7F3),
-                        contentColor = if (isDark) Color.White else Color(0xFF9D174D)
-                    ),
-                    border = BorderStroke(1.5.dp, if (isDark) Color(0xFFDB2777) else Color(0xFFFBCFE8)),
-                    modifier = Modifier
-                        .fillMaxWidth()
-                        .height(54.dp)
-                        .testTag("support_developer_donation_button")
-                ) {
-                    Icon(
-                        imageVector = Icons.Default.Favorite,
-                        contentDescription = "Support Icon",
-                        modifier = Modifier.size(20.dp),
-                        tint = if (isDark) Color.White else Color(0xFFDB2777)
-                    )
-                    Spacer(modifier = Modifier.width(10.dp))
-                    Text(
-                        text = if (lang == "bn") "ডেভেলপারকে সাপোর্ট করুন (বিকাশ / নগদ)" else "Support Developer (bKash / Nagad)",
-                        style = MaterialTheme.typography.labelLarge.copy(fontSize = 14.sp, fontWeight = FontWeight.ExtraBold)
-                    )
-                }
-
-                Spacer(modifier = Modifier.height(8.dp))
-
-                // Contact Me Button
-                Button(
-                    onClick = { showContactDialog = true },
-                    shape = RoundedCornerShape(12.dp),
-                    colors = ButtonDefaults.buttonColors(
-                        containerColor = if (isDark) MaterialTheme.colorScheme.primaryContainer else Color(0xFFEFF6FF),
-                        contentColor = if (isDark) MaterialTheme.colorScheme.onPrimaryContainer else Color(0xFF1D4ED8)
-                    ),
-                    border = BorderStroke(1.dp, if (isDark) MaterialTheme.colorScheme.primary.copy(alpha = 0.5f) else Color(0xFFBFDBFE)),
-                    modifier = Modifier.fillMaxWidth()
-                ) {
-                    Icon(
-                        imageVector = Icons.Default.Chat,
-                        contentDescription = "Contact Icon",
-                        modifier = Modifier.size(18.dp)
-                    )
-                    Spacer(modifier = Modifier.width(8.dp))
-                    Text(
-                        text = if (lang == "bn") "যোগাযোগ করুন" else "Contact Me",
-                        style = MaterialTheme.typography.labelLarge.copy(fontWeight = FontWeight.ExtraBold)
-                    )
-                }
-
-                Spacer(modifier = Modifier.height(8.dp))
-
-                Button(
-                    onClick = onDismiss,
-                    shape = RoundedCornerShape(12.dp),
-                    colors = ButtonDefaults.buttonColors(
-                        containerColor = if (isDark) MaterialTheme.colorScheme.primary else Color(0xFF2563EB),
-                        contentColor = if (isDark) MaterialTheme.colorScheme.onPrimary else Color.White
-                    ),
-                    modifier = Modifier.fillMaxWidth()
-                ) {
-                    Text(
-                        text = if (lang == "bn") "বন্ধ করুন" else "Close",
-                        style = MaterialTheme.typography.labelLarge.copy(fontWeight = FontWeight.Bold)
-                    )
                 }
             }
         }
     }
 }
+
+@Composable
+fun CreditItemCard(
+    isDark: Boolean,
+    icon: androidx.compose.ui.graphics.vector.ImageVector,
+    accentColor: Color,
+    title: String,
+    value: String
+) {
+    val cardBg = if (isDark) Color(0xFF1E293B).copy(alpha = 0.5f) else Color(0xFFF8FAFC)
+    val cardBorder = if (isDark) Color(0xFF334155) else Color(0xFFE2E8F0)
+    
+    Card(
+        modifier = Modifier.fillMaxWidth(),
+        shape = RoundedCornerShape(14.dp),
+        border = BorderStroke(1.dp, cardBorder),
+        colors = CardDefaults.cardColors(containerColor = cardBg)
+    ) {
+        Row(
+            modifier = Modifier
+                .fillMaxWidth()
+                .padding(12.dp),
+            verticalAlignment = Alignment.CenterVertically
+        ) {
+            Box(
+                modifier = Modifier
+                    .size(36.dp)
+                    .background(
+                        color = accentColor.copy(alpha = 0.12f),
+                        shape = RoundedCornerShape(10.dp)
+                    ),
+                contentAlignment = Alignment.Center
+            ) {
+                Icon(
+                    imageVector = icon,
+                    contentDescription = null,
+                    tint = accentColor,
+                    modifier = Modifier.size(18.dp)
+                )
+            }
+            Spacer(modifier = Modifier.width(12.dp))
+            Column {
+                Text(
+                    text = title,
+                    style = MaterialTheme.typography.labelSmall.copy(letterSpacing = 1.sp, fontSize = 10.sp),
+                    fontWeight = FontWeight.Bold,
+                    color = if (isDark) Color(0xFF64748B) else Color(0xFF94A3B8)
+                )
+                Spacer(modifier = Modifier.height(2.dp))
+                Text(
+                    text = value,
+                    style = MaterialTheme.typography.bodyMedium,
+                    fontWeight = FontWeight.ExtraBold,
+                    color = if (isDark) Color.White else Color(0xFF1E293B)
+                )
+            }
+        }
+    }
 }
 
 // Beautiful Contact Dialog displaying Telegram, Facebook, and WhatsApp
@@ -5528,6 +5886,7 @@ fun BajarListDialog(
             Card(
                 modifier = Modifier
                     .fillMaxWidth()
+                    .widthIn(max = 500.dp)
                     .padding(16.dp)
                     .testTag("bajar_list_dialog_card"),
                 shape = RoundedCornerShape(20.dp),
@@ -5875,6 +6234,7 @@ fun DebtListDialog(
     onAddDebt: (personName: String, amount: Double, direction: String, note: String) -> Unit,
     onSettleDebt: (com.example.data.DebtRecord, Double) -> Unit,
     onDeleteDebt: (com.example.data.DebtRecord) -> Unit,
+    onUpdateDebt: (com.example.data.DebtRecord) -> Unit,
     onDismiss: () -> Unit
 ) {
     var nameInput by remember { mutableStateOf("") }
@@ -5882,6 +6242,7 @@ fun DebtListDialog(
     var noteInput by remember { mutableStateOf("") }
     var selectedDirection by remember { mutableStateOf("PAYABLE") } // "PAYABLE" or "RECEIVABLE"
 
+    var editingDebt by remember { mutableStateOf<com.example.data.DebtRecord?>(null) }
     var partialSettleTarget by remember { mutableStateOf<com.example.data.DebtRecord?>(null) }
     var partialSettleAmount by remember { mutableStateOf("") }
 
@@ -5891,7 +6252,12 @@ fun DebtListDialog(
     val namePlaceholder = if (lang == "bn") "নাম (যেমন: আবির)" else "Name (e.g., Abir)"
     val amountPlaceholder = if (lang == "bn") "টাকা (যেমন: ৫০০)" else "Amount (e.g., 500)"
     val notePlaceholder = if (lang == "bn") "নোট / কেন দেয়া হয়েছিল (ঐচ্ছিক)" else "Note (Optional)"
-    val addButtonText = if (lang == "bn") "যোগ করুন" else "Add Record"
+    val isEditing = editingDebt != null
+    val addButtonText = if (isEditing) {
+        if (lang == "bn") "হালনাগাদ করুন" else "Update Record"
+    } else {
+        if (lang == "bn") "যোগ করুন" else "Add Record"
+    }
     val emptyText = if (lang == "bn") "কোনো দেন-পাওনার রেকর্ড নেই" else "No active debt records"
 
     Dialog(onDismissRequest = onDismiss) {
@@ -5901,6 +6267,7 @@ fun DebtListDialog(
             Card(
                 modifier = Modifier
                     .fillMaxWidth()
+                    .widthIn(max = 500.dp)
                     .padding(16.dp)
                     .testTag("debt_list_dialog_card"),
                 shape = RoundedCornerShape(20.dp),
@@ -6011,7 +6378,18 @@ fun DebtListDialog(
                         val name = nameInput.trim()
                         val amt = amountInput.toDoubleOrNull()
                         if (name.isNotEmpty() && amt != null && amt > 0.0) {
-                            onAddDebt(name, amt, selectedDirection, noteInput.trim())
+                            if (isEditing && editingDebt != null) {
+                                val updated = editingDebt!!.copy(
+                                    personName = name,
+                                    amount = amt,
+                                    direction = selectedDirection,
+                                    note = noteInput.trim()
+                                )
+                                onUpdateDebt(updated)
+                                editingDebt = null
+                            } else {
+                                onAddDebt(name, amt, selectedDirection, noteInput.trim())
+                            }
                             nameInput = ""
                             amountInput = ""
                             noteInput = ""
@@ -6021,7 +6399,18 @@ fun DebtListDialog(
                         val name = nameInput.trim()
                         val amt = amountInput.toDoubleOrNull()
                         if (name.isNotEmpty() && amt != null && amt > 0.0) {
-                            onAddDebt(name, amt, selectedDirection, noteInput.trim())
+                            if (isEditing && editingDebt != null) {
+                                val updated = editingDebt!!.copy(
+                                    personName = name,
+                                    amount = amt,
+                                    direction = selectedDirection,
+                                    note = noteInput.trim()
+                                )
+                                onUpdateDebt(updated)
+                                editingDebt = null
+                            } else {
+                                onAddDebt(name, amt, selectedDirection, noteInput.trim())
+                            }
                             nameInput = ""
                             amountInput = ""
                             noteInput = ""
@@ -6029,11 +6418,37 @@ fun DebtListDialog(
                     },
                     shape = RoundedCornerShape(12.dp),
                     colors = ButtonDefaults.buttonColors(
-                        containerColor = MaterialTheme.colorScheme.primary,
-                        contentColor = MaterialTheme.colorScheme.onPrimary
+                        containerColor = if (isEditing) MaterialTheme.colorScheme.secondary else MaterialTheme.colorScheme.primary,
+                        contentColor = if (isEditing) MaterialTheme.colorScheme.onSecondary else MaterialTheme.colorScheme.onPrimary
                     )
                 ) {
                     Text(addButtonText, fontWeight = FontWeight.Bold)
+                }
+
+                if (isEditing) {
+                    Spacer(modifier = Modifier.height(8.dp))
+                    OutlinedButton(
+                        onClick = {
+                            editingDebt = null
+                            nameInput = ""
+                            amountInput = ""
+                            noteInput = ""
+                            selectedDirection = "PAYABLE"
+                        },
+                        modifier = Modifier.fillMaxWidth().android16Clickable(shape = RoundedCornerShape(12.dp)) {
+                            editingDebt = null
+                            nameInput = ""
+                            amountInput = ""
+                            noteInput = ""
+                            selectedDirection = "PAYABLE"
+                        },
+                        shape = RoundedCornerShape(12.dp)
+                    ) {
+                        Text(
+                            text = if (lang == "bn") "বাতিল" else "Cancel",
+                            fontWeight = FontWeight.Bold
+                        )
+                    }
                 }
 
                 Spacer(modifier = Modifier.height(16.dp))
@@ -6053,7 +6468,7 @@ fun DebtListDialog(
                         .fillMaxWidth()
                         .heightIn(max = 240.dp)
                 ) {
-                    val activeDebts = debtRecords.filter { !it.isSettled }
+                    val activeDebts = remember(debtRecords) { debtRecords.filter { !it.isSettled } }
                     if (activeDebts.isEmpty()) {
                         Box(
                             modifier = Modifier
@@ -6182,6 +6597,31 @@ fun DebtListDialog(
                                                 )
                                             }
 
+                                            // Edit icon button
+                                            IconButton(
+                                                onClick = {
+                                                    editingDebt = item
+                                                    nameInput = item.personName
+                                                    amountInput = item.amount.toString()
+                                                    noteInput = item.note
+                                                    selectedDirection = item.direction
+                                                },
+                                                modifier = Modifier.size(28.dp).android16Clickable(shape = CircleShape) {
+                                                    editingDebt = item
+                                                    nameInput = item.personName
+                                                    amountInput = item.amount.toString()
+                                                    noteInput = item.note
+                                                    selectedDirection = item.direction
+                                                }
+                                            ) {
+                                                Icon(
+                                                    imageVector = Icons.Default.Edit,
+                                                    contentDescription = "Edit record",
+                                                    tint = MaterialTheme.colorScheme.primary,
+                                                    modifier = Modifier.size(16.dp)
+                                                )
+                                            }
+
                                             // Delete icon button
                                             IconButton(
                                                 onClick = { onDeleteDebt(item) },
@@ -6304,7 +6744,8 @@ fun DebtListDialog(
 @Composable
 fun LocalBackupStatusCard(
     currentLanguage: String,
-    onImportClick: () -> Unit
+    onImportClick: () -> Unit,
+    modifier: Modifier = Modifier
 ) {
     val isDark = isAppDark()
     val containerBg = if (isDark) {
@@ -6316,10 +6757,10 @@ fun LocalBackupStatusCard(
     val borderColor = if (isDark) Color(0x3310B981) else Color(0x4010B981)
 
     Card(
-        modifier = Modifier
+        modifier = modifier
             .fillMaxWidth()
-            .padding(horizontal = 16.dp, vertical = 6.dp),
-        shape = RoundedCornerShape(16.dp),
+            .padding(vertical = 4.dp),
+        shape = RoundedCornerShape(12.dp),
         border = BorderStroke(1.dp, borderColor),
         colors = CardDefaults.cardColors(containerColor = containerBg),
         elevation = CardDefaults.cardElevation(defaultElevation = 0.dp)
@@ -6327,7 +6768,7 @@ fun LocalBackupStatusCard(
         Row(
             modifier = Modifier
                 .fillMaxWidth()
-                .padding(16.dp),
+                .padding(12.dp),
             verticalAlignment = Alignment.CenterVertically,
             horizontalArrangement = Arrangement.SpaceBetween
         ) {
@@ -6337,24 +6778,25 @@ fun LocalBackupStatusCard(
                         imageVector = Icons.Default.Backup,
                         contentDescription = "Backup Active",
                         tint = textColor,
-                        modifier = Modifier.size(20.dp)
+                        modifier = Modifier.size(18.dp)
                     )
-                    Spacer(modifier = Modifier.width(8.dp))
+                    Spacer(modifier = Modifier.width(6.dp))
                     Text(
                         text = if (currentLanguage == "bn") "অটো ব্যাকআপ সক্রিয়" else "Auto-Backup Active",
-                        style = MaterialTheme.typography.titleSmall,
+                        style = MaterialTheme.typography.bodyMedium,
                         color = textColor,
-                        fontWeight = FontWeight.Bold
+                        fontWeight = FontWeight.ExtraBold
                     )
                 }
                 Spacer(modifier = Modifier.height(4.dp))
                 Text(
                     text = if (currentLanguage == "bn") 
-                        "ডাটা পরিবর্তন হলে স্বয়ংক্রিয়ভাবে ডাউনলোড ফোল্ডারে ব্যাকআপ ফাইল তৈরি হবে।" 
+                        "ডাটা পরিবর্তন হলে ডাউনলোড ফোল্ডারে ব্যাকআপ আপডেট হয়।" 
                     else 
-                        "Local backup automatically updates in your Downloads folder when data changes.",
+                        "Local backup updates in your Downloads folder when data changes.",
                     style = MaterialTheme.typography.bodySmall,
-                    color = textColor.copy(alpha = 0.85f)
+                    color = textColor.copy(alpha = 0.85f),
+                    lineHeight = 15.sp
                 )
             }
             Spacer(modifier = Modifier.width(8.dp))
@@ -6367,19 +6809,19 @@ fun LocalBackupStatusCard(
                     .android16Clickable(shape = RoundedCornerShape(8.dp)) {
                         onImportClick()
                     }
-                    .height(34.dp)
+                    .height(30.dp)
                     .testTag("auto_backup_import_button"),
                 elevation = CardDefaults.cardElevation(defaultElevation = 0.dp)
             ) {
                 Box(
                     modifier = Modifier
                         .fillMaxHeight()
-                        .padding(horizontal = 12.dp),
+                        .padding(horizontal = 10.dp),
                     contentAlignment = Alignment.Center
                 ) {
                     Text(
                         text = if (currentLanguage == "bn") "ইমপোর্ট" else "Import",
-                        style = MaterialTheme.typography.labelMedium,
+                        style = MaterialTheme.typography.labelSmall,
                         color = if (isDark) Color.Black else Color.White,
                         fontWeight = FontWeight.Bold
                     )
@@ -7038,6 +7480,16 @@ fun ReportPreviewDialog(
     val dialogBg = if (isDark) Color(0xFF1E293B).copy(alpha = 0.92f) else Color.White.copy(alpha = 0.95f)
     val borderColor = if (isDark) Color(0xFF475569).copy(alpha = 0.5f) else Color(0xFFCBD5E1).copy(alpha = 0.7f)
 
+    val totalIncome = remember(transactions) { transactions.filter { it.type == "INCOME" }.sumOf { it.amount } }
+    val totalExpense = remember(transactions) { transactions.filter { it.type == "EXPENSE" }.sumOf { it.amount } }
+    val netBalance = remember(totalIncome, totalExpense) { totalIncome - totalExpense }
+
+    val formattedGenerationTime = remember(currentLanguage) {
+        val dateFmt = java.text.SimpleDateFormat("yyyy-MM-dd HH:mm:ss", java.util.Locale.getDefault())
+        val formatted = dateFmt.format(java.util.Date())
+        if (currentLanguage == "bn") "তৈরি করার সময়: $formatted" else "Generated: $formatted"
+    }
+
     Dialog(onDismissRequest = onDismiss) {
         AnimatedDialogContent {
             Card(
@@ -7124,9 +7576,8 @@ fun ReportPreviewDialog(
                                         color = if (isDark) Color.White else Color(0xFF1E293B)
                                     )
                                     Spacer(modifier = Modifier.height(4.dp))
-                                    val dateFmt = java.text.SimpleDateFormat("yyyy-MM-dd HH:mm:ss", java.util.Locale.getDefault())
                                     Text(
-                                        text = if (currentLanguage == "bn") "তৈরি করার সময়: ${dateFmt.format(java.util.Date())}" else "Generated: ${dateFmt.format(java.util.Date())}",
+                                        text = formattedGenerationTime,
                                         style = MaterialTheme.typography.labelSmall,
                                         color = if (isDark) Color(0xFF64748B) else Color(0xFF94A3B8)
                                     )
@@ -7142,9 +7593,6 @@ fun ReportPreviewDialog(
 
                             // Summary Figures block
                             item {
-                                val totalIncome = transactions.filter { it.type == "INCOME" }.sumOf { it.amount }
-                                val totalExpense = transactions.filter { it.type == "EXPENSE" }.sumOf { it.amount }
-                                val netBalance = totalIncome - totalExpense
 
                                 Column(
                                     modifier = Modifier
@@ -7240,42 +7688,12 @@ fun ReportPreviewDialog(
                                     }
                                 }
                             } else {
-                                items(transactions) { tx ->
-                                    Row(
-                                        modifier = Modifier
-                                            .fillMaxWidth()
-                                            .background(
-                                                color = if (isDark) Color(0xFF1E293B).copy(alpha = 0.3f) else Color.White,
-                                                shape = RoundedCornerShape(8.dp)
-                                            )
-                                            .padding(10.dp),
-                                        horizontalArrangement = Arrangement.SpaceBetween,
-                                        verticalAlignment = Alignment.CenterVertically
-                                    ) {
-                                        Column(modifier = Modifier.weight(1f)) {
-                                            Text(
-                                                text = tx.category,
-                                                style = MaterialTheme.typography.bodySmall,
-                                                fontWeight = FontWeight.Bold,
-                                                color = if (isDark) Color.White else Color(0xFF1E293B)
-                                            )
-                                            Text(
-                                                text = formatDate(tx.dateLong, currentLanguage),
-                                                style = MaterialTheme.typography.labelSmall,
-                                                color = if (isDark) Color(0xFF64748B) else Color(0xFF94A3B8)
-                                            )
-                                        }
-                                        
-                                        val prefix = if (tx.type == "INCOME") "+" else "-"
-                                        val tint = if (tx.type == "INCOME") Color(0xFF10B981) else Color(0xFFEF4444)
-                                        
-                                        Text(
-                                            text = "$prefix৳ ${"%,.2f".format(tx.amount)}",
-                                            style = MaterialTheme.typography.bodySmall,
-                                            fontWeight = FontWeight.Bold,
-                                            color = tint
-                                        )
-                                    }
+                                items(
+                                    items = transactions,
+                                    key = { "preview_${it.id}" },
+                                    contentType = { "report_preview_item" }
+                                ) { tx ->
+                                    PreviewTransactionRow(tx = tx, currentLanguage = currentLanguage, isDark = isDark)
                                 }
                             }
                         }
@@ -7489,6 +7907,49 @@ fun QuickActionItem(
     }
 }
 
+@Composable
+fun PreviewTransactionRow(tx: Transaction, currentLanguage: String, isDark: Boolean) {
+    val formattedDate = remember(tx.dateLong, currentLanguage) {
+        formatDate(tx.dateLong, currentLanguage)
+    }
+    val prefix = remember(tx.type) { if (tx.type == "INCOME") "+" else "-" }
+    val tint = remember(tx.type) { if (tx.type == "INCOME") Color(0xFF10B981) else Color(0xFFEF4444) }
+    val formattedAmount = remember(tx.amount) { "%,.2f".format(tx.amount) }
+    
+    Row(
+        modifier = Modifier
+            .fillMaxWidth()
+            .background(
+                color = if (isDark) Color(0xFF1E293B).copy(alpha = 0.3f) else Color.White,
+                shape = RoundedCornerShape(8.dp)
+            )
+            .padding(10.dp),
+        horizontalArrangement = Arrangement.SpaceBetween,
+        verticalAlignment = Alignment.CenterVertically
+    ) {
+        Column(modifier = Modifier.weight(1f)) {
+            Text(
+                text = tx.category,
+                style = MaterialTheme.typography.bodySmall,
+                fontWeight = FontWeight.Bold,
+                color = if (isDark) Color.White else Color(0xFF1E293B)
+            )
+            Text(
+                text = formattedDate,
+                style = MaterialTheme.typography.labelSmall,
+                color = if (isDark) Color(0xFF64748B) else Color(0xFF94A3B8)
+            )
+        }
+        
+        Text(
+            text = "$prefix৳ $formattedAmount",
+            style = MaterialTheme.typography.bodySmall,
+            fontWeight = FontWeight.Bold,
+            color = tint
+        )
+    }
+}
+
 // ===============================================
 // EXTREMELY SMOOTH TRANSACTIONS HISTORY WINDOW
 // ===============================================
@@ -7579,35 +8040,57 @@ fun TransactionsHistoryDialog(
                     value = searchQuery,
                     onValueChange = { searchQuery = it },
                     placeholder = {
-                        Text(if (isBn) "লেনদেন খুঁজুন..." else "Search transactions...")
+                        Text(
+                            text = if (isBn) "লেনদেন খুঁজুন..." else "Search transactions...",
+                            style = MaterialTheme.typography.bodyMedium.copy(
+                                color = if (isDark) Color(0xFF94A3B8) else Color(0xFF64748B)
+                            )
+                        )
                     },
                     leadingIcon = {
-                        Icon(Icons.Default.Search, contentDescription = null)
+                        Icon(
+                            imageVector = Icons.Default.Search,
+                            contentDescription = null,
+                            tint = if (isDark) Color(0xFF94A3B8) else Color(0xFF64748B)
+                        )
                     },
                     trailingIcon = {
                         if (searchQuery.isNotEmpty()) {
                             IconButton(onClick = { searchQuery = "" }) {
-                                Icon(Icons.Default.Clear, contentDescription = "Clear search")
+                                Icon(
+                                    imageVector = Icons.Default.Clear,
+                                    contentDescription = "Clear search",
+                                    tint = if (isDark) Color(0xFF94A3B8) else Color(0xFF64748B)
+                                )
                             }
                         }
                     },
                     modifier = Modifier
                         .fillMaxWidth()
-                        .padding(horizontal = 16.dp, vertical = 4.dp),
-                    shape = RoundedCornerShape(16.dp),
+                        .padding(horizontal = 16.dp, vertical = 6.dp),
+                    shape = RoundedCornerShape(20.dp),
                     singleLine = true,
                     colors = OutlinedTextFieldDefaults.colors(
+                        focusedContainerColor = if (isDark) Color(0xFF1E293B) else Color(0xFFF1F5F9),
+                        unfocusedContainerColor = if (isDark) Color(0xFF1E293B).copy(alpha = 0.6f) else Color(0xFFF8FAFC),
                         focusedBorderColor = MaterialTheme.colorScheme.primary,
-                        unfocusedBorderColor = if (isDark) Color(0xFF334155) else Color(0xFFCBD5E1)
+                        unfocusedBorderColor = Color.Transparent,
+                        focusedTextColor = if (isDark) Color.White else Color(0xFF0F172A),
+                        unfocusedTextColor = if (isDark) Color.White else Color(0xFF0F172A)
                     )
                 )
 
-                // Quick Filter Pills Row
+                // Premium Segmented Pill Filter Control
                 Row(
                     modifier = Modifier
                         .fillMaxWidth()
-                        .padding(horizontal = 16.dp, vertical = 8.dp),
-                    horizontalArrangement = Arrangement.spacedBy(8.dp)
+                        .padding(horizontal = 16.dp, vertical = 8.dp)
+                        .background(
+                            color = if (isDark) Color(0xFF1E293B) else Color(0xFFF1F5F9),
+                            shape = RoundedCornerShape(20.dp)
+                        )
+                        .padding(4.dp),
+                    horizontalArrangement = Arrangement.spacedBy(4.dp)
                 ) {
                     val filters = listOf("ALL", "INCOME", "EXPENSE")
                     filters.forEach { filter ->
@@ -7617,41 +8100,32 @@ fun TransactionsHistoryDialog(
                             else -> if (isBn) "ব্যয়" else "Expense"
                         }
                         val isSelected = selectedFilter == filter
-                        Card(
-                            onClick = { selectedFilter = filter },
-                            shape = RoundedCornerShape(12.dp),
-                            colors = CardDefaults.cardColors(
-                                containerColor = if (isSelected) {
-                                    MaterialTheme.colorScheme.primary
-                                } else {
-                                    if (isDark) Color(0xFF1E293B) else Color(0xFFF1F5F9)
-                                }
-                            ),
-                            border = BorderStroke(
-                                1.dp,
-                                if (isSelected) Color.Transparent else {
-                                    if (isDark) Color(0xFF334155) else Color(0xFFE2E8F0)
-                                }
-                            ),
+                        val tabInteractionSource = remember { MutableInteractionSource() }
+                        Box(
                             modifier = Modifier
                                 .weight(1f)
                                 .height(38.dp)
-                        ) {
-                            Box(
-                                modifier = Modifier.fillMaxSize(),
-                                contentAlignment = Alignment.Center
-                            ) {
-                                Text(
-                                    text = label,
-                                    style = MaterialTheme.typography.labelMedium,
-                                    fontWeight = FontWeight.Bold,
-                                    color = if (isSelected) {
-                                        MaterialTheme.colorScheme.onPrimary
-                                    } else {
-                                        if (isDark) Color(0xFF94A3B8) else Color(0xFF475569)
-                                    }
+                                .clip(RoundedCornerShape(16.dp))
+                                .background(
+                                    color = if (isSelected) MaterialTheme.colorScheme.primary else Color.Transparent
                                 )
-                            }
+                                .android16ScalePress(tabInteractionSource)
+                                .clickable(
+                                    interactionSource = tabInteractionSource,
+                                    indication = null
+                                ) { selectedFilter = filter },
+                            contentAlignment = Alignment.Center
+                        ) {
+                            Text(
+                                text = label,
+                                style = MaterialTheme.typography.labelMedium,
+                                fontWeight = FontWeight.Bold,
+                                color = if (isSelected) {
+                                    MaterialTheme.colorScheme.onPrimary
+                                } else {
+                                    if (isDark) Color(0xFF94A3B8) else Color(0xFF475569)
+                                }
+                            )
                         }
                     }
                 }

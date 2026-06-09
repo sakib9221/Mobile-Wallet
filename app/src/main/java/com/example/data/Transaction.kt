@@ -6,7 +6,7 @@ import androidx.compose.runtime.Immutable
 import java.io.Serializable
 
 @Immutable
-@Entity(tableName = "transactions")
+@Entity(tableName = "transactions", indices = [androidx.room.Index("userId")])
 data class Transaction(
     @PrimaryKey(autoGenerate = true) val id: Long = 0,
     val amount: Double,

@@ -19,3 +19,17 @@
 # If you keep the line number information, uncomment this to
 # hide the original source file name.
 #-renamesourcefileattribute SourceFile
+
+# Keep all models intact for serialization/Room mapping
+-keep class com.example.data.** { *; }
+
+# Keep kotlinx serialization classes if used
+-keepattributes *Annotation*,Signature,InnerClasses,EnclosingMethod
+
+# Keep Google Play Services and Google Drive API classes
+-keep class com.google.android.gms.** { *; }
+-keep class com.google.api.** { *; }
+-keep class com.google.api.client.** { *; }
+-keep class com.google.api.services.drive.** { *; }
+-keep class com.google.gson.** { *; }
+
