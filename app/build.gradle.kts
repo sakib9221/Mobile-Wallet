@@ -18,6 +18,12 @@ android {
     versionName = "3.5"
 
     testInstrumentationRunner = "androidx.test.runner.AndroidJUnitRunner"
+
+    // Size Optimizations
+    resConfigs("en", "bn")
+    ndk {
+      abiFilters.addAll(setOf("arm64-v8a", "x86_64"))
+    }
   }
 
   signingConfigs {
@@ -52,6 +58,10 @@ android {
       signingConfig = signingConfigs.getByName("release")
     }
     debug {
+      isCrunchPngs = false
+      isMinifyEnabled = false
+      isShrinkResources = false
+      proguardFiles(getDefaultProguardFile("proguard-android-optimize.txt"), "proguard-rules.pro")
       signingConfig = signingConfigs.getByName("debugConfig")
     }
   }
