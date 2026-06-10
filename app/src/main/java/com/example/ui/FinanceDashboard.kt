@@ -372,6 +372,30 @@ fun FinanceDashboardScreen(
                         }
                     )
                 }
+                val logoGradient = remember {
+                    Brush.linearGradient(
+                        colors = listOf(
+                            Color(0xFF059669), // Emerald
+                            Color(0xFF2563EB)  // Electric blue
+                        )
+                    )
+                }
+                val settingsBtnGradient = remember {
+                    Brush.linearGradient(
+                        colors = listOf(
+                            Color(0xFF10B981),
+                            Color(0xFF3B82F6)
+                        )
+                    )
+                }
+                val infoBtnGradient = remember {
+                    Brush.linearGradient(
+                        colors = listOf(
+                            Color(0xFF3B82F6),
+                            Color(0xFF6366F1)
+                        )
+                    )
+                }
 
                 Box(
                     modifier = Modifier
@@ -402,13 +426,7 @@ fun FinanceDashboardScreen(
                                 .border(
                                     border = BorderStroke(
                                         width = 1.dp,
-                                        brush = Brush.linearGradient(
-                                            colors = if (isDark) {
-                                                listOf(Color(0xFF334155).copy(alpha = 0.4f), Color(0xFF10B981).copy(alpha = 0.15f))
-                                            } else {
-                                                listOf(Color(0xFFE2E8F0).copy(alpha = 0.8f), Color(0xFF10B981).copy(alpha = 0.20f))
-                                            }
-                                        )
+                                        brush = btnBorderBrush
                                     ),
                                     shape = RoundedCornerShape(14.dp)
                                 )
@@ -419,12 +437,7 @@ fun FinanceDashboardScreen(
                                 modifier = Modifier
                                     .size(30.dp)
                                     .background(
-                                        brush = Brush.linearGradient(
-                                            colors = listOf(
-                                                Color(0xFF059669), // Emerald
-                                                Color(0xFF2563EB)  // Electric blue
-                                            )
-                                        ),
+                                        brush = logoGradient,
                                         shape = RoundedCornerShape(8.dp)
                                     ),
                                 contentAlignment = Alignment.Center
@@ -473,12 +486,7 @@ fun FinanceDashboardScreen(
                                 modifier = Modifier
                                     .size(28.dp)
                                     .background(
-                                        brush = Brush.linearGradient(
-                                            colors = listOf(
-                                                Color(0xFF10B981),
-                                                Color(0xFF3B82F6)
-                                            )
-                                        ),
+                                        brush = settingsBtnGradient,
                                         shape = RoundedCornerShape(8.dp)
                                     ),
                                 contentAlignment = Alignment.Center
@@ -508,12 +516,7 @@ fun FinanceDashboardScreen(
                                 modifier = Modifier
                                     .size(28.dp)
                                     .background(
-                                        brush = Brush.linearGradient(
-                                            colors = listOf(
-                                                Color(0xFF3B82F6),
-                                                Color(0xFF6366F1)
-                                            )
-                                        ),
+                                        brush = infoBtnGradient,
                                         shape = RoundedCornerShape(8.dp)
                                     ),
                                 contentAlignment = Alignment.Center
@@ -4065,8 +4068,8 @@ private fun ConfettiShower(
             val elapsed = System.currentTimeMillis() - startTime
             val progress = elapsed.toFloat() / durationMs
             
-            for (index in particles.indices) {
-                val p = particles[index]
+            val updatedList = mutableListOf<ConfettiParticle>()
+            for (p in particles) {
                 val newX = p.x + p.vx
                 val newY = p.y + p.vy
                 val newVy = p.vy + 1.1f // Gravity pull
@@ -4074,15 +4077,19 @@ private fun ConfettiShower(
                 val newRotation = p.rotation + p.vr
                 val newAlpha = (1.0f - progress).coerceIn(0f, 1f)
                 
-                particles[index] = p.copy(
-                    x = newX,
-                    y = newY,
-                    vx = newVx,
-                    vy = newVy,
-                    rotation = newRotation,
-                    alpha = newAlpha
+                updatedList.add(
+                    p.copy(
+                        x = newX,
+                        y = newY,
+                        vx = newVx,
+                        vy = newVy,
+                        rotation = newRotation,
+                        alpha = newAlpha
+                    )
                 )
             }
+            particles.clear()
+            particles.addAll(updatedList)
             kotlinx.coroutines.delay(16)
         }
         particles.clear()

@@ -409,7 +409,7 @@ class FinanceViewModel(application: Application) : AndroidViewModel(application)
 
     // Automatic Backup Trigger
     fun autoBackupData() {
-        viewModelScope.launch {
+        viewModelScope.launch(kotlinx.coroutines.Dispatchers.IO) {
             try {
                 val transList = repository.getAllTransactions("local_guest").first()
                 val bajarList = repository.getAllBajarItems("local_guest").first()
@@ -718,7 +718,7 @@ class FinanceViewModel(application: Application) : AndroidViewModel(application)
         val alreadyChecked = prefs.getBoolean("auto_restore_checked_v12", false)
         if (alreadyChecked) return
 
-        viewModelScope.launch {
+        viewModelScope.launch(kotlinx.coroutines.Dispatchers.IO) {
             try {
                 // Confirm if database is empty to avoid overwriting active data
                 val existingTxs = repository.getAllTransactions("local_guest").first()
