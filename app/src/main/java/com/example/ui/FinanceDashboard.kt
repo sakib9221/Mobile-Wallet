@@ -1645,7 +1645,7 @@ fun TransactionListItem(
 ) {
     var expanded by remember { mutableStateOf(false) }
 
-    val isExpense = remember(transaction.type) { transaction.type == "EXPENSE" }
+    val isExpense = transaction.type == "EXPENSE"
     val categoryName = remember(transaction.category, lang) {
         val resId = transaction.category.toIntOrNull()
         if (resId != null) getString(resId) else transaction.category
@@ -1708,10 +1708,27 @@ fun TransactionListItem(
             )
         }
     }
-    val titleColor = remember(isDark) { if (isDark) Color(0xFFF8FAFC) else Color(0xFF0F172A) }
-    val noteColor = remember(isDark) { if (isDark) Color(0xFFCBD5E1) else Color(0xFF475569) }
-    val dateColor = remember(isDark) { if (isDark) Color(0xFF94A3B8) else Color(0xFF64748B) }
-    val amountColor = remember(isDark, isExpense) { if (isExpense) Color(0xFFEF4444) else (if (isDark) Color(0xFF14B8A6) else Color(0xFF0D9488)) }
+    
+    // Light-weight layout variables - calculated directly on recomposition to avoid slot-table check cycles.
+    val titleColor = if (isDark) Color(0xFFF8FAFC) else Color(0xFF0F172A)
+    val noteColor = if (isDark) Color(0xFFCBD5E1) else Color(0xFF475569)
+    val dateColor = if (isDark) Color(0xFF94A3B8) else Color(0xFF64748B)
+    val amountColor = if (isExpense) Color(0xFFEF4444) else (if (isDark) Color(0xFF14B8A6) else Color(0xFF0D9488))
+
+    val amountBg = remember(isDark, isExpense) {
+        if (isExpense) {
+            Color(0xFFEF4444).copy(alpha = 0.08f)
+        } else {
+            if (isDark) Color(0xFF14B8A6).copy(alpha = 0.08f) else Color(0xFF0D9488).copy(alpha = 0.08f)
+        }
+    }
+    val amountBorder = remember(isDark, isExpense) {
+        if (isExpense) {
+            Color(0xFFEF4444).copy(alpha = 0.15f)
+        } else {
+            if (isDark) Color(0xFF14B8A6).copy(alpha = 0.15f) else Color(0xFF0D9488).copy(alpha = 0.15f)
+        }
+    }
 
     val categoryIcon = remember(transaction.category) {
         val resId = transaction.category.toIntOrNull()
@@ -1727,9 +1744,6 @@ fun TransactionListItem(
         }
     }
 
-    val iconBoxBg = remember(categoryColor) { categoryColor.copy(alpha = 0.15f) }
-    val iconBoxShape = remember { RoundedCornerShape(14.dp) }
-
     val radialBrush = remember(categoryColor) {
         Brush.radialGradient(
             colors = listOf(categoryColor.copy(alpha = 0.22f), categoryColor.copy(alpha = 0.04f))
@@ -1743,7 +1757,6 @@ fun TransactionListItem(
 
     val cardShape = OptCardShape
     val cardBorder = remember(itemBorder) { BorderStroke(1.dp, itemBorder) }
-    val cardInteractionSource = remember { MutableInteractionSource() }
 
     Column(
         modifier = Modifier
@@ -1836,20 +1849,6 @@ fun TransactionListItem(
                     horizontalAlignment = Alignment.End,
                     verticalArrangement = Arrangement.Center
                 ) {
-                    val amountBg = remember(isDark, isExpense, categoryColor) {
-                        if (isExpense) {
-                            Color(0xFFEF4444).copy(alpha = 0.08f)
-                        } else {
-                            if (isDark) Color(0xFF14B8A6).copy(alpha = 0.08f) else Color(0xFF0D9488).copy(alpha = 0.08f)
-                        }
-                    }
-                    val amountBorder = remember(isDark, isExpense) {
-                        if (isExpense) {
-                            Color(0xFFEF4444).copy(alpha = 0.15f)
-                        } else {
-                            if (isDark) Color(0xFF14B8A6).copy(alpha = 0.15f) else Color(0xFF0D9488).copy(alpha = 0.15f)
-                        }
-                    }
                     Box(
                         modifier = Modifier
                             .clip(RoundedCornerShape(12.dp))
@@ -2132,12 +2131,12 @@ fun CategorySummaryItem(
         }
     }
 
-    val itemBg = remember(isDark) { if (isDark) Color(0xFF1E293B).copy(alpha = 0.55f) else Color.White.copy(alpha = 0.72f) }
-    val itemBorder = remember(isDark) { if (isDark) Color(0xFF475569).copy(alpha = 0.5f) else Color(0xFFCBD5E1).copy(alpha = 0.7f) }
-    val titleColor = remember(isDark) { if (isDark) Color(0xFFF8FAFC) else Color(0xFF0F172A) }
-    val amountColor = remember(isDark, isExpense) { if (isExpense) Color(0xFFEF4444) else { if (isDark) Color(0xFF34D399) else Color(0xFF0D9488) } }
-    val progressTrackBg = remember(isDark) { if (isDark) Color(0x33FFFFFF) else Color(0xFFE2E8F0) }
-    val percentTextColor = remember(isDark) { if (isDark) Color(0xFF94A3B8) else Color(0xFF475569) }
+    val itemBg = if (isDark) Color(0xFF1E293B).copy(alpha = 0.55f) else Color.White.copy(alpha = 0.72f)
+    val itemBorder = if (isDark) Color(0xFF475569).copy(alpha = 0.5f) else Color(0xFFCBD5E1).copy(alpha = 0.7f)
+    val titleColor = if (isDark) Color(0xFFF8FAFC) else Color(0xFF0F172A)
+    val amountColor = if (isExpense) Color(0xFFEF4444) else { if (isDark) Color(0xFF34D399) else Color(0xFF0D9488) }
+    val progressTrackBg = if (isDark) Color(0x33FFFFFF) else Color(0xFFE2E8F0)
+    val percentTextColor = if (isDark) Color(0xFF94A3B8) else Color(0xFF475569)
 
     Card(
         shape = RoundedCornerShape(20.dp),

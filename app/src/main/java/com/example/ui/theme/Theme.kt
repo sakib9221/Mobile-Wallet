@@ -67,17 +67,16 @@ fun MyApplicationTheme(
     val resolvedTheme = if (selectedTheme == "liquid_glass") "system" else selectedTheme
     val currentDensity = androidx.compose.ui.platform.LocalDensity.current
     
-    // Choose fontScale cap dynamically. Bengali is physically taller and wider, so we scale and cap scales
-    // protectively to match English proportions beautifully and prevent layout clutter on large displays or languages.
-    val baseFontScale = currentDensity.fontScale
-    val customFontScale = if (selectedLanguage == "bn") {
-        (baseFontScale * 0.84f).coerceAtMost(0.84f)
+    val stableDensity = if (Build.VERSION.SDK_INT >= Build.VERSION_CODES.N) {
+        android.util.DisplayMetrics.DENSITY_DEVICE_STABLE.toFloat() / 160f
     } else {
-        baseFontScale.coerceAtMost(1.15f)
+        currentDensity.density
     }
+    
+    // Globally lock font scale to 1.0f and density scale to stable default to completely prevent both font scaling and display zoom scaling, ensuring absolute visual integrity.
     val customDensity = androidx.compose.ui.unit.Density(
-        density = currentDensity.density,
-        fontScale = customFontScale
+        density = stableDensity,
+        fontScale = 1.0f
     )
     androidx.compose.runtime.CompositionLocalProvider(
         LocalThemeState provides resolvedTheme,
