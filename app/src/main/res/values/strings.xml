@@ -4,7 +4,7 @@
     <string name="total_income_label">Total Income</string>
     <string name="total_expense_label">Total Expense</string>
     <string name="remaining_balance_label">Remaining Balance</string>
-    <string name="add_transaction_title">Add Transaction</string>
+    <string name="add_transaction_title">Add Transactions</string>
     <string name="amount_label">Amount</string>
     <string name="category_label">Category</string>
     <string name="date_label">Date</string>

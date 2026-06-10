@@ -156,13 +156,17 @@ class FinanceViewModel(application: Application) : AndroidViewModel(application)
         )
 
     fun toggleLanguage() {
-        val nextLang = if (_selectedLanguage.value == "en") "bn" else "en"
+        val list = listOf("en", "bn", "hi", "ar", "es")
+        val current = _selectedLanguage.value
+        val currentIndex = list.indexOf(current)
+        val nextLang = if (currentIndex == -1 || currentIndex == list.lastIndex) list[0] else list[currentIndex + 1]
         _selectedLanguage.value = nextLang
         prefs.edit().putString("selected_lang", nextLang).apply()
     }
 
     fun setLanguage(lang: String) {
-        if (lang == "en" || lang == "bn") {
+        val list = listOf("en", "bn", "hi", "ar", "es")
+        if (lang in list) {
             _selectedLanguage.value = lang
             prefs.edit().putString("selected_lang", lang).apply()
         }

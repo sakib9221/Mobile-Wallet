@@ -1,6 +1,6 @@
 {
   "name": "Mobile Wallet",
-  "description": "A simple, clean, and user-friendly Mobile Wallet application with multi-language support (English and Bengali), Google Sign-In, and local database persistence.",
+  "description": "An elite, ultra-optimized personal finance manager and mobile wallet with multi-language capabilities (English, Bengali, Hindi, Arabic, Spanish), Google Cloud synchronization, local Room persistence, and smart reporting.",
   "requestFramePermissions": [],
   "majorCapabilities": ["MAJOR_CAPABILITY_SERVER_SIDE_GEMINI_API"]
 }

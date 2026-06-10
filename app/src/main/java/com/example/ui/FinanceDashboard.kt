@@ -273,19 +273,20 @@ fun FinanceDashboardScreen(
     var launchUpdateInfo by remember { mutableStateOf<AppUpdateInfo?>(null) }
     var showReportPreviewDialog by remember { mutableStateOf(false) }
     var showAllTransactionsDialog by remember { mutableStateOf(false) }
+    var showLanguageDialog by remember { mutableStateOf(false) }
+    var transactionToDelete by remember { mutableStateOf<Transaction?>(null) }
     val bItems by viewModel.bajarItems.collectAsStateWithLifecycle()
     val debtRecords by viewModel.debtRecords.collectAsStateWithLifecycle()
 
     // Optimize listener callbacks with remember to prevent parent-induced child recompositions at 120Hz
-    val onLanguageToggle = remember { { viewModel.toggleLanguage() } }
+    val onLanguageToggle = remember { { showLanguageDialog = true } }
     val onShowDeveloperCredit = remember { { showDeveloperCreditDialog = true } }
     val onShowAuth = remember { { showAuthDialog = true } }
     val onAddTransactionClick = remember { { showAddDialog = true } }
     val onTabSelect = remember { { tab: String -> viewModel.changeTab(tab) } }
-    val onDeleteTransaction = remember(context, getStringResource) {
+    val onDeleteTransaction = remember {
         { transaction: Transaction ->
-            viewModel.deleteTransaction(transaction)
-            Toast.makeText(context, getStringResource(R.string.delete_confirm), Toast.LENGTH_SHORT).show()
+            transactionToDelete = transaction
         }
     }
     val onDismissDeveloperCredit = remember { { showDeveloperCreditDialog = false } }
@@ -349,25 +350,53 @@ fun FinanceDashboardScreen(
             modifier = modifier.fillMaxSize(),
             containerColor = Color.Transparent,
             topBar = {
-                CenterAlignedTopAppBar(
-                    title = {
-                        val isDark = isAppDark()
-                        val textGradient = remember(isDark) {
-                            Brush.linearGradient(
-                                colors = if (isDark) {
-                                    listOf(Color(0xFF34D399), Color(0xFF60A5FA)) // Mint emerald to light blue
-                                } else {
-                                    listOf(Color(0xFF047857), Color(0xFF1D4ED8)) // Rich forest to deep corporate blue
-                                }
-                            )
+                val isDark = isAppDark()
+                val textGradient = remember(isDark) {
+                    Brush.linearGradient(
+                        colors = if (isDark) {
+                            listOf(Color(0xFF34D399), Color(0xFF60A5FA))
+                        } else {
+                            listOf(Color(0xFF047857), Color(0xFF1D4ED8))
                         }
+                    )
+                }
+                val btnShape = RoundedCornerShape(14.dp)
+                val btnSize = 44.dp
+                val btnBg = if (isDark) Color(0xFF1E293B).copy(alpha = 0.45f) else Color(0xFFFFFFFF).copy(alpha = 0.85f)
+                val btnBorderBrush = remember(isDark) {
+                    Brush.linearGradient(
+                        colors = if (isDark) {
+                            listOf(Color(0xFF334155).copy(alpha = 0.4f), Color(0xFF10B981).copy(alpha = 0.15f))
+                        } else {
+                            listOf(Color(0xFFE2E8F0).copy(alpha = 0.8f), Color(0xFF10B981).copy(alpha = 0.20f))
+                        }
+                    )
+                }
+
+                Box(
+                    modifier = Modifier
+                        .fillMaxWidth()
+                        .statusBarsPadding(),
+                    contentAlignment = Alignment.TopCenter
+                ) {
+                    Row(
+                        modifier = Modifier
+                            .fillMaxWidth()
+                            .widthIn(max = 600.dp)
+                            .padding(horizontal = 16.dp, vertical = 12.dp),
+                        verticalAlignment = Alignment.CenterVertically,
+                        horizontalArrangement = Arrangement.spacedBy(8.dp)
+                    ) {
+                        // Mobile Wallet Pill (Main Title) - Stretches from left to right
                         Row(
                             verticalAlignment = Alignment.CenterVertically,
-                            horizontalArrangement = Arrangement.Center,
+                            horizontalArrangement = Arrangement.Start,
                             modifier = Modifier
-                                .clip(RoundedCornerShape(16.dp))
+                                .weight(1f)
+                                .height(btnSize)
+                                .clip(RoundedCornerShape(14.dp))
                                 .background(
-                                    if (isDark) Color(0xFF1E293B).copy(alpha = 0.45f) 
+                                    if (isDark) Color(0xFF1E293B).copy(alpha = 0.45f)
                                     else Color(0xFFFFFFFF).copy(alpha = 0.85f)
                                 )
                                 .border(
@@ -381,14 +410,14 @@ fun FinanceDashboardScreen(
                                             }
                                         )
                                     ),
-                                    shape = RoundedCornerShape(16.dp)
+                                    shape = RoundedCornerShape(14.dp)
                                 )
-                                .padding(horizontal = 16.dp, vertical = 8.dp)
+                                .padding(horizontal = 12.dp)
                         ) {
-                            // Modern dual-tone logo background box with emerald theme
+                            // Logo background box (slightly more compact)
                             Box(
                                 modifier = Modifier
-                                    .size(32.dp)
+                                    .size(30.dp)
                                     .background(
                                         brush = Brush.linearGradient(
                                             colors = listOf(
@@ -396,7 +425,7 @@ fun FinanceDashboardScreen(
                                                 Color(0xFF2563EB)  // Electric blue
                                             )
                                         ),
-                                        shape = RoundedCornerShape(10.dp)
+                                        shape = RoundedCornerShape(8.dp)
                                     ),
                                 contentAlignment = Alignment.Center
                             ) {
@@ -404,20 +433,21 @@ fun FinanceDashboardScreen(
                                     imageVector = Icons.Default.Wallet,
                                     contentDescription = null,
                                     tint = Color.White,
-                                    modifier = Modifier.size(18.dp)
+                                    modifier = Modifier.size(16.dp)
                                 )
                             }
-                            Spacer(modifier = Modifier.width(10.dp))
+                            Spacer(modifier = Modifier.width(8.dp))
                             Text(
                                 text = getStringResource(R.string.app_name),
                                 fontWeight = FontWeight.Black,
                                 style = androidx.compose.ui.text.TextStyle(
                                     brush = textGradient,
-                                    fontSize = 16.sp,
-                                    letterSpacing = 0.5.sp
-                                )
+                                    fontSize = 20.sp,
+                                    letterSpacing = 2.5.sp
+                                ),
+                                modifier = Modifier.weight(1f)
                             )
-                            Spacer(modifier = Modifier.width(8.dp))
+                            Spacer(modifier = Modifier.width(4.dp))
                             // Three-dimensional active status dot
                             Box(
                                 modifier = Modifier
@@ -426,94 +456,78 @@ fun FinanceDashboardScreen(
                                     .border(1.5.dp, if (isDark) Color(0xFF111827) else Color.White, CircleShape)
                             )
                         }
-                    },
-                    navigationIcon = {
-                        // Language Switch Glass Pill Button
-                        val isDark = isAppDark()
-                        Card(
-                            colors = CardDefaults.cardColors(
-                                containerColor = if (isDark) MaterialTheme.colorScheme.surfaceVariant.copy(alpha = 0.5f) else Color(0x66FFFFFF)
-                            ),
-                            border = BorderStroke(
-                                1.dp,
-                                if (isDark) MaterialTheme.colorScheme.outlineVariant.copy(alpha = 0.5f) else Color(0x80FFFFFF)
-                            ),
-                            shape = CircleShape,
-                            modifier = Modifier
-                                .padding(start = 12.dp)
-                                .android16Clickable(shape = CircleShape) { onLanguageToggle() }
-                                .testTag("language_toggle_button"),
-                            elevation = CardDefaults.cardElevation(defaultElevation = 0.dp)
-                        ) {
-                            Row(
-                                verticalAlignment = Alignment.CenterVertically,
-                                horizontalArrangement = Arrangement.spacedBy(4.dp),
-                                modifier = Modifier.padding(horizontal = 12.dp, vertical = 6.dp)
-                            ) {
-                                Icon(
-                                    imageVector = Icons.Default.Translate,
-                                    contentDescription = "Language",
-                                    tint = if (isDark) MaterialTheme.colorScheme.onSurfaceVariant else Color(0xFF475569),
-                                    modifier = Modifier.size(16.dp)
-                                )
-                                Text(
-                                    text = if (currentLanguage == "en") "বাংলা" else "English",
-                                    fontWeight = FontWeight.Bold,
-                                    fontSize = 12.sp,
-                                    color = if (isDark) MaterialTheme.colorScheme.onSurfaceVariant else Color(0xFF475569)
-                                )
-                            }
-                        }
-                    },
-                    actions = {
-                        val isDark = isAppDark()
+
+                        // 1. Settings button (Exactly identical size, icon-only)
                         Row(
                             verticalAlignment = Alignment.CenterVertically,
-                            modifier = Modifier.padding(end = 4.dp)
+                            horizontalArrangement = Arrangement.Center,
+                            modifier = Modifier
+                                .size(btnSize)
+                                .clip(btnShape)
+                                .background(btnBg)
+                                .border(BorderStroke(1.dp, btnBorderBrush), btnShape)
+                                .android16Clickable { showSettingsDialog = true }
+                                .testTag("settings_header_pill")
                         ) {
-                            // Settings Button
                             Box(
                                 modifier = Modifier
-                                    .padding(end = 4.dp)
-                                    .size(36.dp)
-                                    .clip(CircleShape)
-                                    .background(if (isDark) MaterialTheme.colorScheme.surfaceVariant.copy(alpha = 0.5f) else Color(0x66FFFFFF))
-                                    .android16Clickable { showSettingsDialog = true }
-                                    .testTag("settings_button"),
+                                    .size(28.dp)
+                                    .background(
+                                        brush = Brush.linearGradient(
+                                            colors = listOf(
+                                                Color(0xFF10B981),
+                                                Color(0xFF3B82F6)
+                                            )
+                                        ),
+                                        shape = RoundedCornerShape(8.dp)
+                                    ),
                                 contentAlignment = Alignment.Center
                             ) {
                                 Icon(
-                                    imageVector = Icons.Outlined.Settings,
+                                    imageVector = Icons.Default.Settings,
                                     contentDescription = "Settings Icon",
-                                    tint = if (isDark) MaterialTheme.colorScheme.onSurfaceVariant else Color(0xFF475569),
-                                    modifier = Modifier.size(20.dp)
+                                    tint = Color.White,
+                                    modifier = Modifier.size(16.dp)
                                 )
                             }
+                        }
 
-                            // Developer Credit/About App info button
+                        // 2. Info/Developer Credits button (Exactly identical size, icon-only)
+                        Row(
+                            verticalAlignment = Alignment.CenterVertically,
+                            horizontalArrangement = Arrangement.Center,
+                            modifier = Modifier
+                                .size(btnSize)
+                                .clip(btnShape)
+                                .background(btnBg)
+                                .border(BorderStroke(1.dp, btnBorderBrush), btnShape)
+                                .android16Clickable { onShowDeveloperCredit() }
+                                .testTag("developer_credit_button")
+                        ) {
                             Box(
                                 modifier = Modifier
-                                    .padding(end = 4.dp)
-                                    .size(36.dp)
-                                    .clip(CircleShape)
-                                    .background(if (isDark) MaterialTheme.colorScheme.surfaceVariant.copy(alpha = 0.5f) else Color(0x66FFFFFF))
-                                    .android16Clickable { onShowDeveloperCredit() }
-                                    .testTag("developer_credit_button"),
+                                    .size(28.dp)
+                                    .background(
+                                        brush = Brush.linearGradient(
+                                            colors = listOf(
+                                                Color(0xFF3B82F6),
+                                                Color(0xFF6366F1)
+                                            )
+                                        ),
+                                        shape = RoundedCornerShape(8.dp)
+                                    ),
                                 contentAlignment = Alignment.Center
                             ) {
                                 Icon(
                                     imageVector = Icons.Outlined.Info,
                                     contentDescription = "Developer Credit Info",
-                                    tint = if (isDark) MaterialTheme.colorScheme.onSurfaceVariant else Color(0xFF475569),
-                                    modifier = Modifier.size(20.dp)
+                                    tint = Color.White,
+                                    modifier = Modifier.size(16.dp)
                                 )
                             }
                         }
-                    },
-                    colors = TopAppBarDefaults.centerAlignedTopAppBarColors(
-                        containerColor = Color.Transparent
-                    )
-                )
+                    }
+                }
             }
         ) { innerPadding ->
             Box(
@@ -549,7 +563,9 @@ fun FinanceDashboardScreen(
                 onImportBackup = { filePickerLauncher.launch("application/json") }
             )
 
-            Spacer(modifier = Modifier.height(16.dp))
+            Spacer(modifier = Modifier.height(24.dp))
+            Spacer(modifier = Modifier.navigationBarsPadding())
+            Spacer(modifier = Modifier.height(140.dp))
         }
     }
     }
@@ -627,11 +643,25 @@ fun FinanceDashboardScreen(
             currentLanguage = currentLanguage,
             selectedTheme = selectedTheme,
             onThemeChange = onThemeChange,
+            onLanguageClick = {
+                showLanguageDialog = true
+            },
             onImportBackup = {
                 showSettingsDialog = false
                 filePickerLauncher.launch("application/json")
             },
             onDismiss = { showSettingsDialog = false }
+        )
+    }
+
+    if (showLanguageDialog) {
+        LanguageSelectionDialog(
+            currentLanguage = currentLanguage,
+            onLanguageSelect = { langCode ->
+                viewModel.setLanguage(langCode)
+                showLanguageDialog = false
+            },
+            onDismiss = { showLanguageDialog = false }
         )
     }
 
@@ -656,6 +686,24 @@ fun FinanceDashboardScreen(
                 lang = currentLanguage
             )
         }
+    }
+
+    // Delete Confirmation Dialog
+    if (transactionToDelete != null) {
+        DeleteConfirmationDialog(
+            transaction = transactionToDelete!!,
+            lang = currentLanguage,
+            onConfirm = {
+                transactionToDelete?.let { trans ->
+                    viewModel.deleteTransaction(trans)
+                    Toast.makeText(context, getStringResource(R.string.delete_confirm), Toast.LENGTH_SHORT).show()
+                }
+                transactionToDelete = null
+            },
+            onDismiss = {
+                transactionToDelete = null
+            }
+        )
     }
 
     // Dialog 2: Interactive Google Auth Dialog (With Real Feedback Sync)
@@ -1600,27 +1648,6 @@ fun TransactionListItem(
         if (resId != null) getString(resId) else transaction.category
     }
 
-    // Cache formatted timestamp and amount strings as stable remembered instances for butter-smooth 120Hz scrolling
-    val formattedDate = remember(transaction.dateLong, lang) {
-        formatDate(transaction.dateLong, lang)
-    }
-    val formattedAmount = remember(transaction.amount, lang, isExpense) {
-        "${if (isExpense) "-" else "+"}${formatCurrency(transaction.amount, lang)}"
-    }
-
-    val itemBg = remember(isDark, isExpense) {
-        if (isDark) {
-            if (isExpense) OptDarkExpenseBrush else OptDarkIncomeBrush
-        } else {
-            if (isExpense) OptLightExpenseBrush else OptLightIncomeBrush
-        }
-    }
-    val itemBorder = remember(isDark) { if (isDark) OptDarkBorderColor else OptLightBorderColor }
-    val titleColor = remember(isDark) { if (isDark) Color(0xFFF8FAFC) else Color(0xFF0F172A) }
-    val noteColor = remember(isDark) { if (isDark) Color(0xFFCBD5E1) else Color(0xFF475569) }
-    val dateColor = remember(isDark) { if (isDark) Color(0xFF94A3B8) else Color(0xFF64748B) }
-    val amountColor = remember(isDark, isExpense) { if (isExpense) Color(0xFFEF4444) else (if (isDark) Color(0xFF14B8A6) else Color(0xFF0D9488)) }
-
     // Map categories to modern design colors for icons
     val categoryColor = remember(transaction.category) {
         val resId = transaction.category.toIntOrNull()
@@ -1635,6 +1662,53 @@ fun TransactionListItem(
             else -> Color(0xFF64748B) // Slate Gray
         }
     }
+
+    // Cache formatted timestamp and amount strings as stable remembered instances for butter-smooth 120Hz scrolling
+    val formattedDate = remember(transaction.dateLong, lang) {
+        formatDate(transaction.dateLong, lang)
+    }
+    val formattedAmount = remember(transaction.amount, lang, isExpense) {
+        "${if (isExpense) "-" else "+"}${formatCurrency(transaction.amount, lang)}"
+    }
+
+    val itemBg = remember(isDark, isExpense, categoryColor) {
+        if (isDark) {
+            Brush.linearGradient(
+                colors = listOf(
+                    Color(0xFF1E293B).copy(alpha = 0.45f), // Slate gradient
+                    categoryColor.copy(alpha = 0.08f)    // Subtle contextual glow of category color
+                )
+            )
+        } else {
+            Brush.linearGradient(
+                colors = listOf(
+                    Color(0xFFFFFFFF).copy(alpha = 0.85f), // Solid white base
+                    categoryColor.copy(alpha = 0.05f)    // Light contextual glow
+                )
+            )
+        }
+    }
+    val itemBorder = remember(isDark, categoryColor) {
+        if (isDark) {
+            Brush.linearGradient(
+                colors = listOf(
+                    Color(0xFF334155).copy(alpha = 0.4f),
+                    categoryColor.copy(alpha = 0.20f)
+                )
+            )
+        } else {
+            Brush.linearGradient(
+                colors = listOf(
+                    Color(0xFFE2E8F0).copy(alpha = 0.8f),
+                    categoryColor.copy(alpha = 0.15f)
+                )
+            )
+        }
+    }
+    val titleColor = remember(isDark) { if (isDark) Color(0xFFF8FAFC) else Color(0xFF0F172A) }
+    val noteColor = remember(isDark) { if (isDark) Color(0xFFCBD5E1) else Color(0xFF475569) }
+    val dateColor = remember(isDark) { if (isDark) Color(0xFF94A3B8) else Color(0xFF64748B) }
+    val amountColor = remember(isDark, isExpense) { if (isExpense) Color(0xFFEF4444) else (if (isDark) Color(0xFF14B8A6) else Color(0xFF0D9488)) }
 
     val categoryIcon = remember(transaction.category) {
         val resId = transaction.category.toIntOrNull()
@@ -1674,26 +1748,33 @@ fun TransactionListItem(
             .padding(horizontal = 16.dp)
             .background(itemBg, cardShape)
             .border(cardBorder, cardShape)
-            .clip(cardShape)
-            .clickable { expanded = !expanded }
+            .android16Clickable(
+                shape = cardShape,
+                onClick = { expanded = !expanded }
+            )
     ) {
         Column {
             Row(
                 modifier = Modifier
                     .fillMaxWidth()
-                    .padding(vertical = 12.dp, horizontal = 14.dp),
+                    .padding(vertical = 14.dp, horizontal = 16.dp),
                 verticalAlignment = Alignment.CenterVertically
             ) {
-                // Modern vertical accent pill representing Transaction Type (Income = Teal, Expense = Red)
+                // Modern vertical accent pill with glowing gradient representing transaction type
+                val accentGradient = remember(amountColor) {
+                    Brush.verticalGradient(
+                        colors = listOf(amountColor, amountColor.copy(alpha = 0.35f))
+                    )
+                }
                 Box(
                     modifier = Modifier
-                        .width(4.dp)
-                        .height(28.dp)
+                        .width(5.dp)
+                        .height(32.dp)
                         .clip(CircleShape)
-                        .background(amountColor)
+                        .background(accentGradient)
                 )
 
-                Spacer(modifier = Modifier.width(10.dp))
+                Spacer(modifier = Modifier.width(12.dp))
 
                 // Glowing circular ring category emblem for elite modern finish
                 Box(
@@ -1718,7 +1799,7 @@ fun TransactionListItem(
                     )
                 }
 
-                Spacer(modifier = Modifier.width(12.dp))
+                Spacer(modifier = Modifier.width(14.dp))
 
                 // Text section
                 Column(modifier = Modifier.weight(1f)) {
@@ -1745,19 +1826,42 @@ fun TransactionListItem(
                     )
                 }
 
-                Spacer(modifier = Modifier.width(8.dp))
+                Spacer(modifier = Modifier.width(12.dp))
 
-                // Cost / Income badge and delete button
+                // Cost / Income receipt-style pill badge and expand indicator
                 Column(
                     horizontalAlignment = Alignment.End,
                     verticalArrangement = Arrangement.Center
                 ) {
-                    Text(
-                        text = formattedAmount,
-                        style = MaterialTheme.typography.titleMedium,
-                        fontWeight = FontWeight.Black,
-                        color = amountColor
-                    )
+                    val amountBg = remember(isDark, isExpense, categoryColor) {
+                        if (isExpense) {
+                            Color(0xFFEF4444).copy(alpha = 0.08f)
+                        } else {
+                            if (isDark) Color(0xFF14B8A6).copy(alpha = 0.08f) else Color(0xFF0D9488).copy(alpha = 0.08f)
+                        }
+                    }
+                    val amountBorder = remember(isDark, isExpense) {
+                        if (isExpense) {
+                            Color(0xFFEF4444).copy(alpha = 0.15f)
+                        } else {
+                            if (isDark) Color(0xFF14B8A6).copy(alpha = 0.15f) else Color(0xFF0D9488).copy(alpha = 0.15f)
+                        }
+                    }
+                    Box(
+                        modifier = Modifier
+                            .clip(RoundedCornerShape(12.dp))
+                            .background(amountBg)
+                            .border(1.dp, amountBorder, RoundedCornerShape(12.dp))
+                            .padding(horizontal = 10.dp, vertical = 5.dp)
+                    ) {
+                        Text(
+                            text = formattedAmount,
+                            style = MaterialTheme.typography.titleMedium.copy(fontSize = 14.sp),
+                            fontWeight = FontWeight.Black,
+                            color = amountColor,
+                            letterSpacing = 0.3.sp
+                        )
+                    }
                     Spacer(modifier = Modifier.height(4.dp))
                     IconButton(
                         onClick = { expanded = !expanded },
@@ -1768,7 +1872,7 @@ fun TransactionListItem(
                             imageVector = if (expanded) Icons.Default.ExpandLess else Icons.Default.ExpandMore,
                             contentDescription = "Expand Options",
                             tint = if (isDark) Color(0xFF94A3B8) else Color(0xFF475569),
-                            modifier = Modifier.size(20.dp)
+                            modifier = Modifier.size(18.dp)
                         )
                     }
                 }
@@ -2560,6 +2664,7 @@ fun AddTransactionDialog(
 
     var labelErrorText by remember { mutableStateOf("") }
 
+    val screenHeight = androidx.compose.ui.platform.LocalConfiguration.current.screenHeightDp.dp
     Dialog(onDismissRequest = onDismiss) {
         AnimatedDialogContent {
             val isDark = isAppDark()
@@ -2569,6 +2674,7 @@ fun AddTransactionDialog(
                 modifier = Modifier
                     .fillMaxWidth()
                     .widthIn(max = 500.dp)
+                    .heightIn(max = screenHeight - 64.dp)
                     .padding(horizontal = 8.dp)
                     .testTag("add_transaction_dialog_surface"),
                 shape = RoundedCornerShape(24.dp),
@@ -2578,12 +2684,13 @@ fun AddTransactionDialog(
                     contentColor = if (isDark) Color.White else Color(0xFF0F172A)
                 )
             ) {
-            Column(
-                modifier = Modifier
-                    .padding(24.dp)
-                    .fillMaxWidth(),
-                verticalArrangement = Arrangement.spacedBy(16.dp)
-            ) {
+                Column(
+                    modifier = Modifier
+                        .padding(24.dp)
+                        .fillMaxWidth()
+                        .verticalScroll(androidx.compose.foundation.rememberScrollState()),
+                    verticalArrangement = Arrangement.spacedBy(16.dp)
+                ) {
                 Text(
                     text = getString(R.string.add_transaction_title),
                     style = MaterialTheme.typography.titleLarge,
@@ -2888,6 +2995,7 @@ fun EditTransactionDialog(
 
     var labelErrorText by remember { mutableStateOf("") }
 
+    val screenHeight = androidx.compose.ui.platform.LocalConfiguration.current.screenHeightDp.dp
     Dialog(onDismissRequest = onDismiss) {
         AnimatedDialogContent {
             val isDark = isAppDark()
@@ -2897,6 +3005,7 @@ fun EditTransactionDialog(
                 modifier = Modifier
                     .fillMaxWidth()
                     .widthIn(max = 500.dp)
+                    .heightIn(max = screenHeight - 64.dp)
                     .padding(horizontal = 8.dp)
                     .testTag("edit_transaction_dialog_surface"),
                 shape = RoundedCornerShape(24.dp),
@@ -2909,7 +3018,8 @@ fun EditTransactionDialog(
                 Column(
                     modifier = Modifier
                         .padding(24.dp)
-                        .fillMaxWidth(),
+                        .fillMaxWidth()
+                        .verticalScroll(androidx.compose.foundation.rememberScrollState()),
                     verticalArrangement = Arrangement.spacedBy(16.dp)
                 ) {
                     Text(
@@ -3746,14 +3856,25 @@ fun GoogleAuthDialog(
 
 private val bnLocale = Locale("bn", "BD")
 private val enLocale = Locale.ENGLISH
+private val hiLocale = Locale("hi", "IN")
+private val arLocale = Locale("ar", "SA")
+private val esLocale = Locale("es", "ES")
 private val sdfMap = java.util.concurrent.ConcurrentHashMap<String, SimpleDateFormat>()
 private val bengaliDigits = charArrayOf('০', '১', '২', '৩', '৪', '৫', '৬', '৭', '৮', '৯')
+private val devanagariDigits = charArrayOf('०', '१', '२', '३', '४', '५', '६', '७', '८', '९')
+private val arabicDigits = charArrayOf('٠', '١', '٢', '٣', '٤', '٥', '٦', '٧', '٨', '٩')
 
 // Decimal and date formatters helper
 fun formatDate(timestamp: Long, lang: String): String {
     val date = Date(timestamp)
     val sdf = sdfMap.getOrPut(lang) {
-        val locale = if (lang == "bn") bnLocale else enLocale
+        val locale = when (lang) {
+            "bn" -> bnLocale
+            "hi" -> hiLocale
+            "ar" -> arLocale
+            "es" -> esLocale
+            else -> enLocale
+        }
         SimpleDateFormat("dd MMM, yyyy", locale)
     }
     return sdf.format(date)
@@ -3761,20 +3882,52 @@ fun formatDate(timestamp: Long, lang: String): String {
 
 fun formatCurrency(amount: Double, lang: String): String {
     val formatted = String.format(Locale.US, "%,.2f", amount)
-    if (lang == "bn") {
-        val sb = StringBuilder(formatted.length + 2)
-        sb.append("৳")
-        for (i in 0 until formatted.length) {
-            val char = formatted[i]
-            if (char in '0'..'9') {
-                sb.append(bengaliDigits[char - '0'])
-            } else {
-                sb.append(char)
+    return when (lang) {
+        "bn" -> {
+            val sb = StringBuilder(formatted.length + 2)
+            sb.append("৳")
+            for (i in 0 until formatted.length) {
+                val char = formatted[i]
+                if (char in '0'..'9') {
+                    sb.append(bengaliDigits[char - '0'])
+                } else {
+                    sb.append(char)
+                }
             }
+            sb.toString()
         }
-        return sb.toString()
-    } else {
-        return "$$formatted"
+        "hi" -> {
+            val sb = StringBuilder(formatted.length + 2)
+            sb.append("₹")
+            for (i in 0 until formatted.length) {
+                val char = formatted[i]
+                if (char in '0'..'9') {
+                    sb.append(devanagariDigits[char - '0'])
+                } else {
+                    sb.append(char)
+                }
+            }
+            sb.toString()
+        }
+        "ar" -> {
+            val sb = StringBuilder(formatted.length + 6)
+            for (i in 0 until formatted.length) {
+                val char = formatted[i]
+                if (char in '0'..'9') {
+                    sb.append(arabicDigits[char - '0'])
+                } else {
+                    sb.append(char)
+                }
+            }
+            sb.append(" د.إ")
+            sb.toString()
+        }
+        "es" -> {
+            "€$formatted"
+        }
+        else -> {
+            "$$formatted"
+        }
     }
 }
 
@@ -4426,7 +4579,7 @@ fun AboutAppDialog(
                                 emoji = "🎨",
                                 titleBn = "প্রিমিয়াম গ্লাস-ইউআই ও ডার্ক মোড",
                                 titleEn = "Premium Soft Glass UI & Theme",
-                                descBn = "চোখের সুরক্ষার জন্য আরামদায়ক অন্ধকার ডার্ক থিম বা পরিচ্ছন্ন লাইট থিম। সাথে প্রিমিয়াম গ্লাস-মরফিজম ভিজ্যুয়াল ফিনিশ!",
+                                descBn = "চোখের সুরক্ষার জন্য আরামদায়ক অন্ধকার ডার্ক থিম বা পরিচ্ছন্ন লাইট থিম। সাথে প্রিমিয়াম গ্লাস-মরফিজম ভিজ্যুয়াল ফিনিশ!",
                                 descEn = "Dive into seamless, distraction-free modern UI styled elegantly with rich dark theme aesthetics and dynamic ripple effects."
                             )
                         )
@@ -4434,6 +4587,151 @@ fun AboutAppDialog(
                         features.forEach { item ->
                             FeatureItemRow(item = item, lang = lang, isDark = isDark)
                             Spacer(modifier = Modifier.height(10.dp))
+                        }
+
+                        Spacer(modifier = Modifier.height(16.dp))
+
+                        // Recent Update Log Card
+                        Text(
+                            text = if (lang == "bn") "সাম্প্রতিক আপডেটসমূহ (Changelog)" else "Recent Change Log",
+                            style = MaterialTheme.typography.titleSmall,
+                            fontWeight = FontWeight.ExtraBold,
+                            color = MaterialTheme.colorScheme.onSurface
+                        )
+
+                        Spacer(modifier = Modifier.height(10.dp))
+
+                        Card(
+                            modifier = Modifier.fillMaxWidth(),
+                            shape = RoundedCornerShape(16.dp),
+                            colors = CardDefaults.cardColors(
+                                containerColor = if (isDark) Color(0xFF1E293B).copy(alpha = 0.6f) else Color(0xFFF1F5F9).copy(alpha = 0.8f)
+                            ),
+                            border = BorderStroke(
+                                width = 1.dp,
+                                color = if (isDark) Color(0xFF334155) else Color(0xFFE2E8F0)
+                            )
+                        ) {
+                            Column(modifier = Modifier.padding(14.dp)) {
+                                // Update Group 1: Header styling
+                                Row(
+                                    verticalAlignment = Alignment.Top,
+                                    modifier = Modifier.padding(bottom = 12.dp)
+                                ) {
+                                    Box(
+                                        modifier = Modifier
+                                            .size(24.dp)
+                                            .background(Color(0xFF3B82F6).copy(alpha = 0.15f), CircleShape),
+                                        contentAlignment = Alignment.Center
+                                    ) {
+                                        Icon(
+                                            imageVector = Icons.Default.Wallet,
+                                            contentDescription = null,
+                                            tint = Color(0xFF3B82F6),
+                                            modifier = Modifier.size(14.dp)
+                                        )
+                                    }
+                                    Spacer(modifier = Modifier.width(10.dp))
+                                    Column {
+                                        Text(
+                                            text = if (lang == "bn") "হেডার ও টাইটেল অপটিমাইজেশন" else "Header & Title Redesign",
+                                            style = MaterialTheme.typography.labelLarge,
+                                            fontWeight = FontWeight.ExtraBold,
+                                            color = if (isDark) Color(0xFF60A5FA) else Color(0xFF2563EB)
+                                        )
+                                        Spacer(modifier = Modifier.height(4.dp))
+                                        Text(
+                                            text = if (lang == "bn") {
+                                                "টাইটেল 'Mobile Wallet' লেখাটি চমৎকার ২৫ পয়েন্টের অক্ষরের ব্যবধানে দীর্ঘায়িত করে স্টাইলিশভাবে ব্যাকগ্রাউন্ড বক্সে ফিট করা হয়েছে যাতে উপরের কোনো ফাঁকা জায়গা না থাকে। এছাড়া সেটিংস ও ইনফো বাটন দুটি থেকে অতিরিক্ত লেখা মুছে ফেলে সম্পূর্ণ আইকন-অনলি ও নিখুঁত সমান সাইজের (৪০dp) কম্প্যাক্ট রিভলভিং পিল কন্ট্রোলে পরিণত করা হয়েছে।"
+                                            } else {
+                                                "Rebuilt the primary 'Mobile Wallet' branding text with an expanded 2.5sp letter spacing to stretch elegantly across the background panel, eliminating vertical gaps. Re-engineered the System Settings and About buttons into identical icon-only circular pill elements of absolute equal size, stripping raw texts."
+                                            },
+                                            style = MaterialTheme.typography.bodySmall,
+                                            color = MaterialTheme.colorScheme.onSurfaceVariant,
+                                            lineHeight = 16.sp
+                                        )
+                                    }
+                                }
+
+                                // Update Group 2: Lists smoothness
+                                Row(
+                                    verticalAlignment = Alignment.Top,
+                                    modifier = Modifier.padding(bottom = 12.dp)
+                                ) {
+                                    Box(
+                                        modifier = Modifier
+                                            .size(24.dp)
+                                            .background(Color(0xFF10B981).copy(alpha = 0.15f), CircleShape),
+                                        contentAlignment = Alignment.Center
+                                    ) {
+                                        Icon(
+                                            imageVector = Icons.Default.History,
+                                            contentDescription = null,
+                                            tint = Color(0xFF10B981),
+                                            modifier = Modifier.size(14.dp)
+                                        )
+                                    }
+                                    Spacer(modifier = Modifier.width(10.dp))
+                                    Column {
+                                        Text(
+                                            text = if (lang == "bn") "লেনদেন তালিকার কার্যক্ষমতা ও স্মুথনেস" else "Smooth Transaction Ledgers",
+                                            style = MaterialTheme.typography.labelLarge,
+                                            fontWeight = FontWeight.ExtraBold,
+                                            color = if (isDark) Color(0xFF34D399) else Color(0xFF059669)
+                                        )
+                                        Spacer(modifier = Modifier.height(4.dp))
+                                        Text(
+                                            text = if (lang == "bn") {
+                                                "লেনদেনের ইতিহাস স্ক্রলিং ১০০% ল্যাগ-ফ্রি ও মসৃণ করতে ক্যাটাগরিভিত্তিক এম্বিয়েন্ট রঙিন গ্লো ব্যাকগ্রাউন্ড যুক্ত করা হয়েছে। একই সাথে চমৎকার প্রেন্টিং-পিল ডিজাইনে ইনকাম এবং এক্সপেন্স ব্যাকগ্রাউন্ড রেন্ডার করা হয়েছে এবং অতিরিক্ত স্ক্রল-হেজি কাটানোর জন্য স্পর্শ সংবেদনশীল ফার্স্ট-হ্যান্ড টাচ ট্রানজিশন দেওয়া হয়েছে।"
+                                            } else {
+                                                "Optimized transaction ledgers for buttery smooth 120Hz scrolling by replacing solid blocks with lightweight contextual ambient glows mapped to categories. Implemented vertical tactile type pillars (Green glow for Income, Red for Expense) and premium receipt-style amount badges with zero click latency."
+                                            },
+                                            style = MaterialTheme.typography.bodySmall,
+                                            color = MaterialTheme.colorScheme.onSurfaceVariant,
+                                            lineHeight = 16.sp
+                                        )
+                                    }
+                                }
+
+                                // Update Group 3: Grids alignment
+                                Row(
+                                    verticalAlignment = Alignment.Top
+                                ) {
+                                    Box(
+                                        modifier = Modifier
+                                            .size(24.dp)
+                                            .background(Color(0xFF8B5CF6).copy(alpha = 0.15f), CircleShape),
+                                        contentAlignment = Alignment.Center
+                                    ) {
+                                        Icon(
+                                            imageVector = Icons.Default.Info,
+                                            contentDescription = null,
+                                            tint = Color(0xFF8B5CF6),
+                                            modifier = Modifier.size(14.dp)
+                                        )
+                                    }
+                                    Spacer(modifier = Modifier.width(10.dp))
+                                    Column {
+                                        Text(
+                                            text = if (lang == "bn") "সুষম লে-আউট ও অ্যালাইনমেন্ট সমন্বয়" else "Symmetrical Grid & Alignment",
+                                            style = MaterialTheme.typography.labelLarge,
+                                            fontWeight = FontWeight.ExtraBold,
+                                            color = if (isDark) Color(0xFFA78BFA) else Color(0xFF7C3AED)
+                                        )
+                                        Spacer(modifier = Modifier.height(4.dp))
+                                        Text(
+                                            text = if (lang == "bn") {
+                                                "বাকী ব্যালেন্স ও আয়ের ড্যাশবোর্ড বক্সগুলোকে একদম পরিমাপমত সোজা কাঠামোতে সাজানো হয়েছে, যার অ্যালাইনমেন্ট উপরের মূল হেডার সেকশন এবং টগলগুলোর সাথে নিখুঁতভাবে সারিবদ্ধ রয়েছে।"
+                                            } else {
+                                                "Ensured meticulous layout alignment, matching the remaining balance card's four-cornered shape boundaries exactly with the upper core header and action controls to present a unified straight visual layout."
+                                            },
+                                            style = MaterialTheme.typography.bodySmall,
+                                            color = MaterialTheme.colorScheme.onSurfaceVariant,
+                                            lineHeight = 16.sp
+                                        )
+                                    }
+                                }
+                            }
                         }
                     }
 
@@ -4518,6 +4816,7 @@ fun SettingsDialog(
     currentLanguage: String,
     selectedTheme: String,
     onThemeChange: (String) -> Unit,
+    onLanguageClick: () -> Unit,
     onImportBackup: () -> Unit,
     onDismiss: () -> Unit
 ) {
@@ -4528,31 +4827,44 @@ fun SettingsDialog(
         AboutAppDialog(lang = currentLanguage, onDismiss = { showAboutAppDialog = false })
     }
 
-    Dialog(onDismissRequest = onDismiss) {
-        Card(
-            modifier = Modifier
-                .fillMaxWidth()
-                .widthIn(max = 500.dp)
-                .padding(16.dp)
-                .testTag("settings_dialog_surface"),
-            shape = RoundedCornerShape(24.dp),
-            colors = CardDefaults.cardColors(
-                containerColor = if (isDark) Color(0xFF1E293B).copy(alpha = 0.90f) else Color.White.copy(alpha = 0.90f),
-                contentColor = if (isDark) Color.White else Color(0xFF0F172A)
-            ),
-            border = BorderStroke(1.dp, if (isDark) Color(0xFF334155).copy(alpha = 0.70f) else Color(0xFFE2E8F0).copy(alpha = 0.70f)),
-            elevation = CardDefaults.cardElevation(defaultElevation = 16.dp)
+    Dialog(
+        onDismissRequest = onDismiss,
+        properties = androidx.compose.ui.window.DialogProperties(
+            usePlatformDefaultWidth = false,
+            dismissOnBackPress = true,
+            dismissOnClickOutside = false
+        )
+    ) {
+        val bgColor = if (isDark) Color(0xFF0F172A) else Color(0xFFF1F5F9)
+        val containerBg = if (isDark) Color(0xFF1E293B).copy(alpha = 0.5f) else Color.White.copy(alpha = 0.85f)
+        val textPrimary = if (isDark) Color.White else Color(0xFF0F172A)
+        val textSecondary = if (isDark) Color(0xFF94A3B8) else Color(0xFF64748B)
+
+        Surface(
+            modifier = Modifier.fillMaxSize(),
+            color = bgColor
         ) {
             Column(
                 modifier = Modifier
-                    .fillMaxWidth()
-                    .padding(24.dp)
-                    .verticalScroll(rememberScrollState()),
-                horizontalAlignment = Alignment.CenterHorizontally
+                    .fillMaxSize()
+                    .statusBarsPadding()
+                    .navigationBarsPadding()
             ) {
-                // Header
+                // Elite Header Top Bar
                 Row(
-                    modifier = Modifier.fillMaxWidth(),
+                    modifier = Modifier
+                        .fillMaxWidth()
+                        .padding(horizontal = 16.dp, vertical = 12.dp)
+                        .background(
+                            color = if (isDark) Color(0xFF1E293B).copy(alpha = 0.45f) else Color.White.copy(alpha = 0.75f),
+                            shape = RoundedCornerShape(20.dp)
+                        )
+                        .border(
+                            width = 1.dp,
+                            color = if (isDark) Color(0xFF334155).copy(alpha = 0.50f) else Color(0xFFE2E8F0),
+                            shape = RoundedCornerShape(20.dp)
+                        )
+                        .padding(horizontal = 16.dp, vertical = 10.dp),
                     verticalAlignment = Alignment.CenterVertically,
                     horizontalArrangement = Arrangement.SpaceBetween
                 ) {
@@ -4561,7 +4873,9 @@ fun SettingsDialog(
                             modifier = Modifier
                                 .size(36.dp)
                                 .background(
-                                    color = if (isDark) Color(0x2438BDF8) else Color(0x160EA5E9),
+                                    brush = Brush.linearGradient(
+                                        colors = listOf(Color(0xFF3B82F6), Color(0xFF10B981))
+                                    ),
                                     shape = CircleShape
                                 ),
                             contentAlignment = Alignment.Center
@@ -4569,272 +4883,455 @@ fun SettingsDialog(
                             Icon(
                                 imageVector = Icons.Outlined.Settings,
                                 contentDescription = null,
-                                tint = if (isDark) Color(0xFF38BDF8) else Color(0xFF0EA5E9),
-                                modifier = Modifier.size(20.dp)
+                                tint = Color.White,
+                                modifier = Modifier.size(18.dp)
                             )
                         }
                         Spacer(modifier = Modifier.width(12.dp))
-                        Text(
-                            text = if (currentLanguage == "bn") "সেটিংস" else "Settings",
-                            style = MaterialTheme.typography.titleMedium,
-                            fontWeight = FontWeight.ExtraBold,
-                            color = if (isDark) Color.White else Color(0xFF1E293B)
-                        )
+                        Column {
+                            Text(
+                                text = if (currentLanguage == "bn") "সেটিংস উইন্ডো" 
+                                       else if (currentLanguage == "hi") "सेटिंग्स मेनू"
+                                       else if (currentLanguage == "ar") "الإعدادات الذكية" 
+                                       else if (currentLanguage == "es") "Ajustes del Sistema" 
+                                       else "Personal Settings",
+                                style = MaterialTheme.typography.titleMedium,
+                                fontWeight = FontWeight.Black,
+                                color = textPrimary
+                            )
+                            Text(
+                                text = if (currentLanguage == "bn") "পার্সোনালাইজেশন ও কন্ট্রোল" else "Personalization & control",
+                                style = MaterialTheme.typography.labelSmall,
+                                color = textSecondary
+                            )
+                        }
                     }
-                    IconButton(onClick = onDismiss) {
-                        Icon(
-                            imageVector = Icons.Default.Close,
-                            contentDescription = "Close",
-                            tint = if (isDark) Color.White.copy(alpha = 0.6f) else Color.Black.copy(alpha = 0.6f)
+
+                    // Done / Close pill
+                    Box(
+                        modifier = Modifier
+                            .clip(CircleShape)
+                            .background(if (isDark) Color(0xFF1E293B) else Color(0xFFE2E8F0))
+                            .android16Clickable { onDismiss() }
+                            .padding(horizontal = 12.dp, vertical = 6.dp)
+                    ) {
+                        Text(
+                            text = if (currentLanguage == "bn") "সম্পন্ন" else if (currentLanguage == "hi") "पूर्ण" else if (currentLanguage == "ar") "تم" else if (currentLanguage == "es") "Hecho" else "Done",
+                            style = MaterialTheme.typography.labelMedium.copy(
+                                fontWeight = FontWeight.ExtraBold,
+                                color = if (isDark) Color(0xFF38BDF8) else Color(0xFF2563EB)
+                            )
                         )
                     }
                 }
 
-                Spacer(modifier = Modifier.height(16.dp))
+                Spacer(modifier = Modifier.height(8.dp))
 
-                // Auto backup info card placed at the very top of Settings, as requested by the user!
-                LocalBackupStatusCard(
-                    currentLanguage = currentLanguage,
-                    onImportClick = onImportBackup
-                )
+                // Scrollable Body
+                Column(
+                    modifier = Modifier
+                        .weight(1f)
+                        .fillMaxWidth()
+                        .verticalScroll(rememberScrollState())
+                        .padding(horizontal = 16.dp),
+                    verticalArrangement = Arrangement.spacedBy(16.dp)
+                ) {
+                    // Local Backup Status Card (First thing, as previously implemented)
+                    LocalBackupStatusCard(
+                        currentLanguage = currentLanguage,
+                        onImportClick = onImportBackup
+                    )
 
-                Spacer(modifier = Modifier.height(24.dp))
-
-                // Theme section label
-                Text(
-                    text = if (currentLanguage == "bn") "অ্যাপ থিম নির্বাচন করুন" else "Select App Theme",
-                    style = MaterialTheme.typography.labelMedium,
-                    fontWeight = FontWeight.Bold,
-                    color = if (isDark) Color(0xFF94A3B8) else Color(0xFF475569),
-                    modifier = Modifier.align(Alignment.Start)
-                )
-
-                Spacer(modifier = Modifier.height(10.dp))
-
-                val themes = listOf(
-                    Triple("system", Pair("সিস্টেম ডিফল্ট", "System Default"), Icons.Default.Settings),
-                    Triple("light", Pair("লাইট মোড", "Light Mode"), Icons.Default.WbSunny),
-                    Triple("dark", Pair("ডার্ক মোড", "Dark Mode"), Icons.Default.NightsStay)
-                )
-
-                themes.forEach { (themeId, labels, icon) ->
-                    val isSelected = selectedTheme == themeId
-                    val label = if (currentLanguage == "bn") labels.first else labels.second
-                    
-                    Card(
+                    // Theme Section Header with Title and Details
+                    Column(
                         modifier = Modifier
                             .fillMaxWidth()
-                            .padding(vertical = 5.dp)
-                            .android16Clickable(shape = RoundedCornerShape(12.dp)) { onThemeChange(themeId) }
-                            .testTag("theme_sel_$themeId"),
-                        shape = RoundedCornerShape(12.dp),
-                        border = BorderStroke(
-                            width = if (isSelected) 2.dp else 1.dp,
-                            color = if (isSelected) MaterialTheme.colorScheme.primary else (if (isDark) Color(0xFF334155).copy(alpha = 0.5f) else Color(0xFFE2E8F0).copy(alpha = 0.65f))
-                        ),
-                        colors = CardDefaults.cardColors(
-                            containerColor = if (isSelected) {
-                                MaterialTheme.colorScheme.primaryContainer.copy(alpha = 0.25f)
-                            } else {
-                                if (isDark) Color(0xFF1E293B).copy(alpha = 0.5f) else Color(0xFFF8FAFC).copy(alpha = 0.65f)
-                            }
-                        )
+                            .background(
+                                color = containerBg,
+                                shape = RoundedCornerShape(24.dp)
+                            )
+                            .border(
+                                width = 1.dp,
+                                color = if (isDark) Color(0xFF334155).copy(alpha = 0.5f) else Color(0xFFE2E8F0),
+                                shape = RoundedCornerShape(24.dp)
+                            )
+                            .padding(16.dp)
                     ) {
                         Row(
-                            modifier = Modifier
-                                .fillMaxWidth()
-                                .padding(12.dp),
-                            verticalAlignment = Alignment.CenterVertically
+                            verticalAlignment = Alignment.CenterVertically,
+                            modifier = Modifier.padding(bottom = 12.dp)
                         ) {
                             Box(
                                 modifier = Modifier
-                                    .size(36.dp)
-                                    .background(
-                                        color = if (isSelected) MaterialTheme.colorScheme.primary.copy(alpha = 0.15f) else (if (isDark) Color(0xFF334155) else Color(0xFFE2E8F0)),
-                                        shape = CircleShape
-                                    ),
+                                    .size(24.dp)
+                                    .background(Color(0xFF8B5CF6).copy(alpha = 0.15f), CircleShape),
                                 contentAlignment = Alignment.Center
                             ) {
                                 Icon(
-                                    imageVector = icon,
-                                    contentDescription = label,
-                                    tint = if (isSelected) MaterialTheme.colorScheme.primary else (if (isDark) Color(0xFF94A3B8) else Color(0xFF64748B)),
-                                    modifier = Modifier.size(18.dp)
+                                    imageVector = Icons.Default.WbSunny,
+                                    contentDescription = null,
+                                    tint = Color(0xFF8B5CF6),
+                                    modifier = Modifier.size(14.dp)
                                 )
                             }
-                            Spacer(modifier = Modifier.width(12.dp))
+                            Spacer(modifier = Modifier.width(8.dp))
                             Text(
-                                text = label,
-                                style = MaterialTheme.typography.bodyMedium,
-                                fontWeight = if (isSelected) FontWeight.ExtraBold else FontWeight.Medium,
-                                color = if (isDark) Color.White else Color(0xFF1E293B),
-                                modifier = Modifier.weight(1f)
+                                text = if (currentLanguage == "bn") "অ্যাপ থিম নির্বাচন করুন" 
+                                       else if (currentLanguage == "hi") "ऐप थीम चुनें"
+                                       else if (currentLanguage == "ar") "اختر مظهر التطبيق"
+                                       else if (currentLanguage == "es") "Seleccionar tema de la app"
+                                       else "Select App Theme",
+                                style = MaterialTheme.typography.titleSmall,
+                                fontWeight = FontWeight.Black,
+                                color = textPrimary
                             )
-                            if (isSelected) {
+                        }
+
+                        // Modern Horizontal 3-Column Themes Segment Card
+                        Row(
+                            modifier = Modifier.fillMaxWidth(),
+                            horizontalArrangement = Arrangement.spacedBy(10.dp)
+                        ) {
+                            val themes = listOf(
+                                Triple("system", Pair("সিস্টেম", "System"), Icons.Default.Settings),
+                                Triple("light", Pair("লাইট", "Light"), Icons.Default.WbSunny),
+                                Triple("dark", Pair("ডার্ক", "Dark"), Icons.Default.NightsStay)
+                            )
+
+                            themes.forEach { (themeId, labels, icon) ->
+                                val isSelected = selectedTheme == themeId
+                                val label = if (currentLanguage == "bn") labels.first 
+                                            else if (currentLanguage == "hi") {
+                                                if (themeId == "system") "सिस्टम" else if (themeId == "light") "लाइट" else "डार्क"
+                                            } else if (currentLanguage == "ar") {
+                                                if (themeId == "system") "النظام" else if (themeId == "light") "فاتح" else "داكن"
+                                            } else if (currentLanguage == "es") {
+                                                if (themeId == "system") "Sistema" else if (themeId == "light") "Claro" else "Oscuro"
+                                            } else labels.second
+
+                                val cardBg = remember(isSelected, isDark) {
+                                    if (isSelected) {
+                                        if (isDark) Color(0xFF1E293B).copy(alpha = 0.9f) else Color(0xFFEFF6FF)
+                                    } else {
+                                        if (isDark) Color(0xFF0F172A).copy(alpha = 0.3f) else Color(0xFFF8FAFC)
+                                    }
+                                }
+
+                                val cardBorderColor = remember(isSelected, isDark) {
+                                    if (isSelected) {
+                                        if (isDark) Color(0xFF38BDF8) else Color(0xFF2563EB)
+                                    } else {
+                                        if (isDark) Color(0xFF334155).copy(alpha = 0.4f) else Color(0xFFE2E8F0)
+                                    }
+                                }
+
+                                Card(
+                                    modifier = Modifier
+                                        .weight(1f)
+                                        .height(96.dp)
+                                        .android16Clickable(shape = RoundedCornerShape(16.dp)) { onThemeChange(themeId) }
+                                        .testTag("theme_sel_$themeId"),
+                                    shape = RoundedCornerShape(16.dp),
+                                    border = BorderStroke(
+                                        width = if (isSelected) 2.dp else 1.dp,
+                                        color = cardBorderColor
+                                    ),
+                                    colors = CardDefaults.cardColors(containerColor = cardBg)
+                                ) {
+                                    Column(
+                                        modifier = Modifier
+                                            .fillMaxSize()
+                                            .padding(6.dp),
+                                        horizontalAlignment = Alignment.CenterHorizontally,
+                                        verticalArrangement = Arrangement.Center
+                                    ) {
+                                        Box(
+                                            modifier = Modifier
+                                                .size(36.dp)
+                                                .background(
+                                                    color = if (isSelected) {
+                                                        (if (isDark) Color(0xFF38BDF8) else Color(0xFF2563EB)).copy(alpha = 0.15f)
+                                                    } else {
+                                                        if (isDark) Color(0xFF1E293B) else Color(0xFFEDF2F7)
+                                                    },
+                                                    shape = CircleShape
+                                                ),
+                                            contentAlignment = Alignment.Center
+                                        ) {
+                                            Icon(
+                                                imageVector = icon,
+                                                contentDescription = label,
+                                                tint = if (isSelected) {
+                                                    if (isDark) Color(0xFF38BDF8) else Color(0xFF2563EB)
+                                                } else {
+                                                    if (isDark) Color(0xFF94A3B8) else Color(0xFF64748B)
+                                                },
+                                                modifier = Modifier.size(18.dp)
+                                            )
+                                        }
+
+                                        Spacer(modifier = Modifier.height(8.dp))
+
+                                        Row(
+                                            verticalAlignment = Alignment.CenterVertically,
+                                            horizontalArrangement = Arrangement.spacedBy(4.dp)
+                                        ) {
+                                            if (isSelected) {
+                                                Box(
+                                                    modifier = Modifier
+                                                        .size(5.dp)
+                                                        .background(if (isDark) Color(0xFF38BDF8) else Color(0xFF2563EB), CircleShape)
+                                                )
+                                            }
+                                            Text(
+                                                text = label,
+                                                style = MaterialTheme.typography.labelMedium,
+                                                fontWeight = if (isSelected) FontWeight.Black else FontWeight.Medium,
+                                                color = if (isSelected) (if (isDark) Color(0xFF38BDF8) else Color(0xFF2563EB)) else (if (isDark) Color(0xFF94A3B8) else Color(0xFF475569)),
+                                                maxLines = 1
+                                            )
+                                        }
+                                    }
+                                }
+                            }
+                        }
+                    }
+
+                    // Preferences & App Integration Category Block
+                    Column(
+                        modifier = Modifier
+                            .fillMaxWidth()
+                            .background(
+                                color = containerBg,
+                                shape = RoundedCornerShape(24.dp)
+                            )
+                            .border(
+                                width = 1.dp,
+                                color = if (isDark) Color(0xFF334155).copy(alpha = 0.5f) else Color(0xFFE2E8F0),
+                                shape = RoundedCornerShape(24.dp)
+                            )
+                            .padding(16.dp),
+                        verticalArrangement = Arrangement.spacedBy(12.dp)
+                    ) {
+                        // Language Selector Option
+                        Card(
+                            modifier = Modifier
+                                .fillMaxWidth()
+                                .android16Clickable(shape = RoundedCornerShape(14.dp)) {
+                                    onLanguageClick()
+                                }
+                                .testTag("settings_language_button"),
+                            shape = RoundedCornerShape(14.dp),
+                            colors = CardDefaults.cardColors(
+                                containerColor = if (isDark) Color(0xFF1E293B).copy(alpha = 0.35f) else Color(0xFFF8FAFC)
+                            ),
+                            border = BorderStroke(1.dp, if (isDark) Color(0xFF334155).copy(alpha = 0.3f) else Color(0xFFE2E8F0))
+                        ) {
+                            Row(
+                                modifier = Modifier
+                                    .fillMaxWidth()
+                                    .padding(12.dp),
+                                verticalAlignment = Alignment.CenterVertically
+                            ) {
+                                Box(
+                                    modifier = Modifier
+                                        .size(36.dp)
+                                        .background(
+                                            color = Color(0xFF3B82F6).copy(alpha = 0.12f),
+                                            shape = CircleShape
+                                        ),
+                                    contentAlignment = Alignment.Center
+                                ) {
+                                    Icon(
+                                        imageVector = Icons.Default.Translate,
+                                        contentDescription = "Language Option",
+                                        tint = Color(0xFF3B82F6),
+                                        modifier = Modifier.size(18.dp)
+                                    )
+                                }
+                                Spacer(modifier = Modifier.width(12.dp))
+                                Column(modifier = Modifier.weight(1f)) {
+                                    Text(
+                                        text = if (currentLanguage == "bn") "ভাষা পরিবর্তন করুন" 
+                                               else if (currentLanguage == "hi") "भाषा बदलें"
+                                               else if (currentLanguage == "ar") "تغيير اللغة"
+                                               else if (currentLanguage == "es") "Cambiar idioma"
+                                               else "Change App Language",
+                                        style = MaterialTheme.typography.bodyMedium,
+                                        fontWeight = FontWeight.Bold,
+                                        color = textPrimary
+                                    )
+                                    val langLabel = remember(currentLanguage) {
+                                        when (currentLanguage) {
+                                            "bn" -> "🇧🇩 বাংলা (Bengali)"
+                                            "hi" -> "🇮🇳 हिन्दी (Hindi)"
+                                            "ar" -> "🇸🇦 العربية (Arabic)"
+                                            "es" -> "🇪🇸 Español (Spanish)"
+                                            else -> "🇺🇸 English"
+                                        }
+                                    }
+                                    Text(
+                                        text = langLabel,
+                                        style = MaterialTheme.typography.labelSmall,
+                                        color = textSecondary
+                                    )
+                                }
                                 Icon(
-                                    imageVector = Icons.Default.CheckCircle,
-                                    contentDescription = "Selected",
-                                    tint = MaterialTheme.colorScheme.primary,
+                                    imageVector = Icons.Default.ChevronRight,
+                                    contentDescription = null,
+                                    tint = textSecondary.copy(alpha = 0.7f),
+                                    modifier = Modifier.size(20.dp)
+                                )
+                            }
+                        }
+
+                        // Check for updates UI Card Checked over Raw Github release JSON
+                        var isCheckingForUpdates by remember { mutableStateOf(false) }
+                        var settingsUpdateInfo by remember { mutableStateOf<AppUpdateInfo?>(null) }
+                        val context = LocalContext.current
+
+                        if (settingsUpdateInfo != null) {
+                            AppUpdateDialog(
+                                updateInfo = settingsUpdateInfo!!,
+                                currentLanguage = currentLanguage,
+                                onDismiss = { settingsUpdateInfo = null }
+                            )
+                        }
+
+                        Card(
+                            modifier = Modifier
+                                .fillMaxWidth()
+                                .android16Clickable(
+                                    shape = RoundedCornerShape(14.dp),
+                                    enabled = !isCheckingForUpdates
+                                ) {
+                                    isCheckingForUpdates = true
+                                    checkForUpdatesAsync(context) { info, error ->
+                                        isCheckingForUpdates = false
+                                        if (error != null) {
+                                            Toast.makeText(context, if (currentLanguage == "bn") "নেটওয়ার্ক সমস্যা, অনুগ্রহ করে পুনরায় চেষ্টা করুন" else "Network issue, please try again", Toast.LENGTH_SHORT).show()
+                                        } else if (info != null) {
+                                            if (info.hasUpdate) {
+                                                settingsUpdateInfo = info
+                                            } else {
+                                                Toast.makeText(context, if (currentLanguage == "bn") "আপনার অ্যাপটি ইতিমধ্যে সর্বশেষ সংস্করণে রয়েছে!" else "Your app is already up to date!", Toast.LENGTH_SHORT).show()
+                                            }
+                                        }
+                                    }
+                                },
+                            shape = RoundedCornerShape(14.dp),
+                            colors = CardDefaults.cardColors(
+                                containerColor = if (isDark) Color(0xFF1E293B).copy(alpha = 0.35f) else Color(0xFFF8FAFC)
+                            ),
+                            border = BorderStroke(1.dp, if (isDark) Color(0xFF334155).copy(alpha = 0.3f) else Color(0xFFE2E8F0))
+                        ) {
+                            Row(
+                                modifier = Modifier
+                                    .fillMaxWidth()
+                                    .padding(12.dp),
+                                verticalAlignment = Alignment.CenterVertically
+                            ) {
+                                Box(
+                                    modifier = Modifier
+                                        .size(36.dp)
+                                        .background(
+                                            color = Color(0xFF10B981).copy(alpha = 0.12f),
+                                            shape = CircleShape
+                                        ),
+                                    contentAlignment = Alignment.Center
+                                ) {
+                                    if (isCheckingForUpdates) {
+                                        CircularProgressIndicator(
+                                            modifier = Modifier.size(16.dp),
+                                            strokeWidth = 2.dp,
+                                            color = Color(0xFF10B981)
+                                        )
+                                    } else {
+                                        Icon(
+                                            imageVector = Icons.Default.SystemUpdate,
+                                            contentDescription = "Update Check Icon",
+                                            tint = Color(0xFF10B981),
+                                            modifier = Modifier.size(18.dp)
+                                        )
+                                    }
+                                }
+                                Spacer(modifier = Modifier.width(12.dp))
+                                Column(modifier = Modifier.weight(1f)) {
+                                    Text(
+                                        text = if (currentLanguage == "bn") "আপডেট চেক করুন" else "Check for Updates",
+                                        style = MaterialTheme.typography.bodyMedium,
+                                        fontWeight = FontWeight.Bold,
+                                        color = textPrimary
+                                    )
+                                    Text(
+                                        text = if (isCheckingForUpdates) {
+                                            if (currentLanguage == "bn") "আপডেটের হিসাব খোঁজা হচ্ছে..." else "Looking for recent build releases..."
+                                        } else {
+                                            if (currentLanguage == "bn") "সর্বশেষ সংস্করণ কোড চেক করুন" else "Check latest release code"
+                                        },
+                                        style = MaterialTheme.typography.labelSmall,
+                                        color = textSecondary
+                                    )
+                                }
+                                Icon(
+                                    imageVector = Icons.Default.ChevronRight,
+                                    contentDescription = null,
+                                    tint = textSecondary.copy(alpha = 0.7f),
                                     modifier = Modifier.size(20.dp)
                                 )
                             }
                         }
                     }
-                }
 
-                Spacer(modifier = Modifier.height(20.dp))
+                    Spacer(modifier = Modifier.height(12.dp))
 
-                Box(
-                    modifier = Modifier
-                        .fillMaxWidth()
-                        .height(1.dp)
-                        .background(if (isDark) Color(0xFF334155) else Color(0xFFE2E8F0))
-                )
-
-                Spacer(modifier = Modifier.height(16.dp))
-
-                // Check for updates UI Card Checked over Raw Github release JSON
-                var isCheckingForUpdates by remember { mutableStateOf(false) }
-                var settingsUpdateInfo by remember { mutableStateOf<AppUpdateInfo?>(null) }
-                val context = LocalContext.current
-
-                if (settingsUpdateInfo != null) {
-                    AppUpdateDialog(
-                        updateInfo = settingsUpdateInfo!!,
-                        currentLanguage = currentLanguage,
-                        onDismiss = { settingsUpdateInfo = null }
-                    )
-                }
-
-                Card(
-                    modifier = Modifier
-                        .fillMaxWidth()
-                        .padding(vertical = 4.dp)
-                        .android16Clickable(
-                            shape = RoundedCornerShape(12.dp),
-                            enabled = !isCheckingForUpdates
-                        ) {
-                            isCheckingForUpdates = true
-                            checkForUpdatesAsync(context) { info, error ->
-                                isCheckingForUpdates = false
-                                if (error != null) {
-                                    Toast.makeText(context, if (currentLanguage == "bn") "নেটওয়ার্ক সমস্যা, অনুগ্রহ করে পুনরায় চেষ্টা করুন" else "Network issue, please try again", Toast.LENGTH_SHORT).show()
-                                } else if (info != null) {
-                                    if (info.hasUpdate) {
-                                        settingsUpdateInfo = info
-                                    } else {
-                                        Toast.makeText(context, if (currentLanguage == "bn") "আপনার অ্যাপটি ইতিমধ্যে সর্বশেষ সংস্করণে রয়েছে!" else "Your app is already up to date!", Toast.LENGTH_SHORT).show()
-                                    }
-                                }
-                            }
-                        },
-                    shape = RoundedCornerShape(12.dp),
-                    colors = CardDefaults.cardColors(
-                        containerColor = if (isDark) Color(0xFF1E293B).copy(alpha = 0.5f) else Color(0xFFF8FAFC).copy(alpha = 0.65f)
-                    ),
-                    border = BorderStroke(1.dp, if (isDark) Color(0xFF334155).copy(alpha = 0.5f) else Color(0xFFE2E8F0).copy(alpha = 0.65f))
-                ) {
-                    Row(
+                    // About App Button Inside settings
+                    Button(
+                        onClick = { showAboutAppDialog = true },
+                        shape = RoundedCornerShape(16.dp),
+                        colors = ButtonDefaults.buttonColors(
+                            containerColor = if (isDark) MaterialTheme.colorScheme.secondaryContainer else Color(0xFFE2E8F0),
+                            contentColor = if (isDark) MaterialTheme.colorScheme.onSecondaryContainer else Color(0xFF334155)
+                        ),
+                        border = BorderStroke(1.dp, if (isDark) MaterialTheme.colorScheme.secondary.copy(alpha = 0.5f) else Color(0xFFCBD5E1)),
                         modifier = Modifier
                             .fillMaxWidth()
-                            .padding(12.dp),
-                        verticalAlignment = Alignment.CenterVertically
+                            .height(50.dp)
                     ) {
-                        Box(
-                            modifier = Modifier
-                                .size(36.dp)
-                                .background(
-                                    color = if (isDark) Color(0x2410B981) else Color(0x1610B981),
-                                    shape = CircleShape
-                                ),
-                            contentAlignment = Alignment.Center
-                        ) {
-                            if (isCheckingForUpdates) {
-                                CircularProgressIndicator(
-                                    modifier = Modifier.size(16.dp),
-                                    strokeWidth = 2.dp,
-                                    color = Color(0xFF10B981)
-                                )
-                            } else {
-                                Icon(
-                                    imageVector = Icons.Default.SystemUpdate,
-                                    contentDescription = "Update Check Icon",
-                                    tint = Color(0xFF10B981),
-                                    modifier = Modifier.size(18.dp)
-                                )
-                            }
-                        }
-                        Spacer(modifier = Modifier.width(12.dp))
-                        Column(modifier = Modifier.weight(1f)) {
-                            Text(
-                                text = if (currentLanguage == "bn") "আপডেট চেক করুন" else "Check for Updates",
-                                style = MaterialTheme.typography.bodyMedium,
-                                fontWeight = FontWeight.Bold,
-                                color = if (isDark) Color.White else Color(0xFF1E293B)
-                            )
-                            Text(
-                                text = if (isCheckingForUpdates) {
-                                    if (currentLanguage == "bn") "আপডেটের হিসাব খোঁজা হচ্ছে..." else "Looking for recent build releases..."
-                                } else {
-                                    if (currentLanguage == "bn") "সর্বশেষ সংস্করণ কোড চেক করুন" else "Check latest release code"
-                                },
-                                style = MaterialTheme.typography.labelSmall,
-                                color = if (isDark) Color(0xFF94A3B8) else Color(0xFF64748B)
-                            )
-                        }
                         Icon(
-                            imageVector = Icons.Default.ChevronRight,
-                            contentDescription = null,
-                            tint = if (isDark) Color.White.copy(alpha = 0.4f) else Color.Black.copy(alpha = 0.4f),
-                            modifier = Modifier.size(20.dp)
+                            imageVector = Icons.Default.Info,
+                            contentDescription = "About App Icon",
+                            modifier = Modifier.size(18.dp)
+                        )
+                        Spacer(modifier = Modifier.width(8.dp))
+                        Text(
+                            text = if (currentLanguage == "bn") "অ্যাপ সম্পর্কে জানুন" else "About App & Features",
+                            style = MaterialTheme.typography.labelLarge.copy(fontWeight = FontWeight.ExtraBold)
                         )
                     }
-                }
 
-                Spacer(modifier = Modifier.height(12.dp))
+                    Spacer(modifier = Modifier.height(16.dp))
 
-                // About App Button Inside settings
-                Button(
-                    onClick = { showAboutAppDialog = true },
-                    shape = RoundedCornerShape(12.dp),
-                    colors = ButtonDefaults.buttonColors(
-                        containerColor = if (isDark) MaterialTheme.colorScheme.secondaryContainer else Color(0xFFF1F5F9),
-                        contentColor = if (isDark) MaterialTheme.colorScheme.onSecondaryContainer else Color(0xFF475569)
-                    ),
-                    border = BorderStroke(1.dp, if (isDark) MaterialTheme.colorScheme.secondary.copy(alpha = 0.5f) else Color(0xFFCBD5E1)),
-                    modifier = Modifier
-                        .fillMaxWidth()
-                        .height(48.dp)
-                ) {
-                    Icon(
-                        imageVector = Icons.Default.Info,
-                        contentDescription = "About App Icon",
-                        modifier = Modifier.size(18.dp)
-                    )
-                    Spacer(modifier = Modifier.width(8.dp))
-                    Text(
-                        text = if (currentLanguage == "bn") "অ্যাপ সম্পর্কে জানুন" else "About App & Features",
-                        style = MaterialTheme.typography.labelLarge.copy(fontWeight = FontWeight.ExtraBold)
-                    )
-                }
+                    // Close Settings Button inside scrollable area to prevent overlap/clipping on any screen size or bottom home gesture bar
+                    Button(
+                        onClick = onDismiss,
+                        shape = RoundedCornerShape(16.dp),
+                        colors = ButtonDefaults.buttonColors(
+                            containerColor = if (isDark) MaterialTheme.colorScheme.primary else Color(0xFF2563EB),
+                            contentColor = if (isDark) MaterialTheme.colorScheme.onPrimary else Color.White
+                        ),
+                        modifier = Modifier
+                            .fillMaxWidth()
+                            .height(50.dp)
+                            .testTag("settings_close_button")
+                    ) {
+                        Text(
+                            text = if (currentLanguage == "bn") "বন্ধ করুন" else "Close Settings",
+                            style = MaterialTheme.typography.labelLarge.copy(fontWeight = FontWeight.Black)
+                        )
+                    }
 
-                Spacer(modifier = Modifier.height(12.dp))
-
-                Button(
-                    onClick = onDismiss,
-                    shape = RoundedCornerShape(12.dp),
-                    colors = ButtonDefaults.buttonColors(
-                        containerColor = if (isDark) MaterialTheme.colorScheme.primary else Color(0xFF2563EB),
-                        contentColor = if (isDark) MaterialTheme.colorScheme.onPrimary else Color.White
-                    ),
-                    modifier = Modifier
-                        .fillMaxWidth()
-                        .height(44.dp)
-                ) {
-                    Text(
-                        text = if (currentLanguage == "bn") "বন্ধ করুন" else "Close",
-                        style = MaterialTheme.typography.labelLarge.copy(fontWeight = FontWeight.Bold)
-                    )
+                    Spacer(modifier = Modifier.height(40.dp))
                 }
             }
         }
@@ -5883,10 +6380,12 @@ fun BajarListDialog(
         AnimatedDialogContent {
             val dialogSurfaceBg = if (isDark) Color(0xFF1E293B).copy(alpha = 0.92f) else Color.White.copy(alpha = 0.95f)
             val dialogBorder = if (isDark) Color(0xFF475569).copy(alpha = 0.5f) else Color(0xFFCBD5E1).copy(alpha = 0.7f)
+            val screenHeight = androidx.compose.ui.platform.LocalConfiguration.current.screenHeightDp.dp
             Card(
                 modifier = Modifier
                     .fillMaxWidth()
                     .widthIn(max = 500.dp)
+                    .heightIn(max = screenHeight - 48.dp)
                     .padding(16.dp)
                     .testTag("bajar_list_dialog_card"),
                 shape = RoundedCornerShape(20.dp),
@@ -5901,6 +6400,7 @@ fun BajarListDialog(
                 modifier = Modifier
                     .padding(20.dp)
                     .fillMaxWidth()
+                    .verticalScroll(androidx.compose.foundation.rememberScrollState())
             ) {
                 if (!isFinishingShopping) {
                     // Header
@@ -6264,10 +6764,12 @@ fun DebtListDialog(
         AnimatedDialogContent {
             val dialogSurfaceBg = if (isDark) Color(0xFF1E293B).copy(alpha = 0.92f) else Color.White.copy(alpha = 0.95f)
             val dialogBorder = if (isDark) Color(0xFF475569).copy(alpha = 0.5f) else Color(0xFFCBD5E1).copy(alpha = 0.7f)
+            val screenHeight = androidx.compose.ui.platform.LocalConfiguration.current.screenHeightDp.dp
             Card(
                 modifier = Modifier
                     .fillMaxWidth()
                     .widthIn(max = 500.dp)
+                    .heightIn(max = screenHeight - 48.dp)
                     .padding(16.dp)
                     .testTag("debt_list_dialog_card"),
                 shape = RoundedCornerShape(20.dp),
@@ -6282,6 +6784,7 @@ fun DebtListDialog(
                 modifier = Modifier
                     .padding(20.dp)
                     .fillMaxWidth()
+                    .verticalScroll(androidx.compose.foundation.rememberScrollState())
             ) {
                 // Header
                 Row(
@@ -6919,7 +7422,7 @@ fun DropdownItem(
                     text = desc,
                     style = descStyle,
                     color = if (isDark) Color(0xFFCBD5E1) else Color(0xFF475569),
-                    maxLines = 1,
+                    maxLines = 2,
                     overflow = TextOverflow.Ellipsis
                 )
             }
@@ -7790,7 +8293,7 @@ fun DashboardActionsGrid(
         Column(
             modifier = Modifier
                 .fillMaxWidth()
-                .padding(16.dp),
+                .padding(start = 16.dp, end = 16.dp, top = 16.dp, bottom = 28.dp),
             verticalArrangement = Arrangement.spacedBy(14.dp)
         ) {
             Text(
@@ -7804,7 +8307,7 @@ fun DashboardActionsGrid(
             DropdownItem(
                 icon = Icons.Default.Add,
                 iconBg = if (isDark) Color(0xFF4F46E5) else Color(0xFF6366F1),
-                title = if (currentLanguage == "bn") "লেনদেন যুক্ত করুন" else "Add Transaction",
+                title = if (currentLanguage == "bn") "লেনদেন যুক্ত করুন" else "Add Transactions",
                 desc = if (currentLanguage == "bn") "নতুন আয় বা ব্যয়ের হিসাব লিখুন" else "Record new income or expense",
                 isDark = isDark,
                 onClick = onAddTransaction,
@@ -7814,7 +8317,7 @@ fun DashboardActionsGrid(
             DropdownItem(
                 icon = Icons.Default.History,
                 iconBg = Color(0xFF2563EB),
-                title = if (currentLanguage == "bn") "লেনদেনের ইতিহাস" else "Transaction History",
+                title = if (currentLanguage == "bn") "লেনদেনের ইতিহাস" else "Transactions History",
                 desc = if (currentLanguage == "bn") "আগের সকল লেনদেন পর্যবেক্ষণ করুন" else "View and search previous transactions",
                 isDark = isDark,
                 onClick = onViewHistory
@@ -8016,7 +8519,7 @@ fun TransactionsHistoryDialog(
                         )
                         Spacer(modifier = Modifier.width(8.dp))
                         Text(
-                            text = if (isBn) "লেনদেন ইতিহাস" else "Transaction History",
+                            text = if (isBn) "লেনদেন ইতিহাস" else "Transactions History",
                             style = MaterialTheme.typography.titleLarge,
                             fontWeight = FontWeight.Black,
                             color = MaterialTheme.colorScheme.onBackground
@@ -8209,4 +8712,360 @@ fun TransactionsHistoryDialog(
         }
     }
 }
+}
+
+
+@OptIn(ExperimentalMaterial3Api::class)
+@Composable
+fun LanguageSelectionDialog(
+    currentLanguage: String,
+    onLanguageSelect: (String) -> Unit,
+    onDismiss: () -> Unit
+) {
+    val isDark = isAppDark()
+    val dialogBg = if (isDark) Color(0xFF0F172A) else Color.White
+
+    val languages = listOf(
+        Triple("en", "🇺🇸  English", "Default English"),
+        Triple("bn", "🇧🇩  বাংলা", "Bengali"),
+        Triple("hi", "🇮🇳  हिन्दी", "Hindi"),
+        Triple("ar", "🇸🇦  العربية", "Arabic"),
+        Triple("es", "🇪🇸  Español", "Spanish")
+    )
+
+    val screenHeight = androidx.compose.ui.platform.LocalConfiguration.current.screenHeightDp.dp
+    Dialog(onDismissRequest = onDismiss) {
+        Card(
+            modifier = Modifier
+                .fillMaxWidth()
+                .heightIn(max = screenHeight - 48.dp)
+                .padding(16.dp),
+            shape = RoundedCornerShape(24.dp),
+            colors = CardDefaults.cardColors(containerColor = dialogBg),
+            border = BorderStroke(1.dp, if (isDark) Color(0xFF1E293B) else Color(0xFFE2E8F0)),
+            elevation = CardDefaults.cardElevation(defaultElevation = 8.dp)
+        ) {
+            Column(
+                modifier = Modifier
+                    .padding(24.dp)
+                    .fillMaxWidth(),
+                horizontalAlignment = Alignment.CenterHorizontally
+            ) {
+                // Header Icon
+                Box(
+                    modifier = Modifier
+                        .size(48.dp)
+                        .background(
+                            brush = Brush.linearGradient(
+                                colors = listOf(Color(0xFF3B82F6), Color(0xFF10B981))
+                            ),
+                            shape = CircleShape
+                        ),
+                    contentAlignment = Alignment.Center
+                ) {
+                    Icon(
+                        imageVector = Icons.Default.Translate,
+                        contentDescription = null,
+                        tint = Color.White,
+                        modifier = Modifier.size(24.dp)
+                    )
+                }
+
+                Spacer(modifier = Modifier.height(16.dp))
+
+                Text(
+                    text = when(currentLanguage) {
+                        "bn" -> "ভাষা নির্বাচন করুন"
+                        "hi" -> "भाषा चुनें"
+                        "ar" -> "اختر اللغة"
+                        "es" -> "Seleccionar idioma"
+                        else -> "Select Language"
+                    },
+                    style = MaterialTheme.typography.titleLarge.copy(
+                        fontWeight = FontWeight.Black,
+                        color = if (isDark) Color.White else Color(0xFF0F172A)
+                    ),
+                    textAlign = TextAlign.Center
+                )
+
+                Spacer(modifier = Modifier.height(6.dp))
+
+                Text(
+                    text = when(currentLanguage) {
+                        "bn" -> "আপনার পছন্দের অ্যাপ্লিকেশন ভাষা চয়ন করুন"
+                        "hi" -> "अपनी पसंदीदा स्थानीय भाषा चुनें"
+                        "ar" -> "اختر لغتك المفضلة للتطبيق"
+                        "es" -> "Selecciona tu idioma de preferencia"
+                        else -> "Choose your preferred application language"
+                    },
+                    style = MaterialTheme.typography.labelMedium.copy(
+                        color = if (isDark) Color(0xFF94A3B8) else Color(0xFF64748B)
+                    ),
+                    textAlign = TextAlign.Center
+                )
+
+                Spacer(modifier = Modifier.height(20.dp))
+
+                Column(
+                    verticalArrangement = Arrangement.spacedBy(10.dp),
+                    modifier = Modifier
+                        .fillMaxWidth()
+                        .heightIn(max = 280.dp)
+                        .verticalScroll(rememberScrollState())
+                ) {
+                    languages.forEach { (code, name, subtitle) ->
+                        val isSelected = currentLanguage == code
+                        val optionBg = if (isSelected) {
+                            MaterialTheme.colorScheme.primary.copy(alpha = 0.12f)
+                        } else {
+                            if (isDark) Color(0xFF1E293B).copy(alpha = 0.4f) else Color(0xFFF8FAFC)
+                        }
+                        val optionBorder = if (isSelected) {
+                            BorderStroke(1.5.dp, MaterialTheme.colorScheme.primary)
+                        } else {
+                            BorderStroke(1.dp, if (isDark) Color(0xFF334155).copy(alpha = 0.3f) else Color(0xFFE2E8F0))
+                        }
+
+                        Row(
+                            modifier = Modifier
+                                .fillMaxWidth()
+                                .background(optionBg, RoundedCornerShape(16.dp))
+                                .border(optionBorder, RoundedCornerShape(16.dp))
+                                .clip(RoundedCornerShape(16.dp))
+                                .clickable { onLanguageSelect(code) }
+                                .padding(horizontal = 16.dp, vertical = 12.dp),
+                            verticalAlignment = Alignment.CenterVertically
+                        ) {
+                            Text(
+                                text = name,
+                                style = MaterialTheme.typography.bodyMedium.copy(
+                                    fontWeight = FontWeight.Bold,
+                                    color = if (isDark) Color.White else Color(0xFF0F172A)
+                                ),
+                                modifier = Modifier.weight(1f)
+                            )
+
+                            if (isSelected) {
+                                Icon(
+                                    imageVector = Icons.Default.Check,
+                                    contentDescription = "Selected",
+                                    tint = MaterialTheme.colorScheme.primary,
+                                    modifier = Modifier.size(18.dp)
+                                )
+                            }
+                        }
+                    }
+                }
+
+                Spacer(modifier = Modifier.height(20.dp))
+
+                // Close Button
+                TextButton(
+                    onClick = onDismiss,
+                    modifier = Modifier.fillMaxWidth()
+                ) {
+                    Text(
+                        text = when(currentLanguage) {
+                            "bn" -> "বন্ধ করুন"
+                            "hi" -> "बंद करें"
+                            "ar" -> "إغلاق"
+                            "es" -> "Cerrar"
+                            else -> "Close"
+                        },
+                        style = MaterialTheme.typography.labelLarge.copy(
+                            fontWeight = FontWeight.ExtraBold,
+                            color = MaterialTheme.colorScheme.primary
+                        )
+                    )
+                }
+            }
+        }
+    }
+}
+
+@Composable
+fun DeleteConfirmationDialog(
+    transaction: Transaction,
+    lang: String,
+    onConfirm: () -> Unit,
+    onDismiss: () -> Unit
+) {
+    val isDark = isAppDark()
+    val containerBg = if (isDark) Color(0xFF1E293B).copy(alpha = 0.95f) else Color.White.copy(alpha = 0.95f)
+    val textPrimary = if (isDark) Color.White else Color(0xFF0F172A)
+    val textSecondary = if (isDark) Color(0xFF94A3B8) else Color(0xFF64748B)
+
+    // Localized language strings
+    val title = when (lang) {
+        "bn" -> "লেনদেন মুছে ফেলা নিশ্চিত করুন"
+        "hi" -> "लेनदेन हटाने की पुष्टि करें"
+        "ar" -> "تأكيد حذف المعاملة"
+        "es" -> "Confirmar eliminación"
+        else -> "Confirm Delete"
+    }
+
+    val message = when (lang) {
+        "bn" -> "আপনি কি নিশ্চিতভাবে এই লেনদেনটি স্থায়ীভাবে মুছে ফেলতে চান? এটি আর স্বয়ংক্রিয়ভাবে ফিরে পাওয়া যাবে না।"
+        "hi" -> "क्या आप वाकई इस लेनदेन को स्थायी रूप से हटाना चाहते हैं? इसे वापस नहीं लाया जा सकता।"
+        "ar" -> "هل أنت متأكد من رغبتك في حذف هذه المعاملة نهائيًا؟ لا يمكن التراجع عن هذا الإجراء."
+        "es" -> "¿Está seguro de que desea eliminar permanentemente esta transacción? No se puede deshacer."
+        else -> "Are you sure you want to permanently delete this transaction record? This action cannot be undone."
+    }
+
+    val cancelText = when (lang) {
+        "bn" -> "বাতিল করুন"
+        "hi" -> "रद्द करें"
+        "ar" -> "إلغاء"
+        "es" -> "Cancelar"
+        else -> "Cancel"
+    }
+
+    val deleteText = when (lang) {
+        "bn" -> "মুছে ফেলুন"
+        "hi" -> "हटाएं"
+        "ar" -> "حذف"
+        "es" -> "Eliminar"
+        else -> "Delete"
+    }
+
+    Dialog(
+        onDismissRequest = onDismiss,
+        properties = androidx.compose.ui.window.DialogProperties(
+            dismissOnBackPress = true,
+            dismissOnClickOutside = true
+        )
+    ) {
+        Card(
+            modifier = Modifier
+                .fillMaxWidth()
+                .padding(16.dp)
+                .testTag("delete_confirmation_card"),
+            shape = RoundedCornerShape(24.dp),
+            colors = CardDefaults.cardColors(
+                containerColor = containerBg
+            ),
+            border = BorderStroke(
+                width = 1.dp,
+                color = if (isDark) Color(0xFF334155).copy(alpha = 0.8f) else Color(0xFFE2E8F0)
+            )
+        ) {
+            Column(
+                modifier = Modifier
+                    .fillMaxWidth()
+                    .padding(24.dp),
+                horizontalAlignment = Alignment.CenterHorizontally
+            ) {
+                // Bin Icon Block
+                Box(
+                    modifier = Modifier
+                        .size(56.dp)
+                        .background(Color(0xFFEF4444).copy(alpha = 0.12f), CircleShape),
+                    contentAlignment = Alignment.Center
+                ) {
+                    Icon(
+                        imageVector = Icons.Default.Delete,
+                        contentDescription = "Delete Icon",
+                        tint = Color(0xFFEF4444),
+                        modifier = Modifier.size(28.dp)
+                    )
+                }
+
+                Spacer(modifier = Modifier.height(16.dp))
+
+                Text(
+                    text = title,
+                    style = MaterialTheme.typography.titleMedium.copy(
+                        fontWeight = FontWeight.Black,
+                        fontSize = 18.sp
+                    ),
+                    color = textPrimary,
+                    textAlign = TextAlign.Center
+                )
+
+                Spacer(modifier = Modifier.height(10.dp))
+
+                // Amount details if available
+                val formattedAmount = remember(transaction) {
+                    val symbol = if (transaction.type == "income") "+" else "-"
+                    val prefix = if (lang == "bn") "পরিমাণ: " else "Amount: "
+                    "$prefix$symbol$${transaction.amount}"
+                }
+
+                Box(
+                    modifier = Modifier
+                        .fillMaxWidth()
+                        .background(
+                            color = if (isDark) Color(0xFF0F172A).copy(alpha = 0.4f) else Color(0xFFF1F5F9),
+                            shape = RoundedCornerShape(12.dp)
+                        )
+                        .padding(horizontal = 12.dp, vertical = 8.dp),
+                    contentAlignment = Alignment.Center
+                ) {
+                    Text(
+                        text = formattedAmount,
+                        style = MaterialTheme.typography.bodyMedium.copy(
+                            fontWeight = FontWeight.Bold,
+                            color = if (transaction.type == "income") Color(0xFF10B981) else Color(0xFFEF4444)
+                        )
+                    )
+                }
+
+                Spacer(modifier = Modifier.height(12.dp))
+
+                Text(
+                    text = message,
+                    style = MaterialTheme.typography.bodySmall.copy(
+                        lineHeight = 18.sp
+                    ),
+                    color = textSecondary,
+                    textAlign = TextAlign.Center
+                )
+
+                Spacer(modifier = Modifier.height(24.dp))
+
+                // Actions Button Row
+                Row(
+                    modifier = Modifier.fillMaxWidth(),
+                    horizontalArrangement = Arrangement.spacedBy(12.dp)
+                ) {
+                    // Cancel button
+                    Button(
+                        onClick = onDismiss,
+                        shape = RoundedCornerShape(14.dp),
+                        colors = ButtonDefaults.buttonColors(
+                            containerColor = if (isDark) Color(0xFF334155).copy(alpha = 0.5f) else Color(0xFFE2E8F0),
+                            contentColor = textPrimary
+                        ),
+                        modifier = Modifier
+                            .weight(1f)
+                            .height(48.dp)
+                    ) {
+                        Text(
+                            text = cancelText,
+                            style = MaterialTheme.typography.labelLarge.copy(fontWeight = FontWeight.Black)
+                        )
+                    }
+
+                    // Delete button
+                    Button(
+                        onClick = onConfirm,
+                        shape = RoundedCornerShape(14.dp),
+                        colors = ButtonDefaults.buttonColors(
+                            containerColor = Color(0xFFEF4444),
+                            contentColor = Color.White
+                        ),
+                        modifier = Modifier
+                            .weight(1f)
+                            .height(48.dp)
+                    ) {
+                        Text(
+                            text = deleteText,
+                            style = MaterialTheme.typography.labelLarge.copy(fontWeight = FontWeight.Black),
+                            color = Color.White
+                        )
+                    }
+                }
+            }
+        }
+    }
 }

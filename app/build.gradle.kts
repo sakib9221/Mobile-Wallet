@@ -14,13 +14,13 @@ android {
     applicationId = "com.aistudio.financetracker.vqyhm"
     minSdk = 24
     targetSdk = 36
-    versionCode = 4
-    versionName = "3.5"
+    versionCode = 5
+    versionName = "4"
 
     testInstrumentationRunner = "androidx.test.runner.AndroidJUnitRunner"
 
     // Size Optimizations
-    resConfigs("en", "bn")
+    resConfigs("en", "bn", "hi", "ar", "es")
     ndk {
       abiFilters.addAll(setOf("arm64-v8a", "x86_64"))
     }
