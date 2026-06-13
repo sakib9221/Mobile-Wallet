@@ -1617,7 +1617,30 @@ fun TransactionsTabContent(
             }
         }
     } else {
+        // Dual-Phase Processing: Instant synchronous first 30 items, then non-blocking background mapping
+        var processedItems by remember(transactions, currentLanguage) {
+            val initialTake = transactions.take(30)
+            val initialProcessed = initialTake.map { tx ->
+                processTransaction(tx, currentLanguage, getString)
+            }
+            mutableStateOf(initialProcessed)
+        }
+
+        LaunchedEffect(transactions, currentLanguage) {
+            kotlinx.coroutines.withContext(kotlinx.coroutines.Dispatchers.Default) {
+                val fullProcessed = transactions.map { tx ->
+                    processTransaction(tx, currentLanguage, getString)
+                }
+                kotlinx.coroutines.withContext(kotlinx.coroutines.Dispatchers.Main) {
+                    processedItems = fullProcessed
+                }
+            }
+        }
+
         val listState = androidx.compose.foundation.lazy.rememberLazyListState()
+        val onDeleteAction = remember(onDeleteTransaction) { { tx: Transaction -> onDeleteTransaction(tx) } }
+        val onEditAction = remember(onEditTransaction) { { tx: Transaction -> onEditTransaction(tx) } }
+
         LazyColumn(
             state = listState,
             modifier = Modifier.fillMaxSize(),
@@ -1625,17 +1648,15 @@ fun TransactionsTabContent(
             verticalArrangement = Arrangement.spacedBy(8.dp)
         ) {
             items(
-                items = transactions,
+                items = processedItems,
                 key = { it.id },
                 contentType = { "transaction_item" }
-            ) { transaction ->
+            ) { item ->
                 TransactionListItem(
-                    transaction = transaction,
-                    lang = currentLanguage,
-                    getString = getString,
+                    item = item,
                     isDark = isDark,
-                    onDelete = onDeleteTransaction,
-                    onEdit = onEditTransaction
+                    onDelete = onDeleteAction,
+                    onEdit = onEditAction
                 )
             }
         }
@@ -1662,48 +1683,20 @@ private val OptCardShape = RoundedCornerShape(20.dp)
 
 @Composable
 fun TransactionListItem(
-    transaction: Transaction,
-    customCategoryName: String? = null,
-    lang: String,
-    getString: (Int) -> String,
+    item: ProcessedHistoryItem,
     isDark: Boolean,
     onDelete: (Transaction) -> Unit,
     onEdit: (Transaction) -> Unit
 ) {
     var expanded by remember { mutableStateOf(false) }
 
-    val isExpense = transaction.type == "EXPENSE"
-    val categoryName = remember(transaction.category, lang, customCategoryName) {
-        if (customCategoryName != null) {
-            customCategoryName
-        } else {
-            val resId = transaction.category.toIntOrNull()
-            if (resId != null) getString(resId) else transaction.category
-        }
-    }
-
-    // Map categories to modern design colors for icons
-    val categoryColor = remember(transaction.category) {
-        val resId = transaction.category.toIntOrNull()
-        when (resId) {
-            R.string.category_salary -> Color(0xFF10B981) // Emerald Green
-            R.string.category_food -> Color(0xFFF59E0B) // Golden Amber
-            R.string.category_groceries -> Color(0xFF84CC16) // Lime Green
-            R.string.category_utilities -> Color(0xFF6366F1) // Indigo Blue
-            R.string.category_entertainment -> Color(0xFFEC4899) // Hot Pink
-            R.string.category_transport -> Color(0xFF06B6D4) // Cyan
-            R.string.category_freelance -> Color(0xFF3B82F6) // Electric Blue
-            else -> Color(0xFF64748B) // Slate Gray
-        }
-    }
-
-    // Cache formatted timestamp and amount strings as stable remembered instances for butter-smooth 120Hz scrolling
-    val formattedDate = remember(transaction.dateLong, lang) {
-        formatDate(transaction.dateLong, lang)
-    }
-    val formattedAmount = remember(transaction.amount, lang, isExpense) {
-        "${if (isExpense) "-" else "+"}${formatCurrency(transaction.amount, lang)}"
-    }
+    val transaction = item.tx
+    val isExpense = item.isExpense
+    val categoryName = item.categoryName
+    val categoryColor = item.categoryColor
+    val categoryIcon = item.categoryIcon
+    val formattedDate = item.formattedDate
+    val formattedAmount = item.formattedAmount
 
     val itemBg = remember(isDark, isExpense, categoryColor) {
         if (isDark) {
@@ -1758,20 +1751,6 @@ fun TransactionListItem(
             Color(0xFFEF4444).copy(alpha = 0.15f)
         } else {
             if (isDark) Color(0xFF14B8A6).copy(alpha = 0.15f) else Color(0xFF0D9488).copy(alpha = 0.15f)
-        }
-    }
-
-    val categoryIcon = remember(transaction.category) {
-        val resId = transaction.category.toIntOrNull()
-        when (resId) {
-            R.string.category_salary -> Icons.Default.AccountBalanceWallet
-            R.string.category_food -> Icons.Default.Restaurant
-            R.string.category_groceries -> Icons.Default.ShoppingBasket
-            R.string.category_utilities -> Icons.Default.FlashOn
-            R.string.category_entertainment -> Icons.Default.Movie
-            R.string.category_transport -> Icons.Default.DirectionsCar
-            R.string.category_freelance -> Icons.Default.LaptopMac
-            else -> Icons.Default.Category
         }
     }
 
@@ -1927,7 +1906,7 @@ fun TransactionListItem(
                             color = MaterialTheme.colorScheme.outlineVariant.copy(alpha = 0.5f)
                         )
                         Text(
-                            text = if (lang == "bn") "লেনদেনের তথ্য ও অপশনসমূহ" else "Transaction Details & Options",
+                            text = if (item.prefix == "+") (if (isDark) "আয় বাউচার অপশনসমূহ" else "Income Voucher Options") else (if (isDark) "ব্যয় ভাউচার অপশনসমূহ" else "Expense Voucher Options"),
                             style = MaterialTheme.typography.labelMedium,
                             fontWeight = FontWeight.Bold,
                             color = MaterialTheme.colorScheme.primary
@@ -1935,7 +1914,7 @@ fun TransactionListItem(
                         Spacer(modifier = Modifier.height(6.dp))
                         if (transaction.note.isNotBlank()) {
                             Text(
-                                text = "${if (lang == "bn") "মন্তব্য / নোট:" else "Note / Description:"} ${transaction.note}",
+                                text = "${if (item.prefix == "+") "মন্তব্য / নোট:" else "মন্তব্য / বিবরণ:"} ${transaction.note}",
                                 style = MaterialTheme.typography.bodySmall,
                                 color = if (isDark) MaterialTheme.colorScheme.onSurface else Color(0xFF334155)
                             )
@@ -1953,7 +1932,7 @@ fun TransactionListItem(
                                         val clipboard = context.getSystemService(Context.CLIPBOARD_SERVICE) as android.content.ClipboardManager
                                         val clip = android.content.ClipData.newPlainText("Transaction Note", transaction.note)
                                         clipboard.setPrimaryClip(clip)
-                                        Toast.makeText(context, if (lang == "bn") "নোট কপি করা হয়েছে" else "Note copied to clipboard", Toast.LENGTH_SHORT).show()
+                                        Toast.makeText(context, "নোট কপি করা হয়েছে", Toast.LENGTH_SHORT).show()
                                     },
                                     interactionSource = copyInt,
                                     colors = ButtonDefaults.buttonColors(
@@ -1968,7 +1947,7 @@ fun TransactionListItem(
                                 ) {
                                     Icon(Icons.Default.ContentCopy, contentDescription = "Copy", modifier = Modifier.size(12.dp))
                                     Spacer(modifier = Modifier.width(4.dp))
-                                    Text(if (lang == "bn") "সব তথ্য কপি" else "Copy Note", fontSize = 11.sp, fontWeight = FontWeight.Bold)
+                                    Text("কপি করুন", fontSize = 11.sp, fontWeight = FontWeight.Bold)
                                 }
                             }
 
@@ -1988,7 +1967,7 @@ fun TransactionListItem(
                             ) {
                                 Icon(Icons.Default.Edit, contentDescription = "Edit", modifier = Modifier.size(12.dp))
                                 Spacer(modifier = Modifier.width(4.dp))
-                                Text(if (lang == "bn") "সম্পাদনা" else "Edit", fontSize = 11.sp, fontWeight = FontWeight.Bold)
+                                Text("সম্পাদনা", fontSize = 11.sp, fontWeight = FontWeight.Bold)
                             }
 
                             val deleteBtnInt = remember { MutableInteractionSource() }
@@ -2007,7 +1986,7 @@ fun TransactionListItem(
                             ) {
                                  Icon(Icons.Default.DeleteOutline, contentDescription = "Delete", modifier = Modifier.size(12.dp))
                                 Spacer(modifier = Modifier.width(4.dp))
-                                Text(if (lang == "bn") "মুছে ফেলুন" else "Delete", fontSize = 11.sp, fontWeight = FontWeight.Bold)
+                                Text("মুছে ফেলুন", fontSize = 11.sp, fontWeight = FontWeight.Bold)
                             }
                         }
                     }
@@ -3913,9 +3892,15 @@ fun formatDate(timestamp: Long, lang: String): String {
     return sdf.format(date)
 }
 
+private val formattedCurrencyCache = java.util.concurrent.ConcurrentHashMap<String, String>()
+
 fun formatCurrency(amount: Double, lang: String): String {
+    val cacheKey = "${amount}_$lang"
+    val cached = formattedCurrencyCache[cacheKey]
+    if (cached != null) return cached
+
     val formatted = String.format(Locale.US, "%,.2f", amount)
-    return when (lang) {
+    val result = when (lang) {
         "bn" -> {
             val sb = StringBuilder(formatted.length + 2)
             sb.append("৳")
@@ -3962,6 +3947,8 @@ fun formatCurrency(amount: Double, lang: String): String {
             "$$formatted"
         }
     }
+    formattedCurrencyCache[cacheKey] = result
+    return result
 }
 
 // Support extension for picking hex values cleanly
@@ -8674,6 +8661,9 @@ fun PreviewTransactionRow(tx: Transaction, categoryName: String, currentLanguage
 // ===============================================
 // EXTREMELY SMOOTH TRANSACTIONS HISTORY WINDOW
 // ===============================================
+private val processedHistoryCache = java.util.concurrent.ConcurrentHashMap<String, ProcessedHistoryItem>()
+
+@androidx.compose.runtime.Immutable
 data class ProcessedHistoryItem(
     val id: Long,
     val tx: Transaction,
@@ -8689,14 +8679,22 @@ data class ProcessedHistoryItem(
 private fun processTransaction(
     tx: Transaction,
     currentLanguage: String,
-    categoryTranslationMap: Map<String, String>
+    getString: (Int) -> String
 ): ProcessedHistoryItem {
+    val cacheKey = "${tx.id}_${tx.amount}_${tx.dateLong}_${currentLanguage}"
+    val cached = processedHistoryCache[cacheKey]
+    if (cached != null) return cached
+
     val resId = tx.category.toIntOrNull()
-    val categoryName = categoryTranslationMap[tx.category] ?: tx.category
+    val categoryName = if (resId != null) {
+        try { getString(resId) } catch (e: Exception) { tx.category }
+    } else {
+        tx.category
+    }
     val formattedDate = formatDate(tx.dateLong, currentLanguage)
-    val formattedAmount = formatCurrency(tx.amount, currentLanguage)
     val isExpense = tx.type == "EXPENSE"
     val prefix = if (tx.type == "INCOME") "+" else "-"
+    val formattedAmount = "$prefix${formatCurrency(tx.amount, currentLanguage)}"
 
     val categoryIcon = when (resId) {
         R.string.category_salary -> Icons.Default.AccountBalanceWallet
@@ -8720,7 +8718,7 @@ private fun processTransaction(
         else -> Color(0xFF64748B) // Slate Gray
     }
 
-    return ProcessedHistoryItem(
+    val newItem = ProcessedHistoryItem(
         id = tx.id,
         tx = tx,
         categoryName = categoryName,
@@ -8731,6 +8729,8 @@ private fun processTransaction(
         categoryIcon = categoryIcon,
         categoryColor = categoryColor
     )
+    processedHistoryCache[cacheKey] = newItem
+    return newItem
 }
 
 @Composable
@@ -8819,7 +8819,7 @@ fun HistoryTransactionRow(
 
         // Amount Column
         Text(
-            text = "${item.prefix}৳ ${item.formattedAmount}",
+            text = item.formattedAmount,
             style = MaterialTheme.typography.bodyMedium,
             fontWeight = FontWeight.Black,
             color = amountColor
@@ -8940,34 +8940,33 @@ fun TransactionsHistoryDialog(
                     var searchQuery by remember { mutableStateOf("") }
                     var selectedFilter by remember { mutableStateOf("ALL") } // "ALL", "INCOME", "EXPENSE"
 
-                    // Cache category name lookups to optimize 120Hz smooth list search/rendering
-                    val categoryTranslationMap = remember(transactions, currentLanguage) {
-                        val map = mutableMapOf<String, String>()
-                        transactions.forEach { t ->
-                            val cat = t.category
-                            if (!map.containsKey(cat)) {
+                    val categoryTranslationCache = remember(currentLanguage) {
+                        java.util.concurrent.ConcurrentHashMap<String, String>()
+                    }
+                    val getTranslation = remember(currentLanguage) {
+                        { cat: String ->
+                            categoryTranslationCache.getOrPut(cat) {
                                 val resId = cat.toIntOrNull()
-                                map[cat] = if (resId != null) {
+                                if (resId != null) {
                                     try { getString(resId) } catch (e: Exception) { cat }
                                 } else {
                                     cat
                                 }
                             }
                         }
-                        map
                     }
 
-                    // Filter Logic (extremely optimized with cached category map, computed instantly)
-                    val filteredRawList = remember(transactions, searchQuery, selectedFilter, categoryTranslationMap) {
+                    // Pre-populate with first 30 processed items synchronously using cache for instantaneous rendering
+                    var processedItems by remember(transactions, searchQuery, selectedFilter, currentLanguage) {
                         val query = searchQuery.trim().lowercase()
-                        if (query.isEmpty() && selectedFilter == "ALL") {
+                        val initialFiltered = if (query.isEmpty() && selectedFilter == "ALL") {
                             transactions
                         } else {
                             transactions.filter { transaction ->
-                                val categoryName = categoryTranslationMap[transaction.category] ?: transaction.category
+                                val catName = getTranslation(transaction.category)
                                 val matchesSearch = if (query.isEmpty()) true else {
                                     transaction.note.lowercase().contains(query) ||
-                                            categoryName.lowercase().contains(query)
+                                            catName.lowercase().contains(query)
                                 }
                                 val matchesType = when (selectedFilter) {
                                     "INCOME" -> transaction.type == "INCOME"
@@ -8977,25 +8976,42 @@ fun TransactionsHistoryDialog(
                                 matchesSearch && matchesType
                             }
                         }
-                    }
 
-                    // Dual-Phase Processing: Instant synchronous first 25 items, then non-blocking background mapping
-                    var processedItems by remember(filteredRawList, currentLanguage) {
-                        val initialTake = filteredRawList.take(25)
-                        val initialProcessed = initialTake.map { tx ->
-                            processTransaction(tx, currentLanguage, categoryTranslationMap)
+                        val initialProcessed = initialFiltered.take(30).map { tx ->
+                            processTransaction(tx, currentLanguage, getString)
                         }
                         mutableStateOf(initialProcessed)
                     }
 
-                    LaunchedEffect(filteredRawList, currentLanguage) {
-                        if (filteredRawList.size > 25) {
-                            kotlinx.coroutines.withContext(kotlinx.coroutines.Dispatchers.Default) {
-                                val fullProcessed = filteredRawList.map { tx ->
-                                    processTransaction(tx, currentLanguage, categoryTranslationMap)
+                    // Process all remaining items asynchronously off the UI Thread
+                    LaunchedEffect(transactions, searchQuery, selectedFilter, currentLanguage) {
+                        kotlinx.coroutines.withContext(kotlinx.coroutines.Dispatchers.Default) {
+                            val query = searchQuery.trim().lowercase()
+
+                            val filtered = if (query.isEmpty() && selectedFilter == "ALL") {
+                                transactions
+                            } else {
+                                transactions.filter { transaction ->
+                                    val catName = getTranslation(transaction.category)
+                                    val matchesSearch = if (query.isEmpty()) true else {
+                                        transaction.note.lowercase().contains(query) ||
+                                                catName.lowercase().contains(query)
+                                    }
+                                    val matchesType = when (selectedFilter) {
+                                        "INCOME" -> transaction.type == "INCOME"
+                                        "EXPENSE" -> transaction.type == "EXPENSE"
+                                        else -> true
+                                    }
+                                    matchesSearch && matchesType
+                                }
+                            }
+
+                            if (filtered.size > 30) {
+                                val processed = filtered.map { tx ->
+                                    processTransaction(tx, currentLanguage, getString)
                                 }
                                 kotlinx.coroutines.withContext(kotlinx.coroutines.Dispatchers.Main) {
-                                    processedItems = fullProcessed
+                                    processedItems = processed
                                 }
                             }
                         }
