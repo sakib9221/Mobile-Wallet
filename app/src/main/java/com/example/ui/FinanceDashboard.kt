@@ -588,8 +588,9 @@ fun FinanceDashboardScreen(
         ReportPreviewDialog(
             transactions = transactions,
             currentLanguage = currentLanguage,
-            onDownloadPdf = {
-                val pdfUri = generateFinancePdfReport(context, transactions, currentLanguage)
+            getString = getStringResource,
+            onDownloadPdf = { filteredList ->
+                val pdfUri = generateFinancePdfReport(context, filteredList, currentLanguage)
                 if (pdfUri != null) {
                     Toast.makeText(
                         context,
@@ -604,8 +605,8 @@ fun FinanceDashboardScreen(
                     ).show()
                 }
             },
-            onSharePdf = {
-                val pdfUri = generateFinancePdfReport(context, transactions, currentLanguage)
+            onSharePdf = { filteredList ->
+                val pdfUri = generateFinancePdfReport(context, filteredList, currentLanguage)
                 if (pdfUri != null) {
                     triggerPdfShareIntent(context, pdfUri)
                 } else {
@@ -936,43 +937,52 @@ fun DashboardSummaryCard(
             )
             Spacer(modifier = Modifier.height(4.dp))
 
-            val hasDecimals = formattedTotal.contains(".") && lang != "bn"
-
-            Row(
-                verticalAlignment = Alignment.Bottom,
-                horizontalArrangement = Arrangement.Start
-            ) {
-                if (hasDecimals) {
-                    val wholePart = formattedTotal.substringBefore(".")
-                    val decimalPart = formattedTotal.substringAfter(".")
-                    Text(
-                        text = wholePart,
-                        style = MaterialTheme.typography.headlineLarge.copy(
-                            fontWeight = FontWeight.Black,
-                            fontSize = dynamicFontSize,
-                            letterSpacing = (-1).sp
-                        ),
-                        color = if (stats.balance >= 0) MaterialTheme.colorScheme.onSurface else Color(0xFFE11D48)
-                    )
-                    Text(
-                        text = ".$decimalPart",
-                        style = MaterialTheme.typography.titleLarge.copy(
-                            fontWeight = FontWeight.Bold,
-                            fontSize = if (screenWidthDp < 360) 16.sp else 20.sp
-                        ),
-                        color = if (isDark) MaterialTheme.colorScheme.onSurfaceVariant else Color(0xFF475569),
-                        modifier = Modifier.padding(bottom = 4.dp)
-                    )
-                } else {
-                    Text(
-                        text = formattedTotal,
-                        style = MaterialTheme.typography.headlineLarge.copy(
-                            fontWeight = FontWeight.Black,
-                            fontSize = dynamicFontSize,
-                            letterSpacing = (-1).sp
-                        ),
-                        color = if (stats.balance >= 0) MaterialTheme.colorScheme.onSurface else Color(0xFFE11D48)
-                    )
+            // Premium Animated Transition for Balance Amount
+            AnimatedContent(
+                targetState = stats.balance,
+                transitionSpec = {
+                    fadeIn(animationSpec = tween(150)) togetherWith fadeOut(animationSpec = tween(150))
+                },
+                label = "balance_fade_animation"
+            ) { balanceVal ->
+                val fmtTotal = formatCurrency(balanceVal, lang)
+                val hasDecimals = fmtTotal.contains(".") && lang != "bn"
+                Row(
+                    verticalAlignment = Alignment.Bottom,
+                    horizontalArrangement = Arrangement.Start
+                ) {
+                    if (hasDecimals) {
+                        val wholePart = fmtTotal.substringBefore(".")
+                        val decimalPart = fmtTotal.substringAfter(".")
+                        Text(
+                            text = wholePart,
+                            style = MaterialTheme.typography.headlineLarge.copy(
+                                fontWeight = FontWeight.Black,
+                                fontSize = dynamicFontSize,
+                                letterSpacing = (-1).sp
+                            ),
+                            color = if (balanceVal >= 0) MaterialTheme.colorScheme.onSurface else Color(0xFFE11D48)
+                        )
+                        Text(
+                            text = ".$decimalPart",
+                            style = MaterialTheme.typography.titleLarge.copy(
+                                fontWeight = FontWeight.Bold,
+                                fontSize = if (screenWidthDp < 360) 16.sp else 20.sp
+                            ),
+                            color = if (isDark) MaterialTheme.colorScheme.onSurfaceVariant else Color(0xFF475569),
+                            modifier = Modifier.padding(bottom = 4.dp)
+                        )
+                    } else {
+                        Text(
+                            text = fmtTotal,
+                            style = MaterialTheme.typography.headlineLarge.copy(
+                                fontWeight = FontWeight.Black,
+                                fontSize = dynamicFontSize,
+                                letterSpacing = (-1).sp
+                            ),
+                            color = if (balanceVal >= 0) MaterialTheme.colorScheme.onSurface else Color(0xFFE11D48)
+                        )
+                    }
                 }
             }
 
@@ -1235,11 +1245,19 @@ fun DashboardSummaryCard(
                             )
                         }
                         Spacer(modifier = Modifier.height(4.dp))
-                        Text(
-                            text = formattedIncome,
-                            style = MaterialTheme.typography.titleMedium.copy(fontWeight = FontWeight.Black),
-                            color = incomeValue
-                        )
+                        AnimatedContent(
+                            targetState = formattedIncome,
+                            transitionSpec = {
+                                fadeIn(animationSpec = tween(150)) togetherWith fadeOut(animationSpec = tween(150))
+                            },
+                            label = "income_fade_animation"
+                        ) { text ->
+                            Text(
+                                text = text,
+                                style = MaterialTheme.typography.titleMedium.copy(fontWeight = FontWeight.Black),
+                                color = incomeValue
+                            )
+                        }
                     }
                 }
 
@@ -1273,11 +1291,19 @@ fun DashboardSummaryCard(
                             )
                         }
                         Spacer(modifier = Modifier.height(4.dp))
-                        Text(
-                            text = formattedExpense,
-                            style = MaterialTheme.typography.titleMedium.copy(fontWeight = FontWeight.Black),
-                            color = expenseValue
-                        )
+                        AnimatedContent(
+                            targetState = formattedExpense,
+                            transitionSpec = {
+                                fadeIn(animationSpec = tween(150)) togetherWith fadeOut(animationSpec = tween(150))
+                            },
+                            label = "expense_fade_animation"
+                        ) { text ->
+                            Text(
+                                text = text,
+                                style = MaterialTheme.typography.titleMedium.copy(fontWeight = FontWeight.Black),
+                                color = expenseValue
+                            )
+                        }
                     }
                 }
             }
@@ -1637,6 +1663,7 @@ private val OptCardShape = RoundedCornerShape(20.dp)
 @Composable
 fun TransactionListItem(
     transaction: Transaction,
+    customCategoryName: String? = null,
     lang: String,
     getString: (Int) -> String,
     isDark: Boolean,
@@ -1646,9 +1673,13 @@ fun TransactionListItem(
     var expanded by remember { mutableStateOf(false) }
 
     val isExpense = transaction.type == "EXPENSE"
-    val categoryName = remember(transaction.category, lang) {
-        val resId = transaction.category.toIntOrNull()
-        if (resId != null) getString(resId) else transaction.category
+    val categoryName = remember(transaction.category, lang, customCategoryName) {
+        if (customCategoryName != null) {
+            customCategoryName
+        } else {
+            val resId = transaction.category.toIntOrNull()
+            if (resId != null) getString(resId) else transaction.category
+        }
     }
 
     // Map categories to modern design colors for icons
@@ -7977,20 +8008,57 @@ fun AppUpdateDialog(
     }
 }
 
+@OptIn(ExperimentalAnimationApi::class)
 @Composable
 fun ReportPreviewDialog(
     transactions: List<Transaction>,
     currentLanguage: String,
-    onDownloadPdf: () -> Unit,
-    onSharePdf: () -> Unit,
+    getString: (Int) -> String,
+    onDownloadPdf: (List<Transaction>) -> Unit,
+    onSharePdf: (List<Transaction>) -> Unit,
     onDismiss: () -> Unit
 ) {
     val isDark = isAppDark()
-    val dialogBg = if (isDark) Color(0xFF1E293B).copy(alpha = 0.92f) else Color.White.copy(alpha = 0.95f)
+    val dialogBg = if (isDark) Color(0xFF1E293B).copy(alpha = 0.95f) else Color.White.copy(alpha = 0.97f)
     val borderColor = if (isDark) Color(0xFF475569).copy(alpha = 0.5f) else Color(0xFFCBD5E1).copy(alpha = 0.7f)
 
-    val totalIncome = remember(transactions) { transactions.filter { it.type == "INCOME" }.sumOf { it.amount } }
-    val totalExpense = remember(transactions) { transactions.filter { it.type == "EXPENSE" }.sumOf { it.amount } }
+    var reportPeriod by remember { mutableStateOf("monthly") } // default to "monthly" as requested by user!
+    var selectedMonthIndex by remember { mutableStateOf(java.util.Calendar.getInstance().get(java.util.Calendar.MONTH)) }
+    var selectedYear by remember { mutableStateOf(java.util.Calendar.getInstance().get(java.util.Calendar.YEAR)) }
+
+    // Precompile category translations in a map to eliminate resource-retrieval overhead for list rendering
+    val categoryNamesMap = remember(transactions, currentLanguage) {
+        val map = mutableMapOf<String, String>()
+        transactions.forEach { t ->
+            val cat = t.category
+            if (!map.containsKey(cat)) {
+                val resId = cat.toIntOrNull()
+                map[cat] = if (resId != null) {
+                    try { getString(resId) } catch (e: Exception) { cat }
+                } else {
+                    cat
+                }
+            }
+        }
+        map
+    }
+
+    // Filter transactions list for the selected period
+    val activeTransactions = remember(transactions, reportPeriod, selectedMonthIndex, selectedYear) {
+        if (reportPeriod == "all_time") {
+            transactions
+        } else {
+            val cal = java.util.Calendar.getInstance()
+            transactions.filter { t ->
+                cal.timeInMillis = t.dateLong
+                cal.get(java.util.Calendar.MONTH) == selectedMonthIndex &&
+                    cal.get(java.util.Calendar.YEAR) == selectedYear
+            }
+        }
+    }
+
+    val totalIncome = remember(activeTransactions) { activeTransactions.filter { it.type == "INCOME" }.sumOf { it.amount } }
+    val totalExpense = remember(activeTransactions) { activeTransactions.filter { it.type == "EXPENSE" }.sumOf { it.amount } }
     val netBalance = remember(totalIncome, totalExpense) { totalIncome - totalExpense }
 
     val formattedGenerationTime = remember(currentLanguage) {
@@ -8004,8 +8072,8 @@ fun ReportPreviewDialog(
             Card(
                 modifier = Modifier
                     .fillMaxWidth()
-                    .fillMaxHeight(0.85f)
-                    .padding(vertical = 12.dp),
+                    .fillMaxHeight(0.88f)
+                    .padding(vertical = 8.dp),
                 shape = RoundedCornerShape(24.dp),
                 border = BorderStroke(1.dp, borderColor),
                 colors = CardDefaults.cardColors(
@@ -8034,7 +8102,7 @@ fun ReportPreviewDialog(
                             )
                             Spacer(modifier = Modifier.width(8.dp))
                             Text(
-                                text = if (currentLanguage == "bn") "রিপোর্ট প্রিভিউ" else "Report Preview",
+                                text = if (currentLanguage == "bn") "মাসিক প্রতিবেদন ও বিবরণী" else "Monthly Statement & Report",
                                 style = MaterialTheme.typography.titleMedium,
                                 fontWeight = FontWeight.Bold,
                                 color = if (isDark) Color.White else Color(0xFF1E293B)
@@ -8054,7 +8122,147 @@ fun ReportPreviewDialog(
                         }
                     }
 
-                    Spacer(modifier = Modifier.height(16.dp))
+                    Spacer(modifier = Modifier.height(12.dp))
+
+                    // Period Switcher (All-Time vs Monthly)
+                    Row(
+                        modifier = Modifier
+                            .fillMaxWidth()
+                            .background(
+                                color = if (isDark) Color(0xFF0F172A).copy(alpha = 0.5f) else Color(0xFFF1F5F9).copy(alpha = 0.8f),
+                                shape = RoundedCornerShape(12.dp)
+                            )
+                            .border(
+                                1.dp,
+                                if (isDark) Color(0xFF334155).copy(alpha = 0.4f) else Color(0xFFE2E8F0),
+                                RoundedCornerShape(12.dp)
+                            )
+                            .padding(4.dp),
+                        horizontalArrangement = Arrangement.SpaceEvenly
+                    ) {
+                        // Monthly Option
+                        val isMonthly = reportPeriod == "monthly"
+                        Box(
+                            modifier = Modifier
+                                .weight(1f)
+                                .clip(RoundedCornerShape(10.dp))
+                                .background(if (isMonthly) (if (isDark) Color(0xFF334155) else Color.White) else Color.Transparent)
+                                .android16Clickable(shape = RoundedCornerShape(10.dp)) { reportPeriod = "monthly" }
+                                .padding(vertical = 8.dp),
+                            contentAlignment = Alignment.Center
+                        ) {
+                            Text(
+                                text = if (currentLanguage == "bn") "মাসিক হিসাব" else "Monthly Report",
+                                style = MaterialTheme.typography.labelMedium.copy(
+                                    fontWeight = FontWeight.Black,
+                                    color = if (isMonthly) (if (isDark) Color.White else Color(0xFF0F172A)) else (if (isDark) Color(0xFF94A3B8) else Color(0xFF475569))
+                                )
+                            )
+                        }
+
+                        // All-Time Option
+                        val isAllTime = reportPeriod == "all_time"
+                        Box(
+                            modifier = Modifier
+                                .weight(1f)
+                                .clip(RoundedCornerShape(10.dp))
+                                .background(if (isAllTime) (if (isDark) Color(0xFF334155) else Color.White) else Color.Transparent)
+                                .android16Clickable(shape = RoundedCornerShape(10.dp)) { reportPeriod = "all_time" }
+                                .padding(vertical = 8.dp),
+                            contentAlignment = Alignment.Center
+                        ) {
+                            Text(
+                                text = if (currentLanguage == "bn") "সর্বমোট হিসাব" else "All-Time Report",
+                                style = MaterialTheme.typography.labelMedium.copy(
+                                    fontWeight = FontWeight.Black,
+                                    color = if (isAllTime) (if (isDark) Color.White else Color(0xFF0F172A)) else (if (isDark) Color(0xFF94A3B8) else Color(0xFF475569))
+                                )
+                            )
+                        }
+                    }
+
+                    // Month-Year Selector (only visible if reportPeriod is monthly)
+                    AnimatedVisibility(
+                        visible = reportPeriod == "monthly",
+                        enter = expandVertically(animationSpec = tween(150)) + fadeIn(animationSpec = tween(150)),
+                        exit = shrinkVertically(animationSpec = tween(150)) + fadeOut(animationSpec = tween(150))
+                    ) {
+                        Row(
+                            modifier = Modifier
+                                .fillMaxWidth()
+                                .padding(vertical = 8.dp)
+                                .background(
+                                    color = if (isDark) Color(0xFF0F172A).copy(alpha = 0.3f) else Color(0xFFF1F5F9).copy(alpha = 0.5f),
+                                    shape = RoundedCornerShape(12.dp)
+                                )
+                                .padding(horizontal = 6.dp, vertical = 4.dp),
+                            horizontalArrangement = Arrangement.SpaceBetween,
+                            verticalAlignment = Alignment.CenterVertically
+                        ) {
+                            IconButton(
+                                onClick = {
+                                    if (selectedMonthIndex == 0) {
+                                        selectedMonthIndex = 11
+                                        selectedYear -= 1
+                                    } else {
+                                        selectedMonthIndex -= 1
+                                    }
+                                },
+                                modifier = Modifier.size(36.dp)
+                            ) {
+                                Icon(
+                                    imageVector = Icons.Default.ArrowBack,
+                                    contentDescription = "Prev Month",
+                                    tint = if (isDark) Color(0xFF14B8A6) else Color(0xFF0D9488),
+                                    modifier = Modifier.size(18.dp)
+                                )
+                            }
+
+                            val monthName = remember(selectedMonthIndex, currentLanguage) {
+                                val bnMonths = listOf(
+                                    "জানুয়ারি", "ফেব্রুয়ারি", "মার্চ", "এপ্রিল", "মে", "জুন",
+                                    "জুলাই", "আগস্ট", "সেপ্টেম্বর", "অক্টোবর", "নভেম্বর", "ডিসেম্বর"
+                                )
+                                val enMonths = listOf(
+                                    "January", "February", "March", "April", "May", "June",
+                                    "July", "August", "September", "October", "November", "December"
+                                )
+                                if (currentLanguage == "bn") bnMonths[selectedMonthIndex] else enMonths[selectedMonthIndex]
+                            }
+                            val displayYear = remember(selectedYear, currentLanguage) {
+                                if (currentLanguage == "bn") convertDigitsToBengali(selectedYear.toString()) else selectedYear.toString()
+                            }
+
+                            Text(
+                                text = "$monthName $displayYear",
+                                style = MaterialTheme.typography.bodyMedium.copy(
+                                    fontWeight = FontWeight.Black,
+                                    color = if (isDark) Color.White else Color(0xFF0F172A)
+                                )
+                            )
+
+                            IconButton(
+                                onClick = {
+                                    if (selectedMonthIndex == 11) {
+                                        selectedMonthIndex = 0
+                                        selectedYear += 1
+                                    } else {
+                                        selectedMonthIndex += 1
+                                    }
+                                },
+                                modifier = Modifier.size(36.dp)
+                            ) {
+                                Icon(
+                                    imageVector = Icons.Default.ArrowForward,
+                                    contentDescription = "Next Month",
+                                    tint = if (isDark) Color(0xFF14B8A6) else Color(0xFF0D9488),
+                                    modifier = Modifier.size(18.dp)
+                                )
+                            }
+                        }
+                    }
+
+                    Spacer(modifier = Modifier.height(8.dp))
 
                     // Report Paper-Style Sheet (Scrollable Preview)
                     Box(
@@ -8070,16 +8278,20 @@ fun ReportPreviewDialog(
                                 color = if (isDark) Color(0xFF1E293B) else Color(0xFFE2E8F0),
                                 shape = RoundedCornerShape(16.dp)
                             )
-                            .padding(16.dp)
+                            .padding(14.dp)
                     ) {
                         LazyColumn(
-                            verticalArrangement = Arrangement.spacedBy(12.dp)
+                            verticalArrangement = Arrangement.spacedBy(10.dp)
                         ) {
                             item {
                                 // Report Title Header
                                 Column(horizontalAlignment = Alignment.CenterHorizontally, modifier = Modifier.fillMaxWidth()) {
                                     Text(
-                                        text = if (currentLanguage == "bn") "অর্থসংক্রান্ত প্রতিবেদন" else "Personal Finance Report",
+                                        text = if (reportPeriod == "monthly") {
+                                            if (currentLanguage == "bn") "মাসিক অর্থসংক্রান্ত প্রতিবেদন" else "Monthly Financial Statement"
+                                        } else {
+                                            if (currentLanguage == "bn") "মোট অর্থসংক্রান্ত প্রতিবেদন" else "All-Time Financial Statement"
+                                        },
                                         style = MaterialTheme.typography.titleSmall,
                                         fontWeight = FontWeight.Black,
                                         color = if (isDark) Color.White else Color(0xFF1E293B)
@@ -8102,7 +8314,6 @@ fun ReportPreviewDialog(
 
                             // Summary Figures block
                             item {
-
                                 Column(
                                     modifier = Modifier
                                         .fillMaxWidth()
@@ -8110,14 +8321,14 @@ fun ReportPreviewDialog(
                                             color = if (isDark) Color(0xFF1E293B).copy(alpha = 0.5f) else Color.White,
                                             shape = RoundedCornerShape(12.dp)
                                         )
-                                        .padding(14.dp)
+                                        .padding(12.dp)
                                 ) {
                                     Row(
                                         modifier = Modifier.fillMaxWidth(),
                                         horizontalArrangement = Arrangement.SpaceBetween
                                     ) {
                                         Text(
-                                            text = if (currentLanguage == "bn") "মোট ব্যালেন্স" else "Net Balance",
+                                            text = if (currentLanguage == "bn") "অবশিষ্ট ব্যালেন্স" else "Net Balance",
                                             style = MaterialTheme.typography.labelMedium,
                                             color = if (isDark) Color(0xFF94A3B8) else Color(0xFF64748B)
                                         )
@@ -8129,9 +8340,9 @@ fun ReportPreviewDialog(
                                         )
                                     }
                                     
-                                    Spacer(modifier = Modifier.height(10.dp))
+                                    Spacer(modifier = Modifier.height(8.dp))
                                     HorizontalDivider(color = if (isDark) Color(0xFF0F172A) else Color(0xFFF1F5F9))
-                                    Spacer(modifier = Modifier.height(10.dp))
+                                    Spacer(modifier = Modifier.height(8.dp))
 
                                     Row(modifier = Modifier.fillMaxWidth()) {
                                         Column(modifier = Modifier.weight(1f)) {
@@ -8150,7 +8361,7 @@ fun ReportPreviewDialog(
                                         Box(
                                             modifier = Modifier
                                                 .width(1.dp)
-                                                .height(30.dp)
+                                                .height(28.dp)
                                                 .background(if (isDark) Color(0xFF0F172A) else Color(0xFFF1F5F9))
                                         )
                                         Spacer(modifier = Modifier.width(12.dp))
@@ -8178,15 +8389,15 @@ fun ReportPreviewDialog(
                                     fontWeight = FontWeight.Bold,
                                     color = MaterialTheme.colorScheme.primary
                                 )
-                                Spacer(modifier = Modifier.height(8.dp))
+                                Spacer(modifier = Modifier.height(4.dp))
                             }
 
-                            if (transactions.isEmpty()) {
+                            if (activeTransactions.isEmpty()) {
                                 item {
                                     Box(
                                         modifier = Modifier
                                             .fillMaxWidth()
-                                            .padding(vertical = 24.dp),
+                                            .padding(vertical = 32.dp),
                                         contentAlignment = Alignment.Center
                                     ) {
                                         Text(
@@ -8198,11 +8409,12 @@ fun ReportPreviewDialog(
                                 }
                             } else {
                                 items(
-                                    items = transactions,
+                                    items = activeTransactions,
                                     key = { "preview_${it.id}" },
                                     contentType = { "report_preview_item" }
                                 ) { tx ->
-                                    PreviewTransactionRow(tx = tx, currentLanguage = currentLanguage, isDark = isDark)
+                                    val catName = categoryNamesMap[tx.category] ?: tx.category
+                                    PreviewTransactionRow(tx = tx, categoryName = catName, currentLanguage = currentLanguage, isDark = isDark)
                                 }
                             }
                         }
@@ -8216,7 +8428,7 @@ fun ReportPreviewDialog(
                         horizontalArrangement = Arrangement.spacedBy(8.dp)
                     ) {
                         OutlinedButton(
-                            onClick = onSharePdf,
+                            onClick = { onSharePdf(activeTransactions) },
                             shape = RoundedCornerShape(12.dp),
                             border = BorderStroke(1.dp, if (isDark) Color(0xFF334155) else Color(0xFFCBD5E1)),
                             modifier = Modifier
@@ -8239,7 +8451,7 @@ fun ReportPreviewDialog(
                         }
 
                         Button(
-                            onClick = onDownloadPdf,
+                            onClick = { onDownloadPdf(activeTransactions) },
                             shape = RoundedCornerShape(12.dp),
                             colors = ButtonDefaults.buttonColors(
                                 containerColor = if (isDark) MaterialTheme.colorScheme.primary else Color(0xFF2563EB),
@@ -8417,7 +8629,7 @@ fun QuickActionItem(
 }
 
 @Composable
-fun PreviewTransactionRow(tx: Transaction, currentLanguage: String, isDark: Boolean) {
+fun PreviewTransactionRow(tx: Transaction, categoryName: String, currentLanguage: String, isDark: Boolean) {
     val formattedDate = remember(tx.dateLong, currentLanguage) {
         formatDate(tx.dateLong, currentLanguage)
     }
@@ -8438,7 +8650,7 @@ fun PreviewTransactionRow(tx: Transaction, currentLanguage: String, isDark: Bool
     ) {
         Column(modifier = Modifier.weight(1f)) {
             Text(
-                text = tx.category,
+                text = categoryName,
                 style = MaterialTheme.typography.bodySmall,
                 fontWeight = FontWeight.Bold,
                 color = if (isDark) Color.White else Color(0xFF1E293B)
@@ -8462,7 +8674,191 @@ fun PreviewTransactionRow(tx: Transaction, currentLanguage: String, isDark: Bool
 // ===============================================
 // EXTREMELY SMOOTH TRANSACTIONS HISTORY WINDOW
 // ===============================================
-@OptIn(ExperimentalMaterial3Api::class)
+data class ProcessedHistoryItem(
+    val id: Long,
+    val tx: Transaction,
+    val categoryName: String,
+    val formattedDate: String,
+    val formattedAmount: String,
+    val isExpense: Boolean,
+    val prefix: String,
+    val categoryIcon: androidx.compose.ui.graphics.vector.ImageVector,
+    val categoryColor: androidx.compose.ui.graphics.Color
+)
+
+private fun processTransaction(
+    tx: Transaction,
+    currentLanguage: String,
+    categoryTranslationMap: Map<String, String>
+): ProcessedHistoryItem {
+    val resId = tx.category.toIntOrNull()
+    val categoryName = categoryTranslationMap[tx.category] ?: tx.category
+    val formattedDate = formatDate(tx.dateLong, currentLanguage)
+    val formattedAmount = formatCurrency(tx.amount, currentLanguage)
+    val isExpense = tx.type == "EXPENSE"
+    val prefix = if (tx.type == "INCOME") "+" else "-"
+
+    val categoryIcon = when (resId) {
+        R.string.category_salary -> Icons.Default.AccountBalanceWallet
+        R.string.category_food -> Icons.Default.Restaurant
+        R.string.category_groceries -> Icons.Default.ShoppingBasket
+        R.string.category_utilities -> Icons.Default.FlashOn
+        R.string.category_entertainment -> Icons.Default.Movie
+        R.string.category_transport -> Icons.Default.DirectionsCar
+        R.string.category_freelance -> Icons.Default.LaptopMac
+        else -> Icons.Default.Category
+    }
+
+    val categoryColor = when (resId) {
+        R.string.category_salary -> Color(0xFF10B981) // Emerald Green
+        R.string.category_food -> Color(0xFFF59E0B) // Golden Amber
+        R.string.category_groceries -> Color(0xFF84CC16) // Lime Green
+        R.string.category_utilities -> Color(0xFF6366F1) // Indigo Blue
+        R.string.category_entertainment -> Color(0xFFEC4899) // Hot Pink
+        R.string.category_transport -> Color(0xFF06B6D4) // Cyan
+        R.string.category_freelance -> Color(0xFF3B82F6) // Electric Blue
+        else -> Color(0xFF64748B) // Slate Gray
+    }
+
+    return ProcessedHistoryItem(
+        id = tx.id,
+        tx = tx,
+        categoryName = categoryName,
+        formattedDate = formattedDate,
+        formattedAmount = formattedAmount,
+        isExpense = isExpense,
+        prefix = prefix,
+        categoryIcon = categoryIcon,
+        categoryColor = categoryColor
+    )
+}
+
+@Composable
+fun HistoryTransactionRow(
+    item: ProcessedHistoryItem,
+    isDark: Boolean,
+    onDelete: (Transaction) -> Unit,
+    onEdit: (Transaction) -> Unit
+) {
+    val tx = item.tx
+    val amountColor = remember(item.isExpense, isDark) {
+        if (item.isExpense) Color(0xFFEF4444) else (if (isDark) Color(0xFF14B8A6) else Color(0xFF0D9488))
+    }
+    val rowBg = remember(isDark) {
+        if (isDark) Color(0xFF1E293B).copy(alpha = 0.45f) else Color(0xFFF8FAFC)
+    }
+    val rowBorderColor = remember(isDark) {
+        if (isDark) Color(0xFF334155).copy(alpha = 0.4f) else Color(0xFFE2E8F0)
+    }
+    val rowShape = remember { RoundedCornerShape(14.dp) }
+    val iconBgColor = remember(item.categoryColor) {
+        item.categoryColor.copy(alpha = 0.08f)
+    }
+
+    Row(
+        modifier = Modifier
+            .fillMaxWidth()
+            .padding(horizontal = 16.dp, vertical = 2.dp)
+            .background(
+                color = rowBg,
+                shape = rowShape
+            )
+            .border(
+                width = 1.dp,
+                color = rowBorderColor,
+                shape = rowShape
+            )
+            .padding(12.dp),
+        verticalAlignment = Alignment.CenterVertically
+    ) {
+        // Category Icon with subtle background color
+        Box(
+            modifier = Modifier
+                .size(40.dp)
+                .background(
+                    color = iconBgColor,
+                    shape = CircleShape
+                ),
+            contentAlignment = Alignment.Center
+        ) {
+            Icon(
+                imageVector = item.categoryIcon,
+                contentDescription = item.categoryName,
+                tint = item.categoryColor,
+                modifier = Modifier.size(20.dp)
+            )
+        }
+
+        Spacer(modifier = Modifier.width(12.dp))
+
+        // Note + Category and Date column
+        Column(modifier = Modifier.weight(1f)) {
+            Text(
+                text = item.categoryName,
+                style = MaterialTheme.typography.bodyMedium,
+                fontWeight = FontWeight.Bold,
+                color = if (isDark) Color.White else Color(0xFF0F172A)
+            )
+            if (tx.note.isNotBlank()) {
+                Text(
+                    text = tx.note,
+                    style = MaterialTheme.typography.bodySmall,
+                    color = if (isDark) Color(0xFF94A3B8) else Color(0xFF475569),
+                    maxLines = 1,
+                    overflow = TextOverflow.Ellipsis
+                )
+            }
+            Text(
+                text = item.formattedDate,
+                style = MaterialTheme.typography.labelSmall,
+                color = if (isDark) Color(0xFF64748B) else Color(0xFF94A3B8)
+            )
+        }
+
+        Spacer(modifier = Modifier.width(8.dp))
+
+        // Amount Column
+        Text(
+            text = "${item.prefix}৳ ${item.formattedAmount}",
+            style = MaterialTheme.typography.bodyMedium,
+            fontWeight = FontWeight.Black,
+            color = amountColor
+        )
+
+        Spacer(modifier = Modifier.width(8.dp))
+
+        // Action Buttons Row (Edit & Delete side by side, very minimalist and clean)
+        Row(
+            horizontalArrangement = Arrangement.spacedBy(2.dp),
+            verticalAlignment = Alignment.CenterVertically
+        ) {
+            IconButton(
+                onClick = { onEdit(tx) },
+                modifier = Modifier.size(32.dp)
+            ) {
+                Icon(
+                    imageVector = Icons.Default.Edit,
+                    contentDescription = "Edit",
+                    tint = if (isDark) Color(0xFF14B8A6) else Color(0xFF0D9488),
+                    modifier = Modifier.size(16.dp)
+                )
+            }
+            IconButton(
+                onClick = { onDelete(tx) },
+                modifier = Modifier.size(32.dp)
+            ) {
+                Icon(
+                    imageVector = Icons.Default.DeleteOutline,
+                    contentDescription = "Delete",
+                    tint = Color(0xFFEF4444),
+                    modifier = Modifier.size(16.dp)
+                )
+            }
+        }
+    }
+}
+
+@OptIn(androidx.compose.foundation.ExperimentalFoundationApi::class, ExperimentalMaterial3Api::class)
 @Composable
 fun TransactionsHistoryDialog(
     transactions: List<Transaction>,
@@ -8508,216 +8904,253 @@ fun TransactionsHistoryDialog(
                         .windowInsetsPadding(WindowInsets.statusBars)
                         .navigationBarsPadding()
                 ) {
-                // Header Row
-                Row(
-                    modifier = Modifier
-                        .fillMaxWidth()
-                        .padding(horizontal = 16.dp, vertical = 12.dp),
-                    horizontalArrangement = Arrangement.SpaceBetween,
-                    verticalAlignment = Alignment.CenterVertically
-                ) {
-                    Row(verticalAlignment = Alignment.CenterVertically) {
-                        Icon(
-                            imageVector = Icons.Default.History,
-                            contentDescription = null,
-                            tint = MaterialTheme.colorScheme.primary,
-                            modifier = Modifier.size(28.dp)
-                        )
-                        Spacer(modifier = Modifier.width(8.dp))
-                        Text(
-                            text = if (isBn) "লেনদেন ইতিহাস" else "Transactions History",
-                            style = MaterialTheme.typography.titleLarge,
-                            fontWeight = FontWeight.Black,
-                            color = MaterialTheme.colorScheme.onBackground
-                        )
-                    }
-
-                    IconButton(onClick = onDismiss) {
-                        Icon(
-                            imageVector = Icons.Default.Close,
-                            contentDescription = "Close",
-                            tint = MaterialTheme.colorScheme.onBackground
-                        )
-                    }
-                }
-
-                var searchQuery by remember { mutableStateOf("") }
-                var selectedFilter by remember { mutableStateOf("ALL") } // "ALL", "INCOME", "EXPENSE"
-
-                // Search Box
-                OutlinedTextField(
-                    value = searchQuery,
-                    onValueChange = { searchQuery = it },
-                    placeholder = {
-                        Text(
-                            text = if (isBn) "লেনদেন খুঁজুন..." else "Search transactions...",
-                            style = MaterialTheme.typography.bodyMedium.copy(
-                                color = if (isDark) Color(0xFF94A3B8) else Color(0xFF64748B)
-                            )
-                        )
-                    },
-                    leadingIcon = {
-                        Icon(
-                            imageVector = Icons.Default.Search,
-                            contentDescription = null,
-                            tint = if (isDark) Color(0xFF94A3B8) else Color(0xFF64748B)
-                        )
-                    },
-                    trailingIcon = {
-                        if (searchQuery.isNotEmpty()) {
-                            IconButton(onClick = { searchQuery = "" }) {
-                                Icon(
-                                    imageVector = Icons.Default.Clear,
-                                    contentDescription = "Clear search",
-                                    tint = if (isDark) Color(0xFF94A3B8) else Color(0xFF64748B)
-                                )
-                            }
-                        }
-                    },
-                    modifier = Modifier
-                        .fillMaxWidth()
-                        .padding(horizontal = 16.dp, vertical = 6.dp),
-                    shape = RoundedCornerShape(20.dp),
-                    singleLine = true,
-                    colors = OutlinedTextFieldDefaults.colors(
-                        focusedContainerColor = if (isDark) Color(0xFF1E293B) else Color(0xFFF1F5F9),
-                        unfocusedContainerColor = if (isDark) Color(0xFF1E293B).copy(alpha = 0.6f) else Color(0xFFF8FAFC),
-                        focusedBorderColor = MaterialTheme.colorScheme.primary,
-                        unfocusedBorderColor = Color.Transparent,
-                        focusedTextColor = if (isDark) Color.White else Color(0xFF0F172A),
-                        unfocusedTextColor = if (isDark) Color.White else Color(0xFF0F172A)
-                    )
-                )
-
-                // Premium Segmented Pill Filter Control
-                Row(
-                    modifier = Modifier
-                        .fillMaxWidth()
-                        .padding(horizontal = 16.dp, vertical = 8.dp)
-                        .background(
-                            color = if (isDark) Color(0xFF1E293B) else Color(0xFFF1F5F9),
-                            shape = RoundedCornerShape(20.dp)
-                        )
-                        .padding(4.dp),
-                    horizontalArrangement = Arrangement.spacedBy(4.dp)
-                ) {
-                    val filters = listOf("ALL", "INCOME", "EXPENSE")
-                    filters.forEach { filter ->
-                        val label = when (filter) {
-                            "ALL" -> if (isBn) "সব" else "All"
-                            "INCOME" -> if (isBn) "আয়" else "Income"
-                            else -> if (isBn) "ব্যয়" else "Expense"
-                        }
-                        val isSelected = selectedFilter == filter
-                        val tabInteractionSource = remember { MutableInteractionSource() }
-                        Box(
-                            modifier = Modifier
-                                .weight(1f)
-                                .height(38.dp)
-                                .clip(RoundedCornerShape(16.dp))
-                                .background(
-                                    color = if (isSelected) MaterialTheme.colorScheme.primary else Color.Transparent
-                                )
-                                .android16ScalePress(tabInteractionSource)
-                                .clickable(
-                                    interactionSource = tabInteractionSource,
-                                    indication = null
-                                ) { selectedFilter = filter },
-                            contentAlignment = Alignment.Center
-                        ) {
-                            Text(
-                                text = label,
-                                style = MaterialTheme.typography.labelMedium,
-                                fontWeight = FontWeight.Bold,
-                                color = if (isSelected) {
-                                    MaterialTheme.colorScheme.onPrimary
-                                } else {
-                                    if (isDark) Color(0xFF94A3B8) else Color(0xFF475569)
-                                }
-                            )
-                        }
-                    }
-                }
-
-                // Filter Logic
-                val filteredList = remember(transactions, searchQuery, selectedFilter, currentLanguage) {
-                    val query = searchQuery.trim().lowercase()
-                    if (query.isEmpty() && selectedFilter == "ALL") {
-                        transactions
-                    } else {
-                        transactions.filter { transaction ->
-                            val categoryName = {
-                                val resId = transaction.category.toIntOrNull()
-                                if (resId != null) getString(resId) else transaction.category
-                            }()
-                            val matchesSearch = if (query.isEmpty()) true else {
-                                transaction.note.lowercase().contains(query) ||
-                                        categoryName.lowercase().contains(query)
-                            }
-                            val matchesType = when (selectedFilter) {
-                                "INCOME" -> transaction.type == "INCOME"
-                                "EXPENSE" -> transaction.type == "EXPENSE"
-                                else -> true
-                            }
-                            matchesSearch && matchesType
-                        }
-                    }
-                }
-
-                if (filteredList.isEmpty()) {
-                    Box(
+                    // Header Row
+                    Row(
                         modifier = Modifier
                             .fillMaxWidth()
-                            .weight(1f),
-                        contentAlignment = Alignment.Center
+                            .padding(horizontal = 16.dp, vertical = 12.dp),
+                        horizontalArrangement = Arrangement.SpaceBetween,
+                        verticalAlignment = Alignment.CenterVertically
                     ) {
-                        Column(
-                            horizontalAlignment = Alignment.CenterHorizontally,
-                            verticalArrangement = Arrangement.spacedBy(8.dp)
-                        ) {
+                        Row(verticalAlignment = Alignment.CenterVertically) {
+                            Icon(
+                                imageVector = Icons.Default.History,
+                                contentDescription = null,
+                                tint = MaterialTheme.colorScheme.primary,
+                                modifier = Modifier.size(28.dp)
+                            )
+                            Spacer(modifier = Modifier.width(8.dp))
+                            Text(
+                                text = if (isBn) "লেনদেন ইতিহাস" else "Transactions History",
+                                style = MaterialTheme.typography.titleLarge,
+                                fontWeight = FontWeight.Black,
+                                color = MaterialTheme.colorScheme.onBackground
+                            )
+                        }
+
+                        IconButton(onClick = onDismiss) {
+                            Icon(
+                                imageVector = Icons.Default.Close,
+                                contentDescription = "Close",
+                                tint = MaterialTheme.colorScheme.onBackground
+                            )
+                        }
+                    }
+
+                    var searchQuery by remember { mutableStateOf("") }
+                    var selectedFilter by remember { mutableStateOf("ALL") } // "ALL", "INCOME", "EXPENSE"
+
+                    // Cache category name lookups to optimize 120Hz smooth list search/rendering
+                    val categoryTranslationMap = remember(transactions, currentLanguage) {
+                        val map = mutableMapOf<String, String>()
+                        transactions.forEach { t ->
+                            val cat = t.category
+                            if (!map.containsKey(cat)) {
+                                val resId = cat.toIntOrNull()
+                                map[cat] = if (resId != null) {
+                                    try { getString(resId) } catch (e: Exception) { cat }
+                                } else {
+                                    cat
+                                }
+                            }
+                        }
+                        map
+                    }
+
+                    // Filter Logic (extremely optimized with cached category map, computed instantly)
+                    val filteredRawList = remember(transactions, searchQuery, selectedFilter, categoryTranslationMap) {
+                        val query = searchQuery.trim().lowercase()
+                        if (query.isEmpty() && selectedFilter == "ALL") {
+                            transactions
+                        } else {
+                            transactions.filter { transaction ->
+                                val categoryName = categoryTranslationMap[transaction.category] ?: transaction.category
+                                val matchesSearch = if (query.isEmpty()) true else {
+                                    transaction.note.lowercase().contains(query) ||
+                                            categoryName.lowercase().contains(query)
+                                }
+                                val matchesType = when (selectedFilter) {
+                                    "INCOME" -> transaction.type == "INCOME"
+                                    "EXPENSE" -> transaction.type == "EXPENSE"
+                                    else -> true
+                                }
+                                matchesSearch && matchesType
+                            }
+                        }
+                    }
+
+                    // Dual-Phase Processing: Instant synchronous first 25 items, then non-blocking background mapping
+                    var processedItems by remember(filteredRawList, currentLanguage) {
+                        val initialTake = filteredRawList.take(25)
+                        val initialProcessed = initialTake.map { tx ->
+                            processTransaction(tx, currentLanguage, categoryTranslationMap)
+                        }
+                        mutableStateOf(initialProcessed)
+                    }
+
+                    LaunchedEffect(filteredRawList, currentLanguage) {
+                        if (filteredRawList.size > 25) {
+                            kotlinx.coroutines.withContext(kotlinx.coroutines.Dispatchers.Default) {
+                                val fullProcessed = filteredRawList.map { tx ->
+                                    processTransaction(tx, currentLanguage, categoryTranslationMap)
+                                }
+                                kotlinx.coroutines.withContext(kotlinx.coroutines.Dispatchers.Main) {
+                                    processedItems = fullProcessed
+                                }
+                            }
+                        }
+                    }
+
+                    // Search Box
+                    OutlinedTextField(
+                        value = searchQuery,
+                        onValueChange = { searchQuery = it },
+                        placeholder = {
+                            Text(
+                                text = if (isBn) "লেনদেন খুঁজুন..." else "Search transactions...",
+                                style = MaterialTheme.typography.bodyMedium.copy(
+                                    color = if (isDark) Color(0xFF94A3B8) else Color(0xFF64748B)
+                                )
+                            )
+                        },
+                        leadingIcon = {
                             Icon(
                                 imageVector = Icons.Default.Search,
-                                contentDescription = "No items matched",
-                                tint = MaterialTheme.colorScheme.onSurfaceVariant.copy(alpha = 0.5f),
-                                modifier = Modifier.size(64.dp)
+                                contentDescription = null,
+                                tint = if (isDark) Color(0xFF94A3B8) else Color(0xFF64748B)
                             )
-                            Text(
-                                text = if (isBn) "কোন লেনদেন পাওয়া যায়নি" else "No transactions found",
-                                style = MaterialTheme.typography.bodyMedium,
-                                color = MaterialTheme.colorScheme.onSurfaceVariant
-                            )
-                        }
-                    }
-                } else {
-                    val listState = androidx.compose.foundation.lazy.rememberLazyListState()
-                    LazyColumn(
-                        state = listState,
+                        },
+                        trailingIcon = {
+                            if (searchQuery.isNotEmpty()) {
+                                IconButton(onClick = { searchQuery = "" }) {
+                                    Icon(
+                                        imageVector = Icons.Default.Clear,
+                                        contentDescription = "Clear search",
+                                        tint = if (isDark) Color(0xFF94A3B8) else Color(0xFF64748B)
+                                    )
+                                }
+                            }
+                        },
                         modifier = Modifier
                             .fillMaxWidth()
-                            .weight(1f),
-                        contentPadding = PaddingValues(bottom = 24.dp, top = 8.dp),
-                        verticalArrangement = Arrangement.spacedBy(8.dp)
-                    ) {
-                        items(
-                            items = filteredList,
-                            key = { it.id },
-                            contentType = { "transaction_item" }
-                        ) { tx ->
-                            TransactionListItem(
-                                transaction = tx,
-                                lang = currentLanguage,
-                                getString = getString,
-                                isDark = isDark,
-                                onDelete = onDeleteTransaction,
-                                onEdit = onEditTransaction
+                            .padding(horizontal = 16.dp, vertical = 6.dp),
+                        shape = RoundedCornerShape(20.dp),
+                        singleLine = true,
+                        colors = OutlinedTextFieldDefaults.colors(
+                            focusedContainerColor = if (isDark) Color(0xFF1E293B) else Color(0xFFF1F5F9),
+                            unfocusedContainerColor = if (isDark) Color(0xFF1E293B).copy(alpha = 0.6f) else Color(0xFFF8FAFC),
+                            focusedBorderColor = MaterialTheme.colorScheme.primary,
+                            unfocusedBorderColor = Color.Transparent,
+                            focusedTextColor = if (isDark) Color.White else Color(0xFF0F172A),
+                            unfocusedTextColor = if (isDark) Color.White else Color(0xFF0F172A)
+                        )
+                    )
+
+                    // Premium Segmented Pill Filter Control
+                    Row(
+                        modifier = Modifier
+                            .fillMaxWidth()
+                            .padding(horizontal = 16.dp, vertical = 8.dp)
+                            .background(
+                                color = if (isDark) Color(0xFF1E293B) else Color(0xFFF1F5F9),
+                                shape = RoundedCornerShape(20.dp)
                             )
+                            .padding(4.dp),
+                        horizontalArrangement = Arrangement.spacedBy(4.dp)
+                    ) {
+                        val filters = listOf("ALL", "INCOME", "EXPENSE")
+                        filters.forEach { filter ->
+                            val label = when (filter) {
+                                "ALL" -> if (isBn) "সব" else "All"
+                                "INCOME" -> if (isBn) "আয়" else "Income"
+                                else -> if (isBn) "ব্যয়" else "Expense"
+                            }
+                            val isSelected = selectedFilter == filter
+                            val tabInteractionSource = remember { MutableInteractionSource() }
+                            Box(
+                                modifier = Modifier
+                                    .weight(1f)
+                                    .height(38.dp)
+                                    .clip(RoundedCornerShape(16.dp))
+                                    .background(
+                                        color = if (isSelected) MaterialTheme.colorScheme.primary else Color.Transparent
+                                    )
+                                    .android16ScalePress(tabInteractionSource)
+                                    .clickable(
+                                        interactionSource = tabInteractionSource,
+                                        indication = null
+                                    ) { selectedFilter = filter },
+                                contentAlignment = Alignment.Center
+                            ) {
+                                Text(
+                                    text = label,
+                                    style = MaterialTheme.typography.labelMedium,
+                                    fontWeight = FontWeight.Bold,
+                                    color = if (isSelected) {
+                                        MaterialTheme.colorScheme.onPrimary
+                                    } else {
+                                        if (isDark) Color(0xFF94A3B8) else Color(0xFF475569)
+                                    }
+                                )
+                            }
+                        }
+                    }
+
+                    if (processedItems.isEmpty()) {
+                        Box(
+                            modifier = Modifier
+                                .fillMaxWidth()
+                                .weight(1f),
+                            contentAlignment = Alignment.Center
+                        ) {
+                            Column(
+                                horizontalAlignment = Alignment.CenterHorizontally,
+                                verticalArrangement = Arrangement.spacedBy(8.dp)
+                            ) {
+                                Icon(
+                                    imageVector = Icons.Default.Search,
+                                    contentDescription = "No items matched",
+                                    tint = MaterialTheme.colorScheme.onSurfaceVariant.copy(alpha = 0.5f),
+                                    modifier = Modifier.size(64.dp)
+                                )
+                                Text(
+                                    text = if (isBn) "কোন লেনদেন পাওয়া যায়নি" else "No transactions found",
+                                    style = MaterialTheme.typography.bodyMedium,
+                                    color = MaterialTheme.colorScheme.onSurfaceVariant
+                                )
+                            }
+                        }
+                    } else {
+                        val listState = androidx.compose.foundation.lazy.rememberLazyListState()
+                        val onDeleteAction = remember(onDeleteTransaction) { { tx: Transaction -> onDeleteTransaction(tx) } }
+                        val onEditAction = remember(onEditTransaction) { { tx: Transaction -> onEditTransaction(tx) } }
+
+                        LazyColumn(
+                            state = listState,
+                            modifier = Modifier
+                                .fillMaxWidth()
+                                .weight(1f),
+                            contentPadding = PaddingValues(bottom = 24.dp, top = 8.dp),
+                            verticalArrangement = Arrangement.spacedBy(8.dp)
+                        ) {
+                            items(
+                                items = processedItems,
+                                key = { item -> item.id },
+                                contentType = { "transaction_item" }
+                            ) { item ->
+                                HistoryTransactionRow(
+                                    item = item,
+                                    isDark = isDark,
+                                    onDelete = onDeleteAction,
+                                    onEdit = onEditAction
+                                )
+                            }
                         }
                     }
                 }
             }
         }
     }
-}
 }
 
 
