@@ -1,0 +1,6 @@
+{
+  "versionCode": 6,
+  "versionName": "4.5",
+  "changelog": "• বায়োমেট্রিক অথেন্টিকেশন (Biometric Authentication).\n• প্রোফাইল ছবির লেজি লোডিং এবং ক্যাশিং (Lazy Loading & Caching). \n• ডাটা ব্যাকআপ এবং মেমোরি রেন্ডারিং বাগ ফিক্স করা হয়েছে।\n• ব্যাকগ্রাউন্ড রিসোর্স ইউসেজ এবং রেন্ডার অপ্টিমাইজেশান ফিক্স করা হয়েছে।",
+  "downloadUrl": "https://github.com/sakib9221/Mobile-Wallet/releases/download/v2/Mobile.Wallet.v4.5.apk"
+}
