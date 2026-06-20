@@ -1,7 +1,7 @@
 package com.example
 
 import android.os.Bundle
-import androidx.activity.ComponentActivity
+import androidx.fragment.app.FragmentActivity
 import androidx.activity.compose.setContent
 import androidx.activity.enableEdgeToEdge
 import androidx.compose.foundation.isSystemInDarkTheme
@@ -13,8 +13,12 @@ import androidx.lifecycle.viewmodel.compose.viewModel
 import com.example.ui.FinanceDashboardScreen
 import com.example.ui.FinanceViewModel
 import com.example.ui.theme.MyApplicationTheme
+import coil.Coil
+import coil.ImageLoader
+import coil.disk.DiskCache
+import coil.memory.MemoryCache
 
-class MainActivity : ComponentActivity() {
+class MainActivity : FragmentActivity() {
     override fun attachBaseContext(newBase: android.content.Context?) {
         if (newBase != null) {
             val config = android.content.res.Configuration(newBase.resources.configuration)
@@ -31,6 +35,28 @@ class MainActivity : ComponentActivity() {
 
     override fun onCreate(savedInstanceState: Bundle?) {
         super.onCreate(savedInstanceState)
+        
+        // Centralized Coil ImageLoader setup for lazy loading parameters, disk caching, and memory caching.
+        try {
+            val imageLoader = ImageLoader.Builder(this)
+                .memoryCache {
+                    MemoryCache.Builder(this)
+                        .maxSizePercent(0.25) // Allocate up to 25% of available app memory specifically for profiles & images
+                        .build()
+                }
+                .diskCache {
+                    DiskCache.Builder()
+                        .directory(this.cacheDir.resolve("image_cache"))
+                        .maxSizeBytes(50L * 1024L * 1024L) // 50MB dedicated disk cache to persist profile avatars offline
+                        .build()
+                }
+                .crossfade(true)
+                .build()
+            Coil.setImageLoader(imageLoader)
+        } catch (e: Throwable) {
+            e.printStackTrace()
+        }
+
         try {
             val config = resources.configuration
             config.fontScale = 1.0f

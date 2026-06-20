@@ -63,6 +63,123 @@ class FinanceViewModel(application: Application) : AndroidViewModel(application)
     private val _autoSyncOnChanges = MutableStateFlow(true)
     val autoSyncOnChanges: StateFlow<Boolean> = _autoSyncOnChanges.asStateFlow()
 
+    // Personal user identification and secure PIN management
+    private val _userSavedName = MutableStateFlow<String?>(prefs.getString("user_saved_name", null))
+    val userSavedName: StateFlow<String?> = _userSavedName.asStateFlow()
+
+    private val _userSavedPin = MutableStateFlow<String?>(prefs.getString("user_saved_pin", null))
+    val userSavedPin: StateFlow<String?> = _userSavedPin.asStateFlow()
+
+    private val _userDob = MutableStateFlow<String?>(prefs.getString("user_dob", ""))
+    val userDob: StateFlow<String?> = _userDob.asStateFlow()
+
+    private val _userGender = MutableStateFlow<String?>(prefs.getString("user_gender", ""))
+    val userGender: StateFlow<String?> = _userGender.asStateFlow()
+
+    private val _userAvatarIdx = MutableStateFlow<Int>(prefs.getInt("user_avatar_idx", 0))
+    val userAvatarIdx: StateFlow<Int> = _userAvatarIdx.asStateFlow()
+
+    private val _userAvatarCustomPath = MutableStateFlow<String?>(prefs.getString("user_avatar_custom_path", null))
+    val userAvatarCustomPath: StateFlow<String?> = _userAvatarCustomPath.asStateFlow()
+
+    private val _isAppLocked = MutableStateFlow<Boolean>(false)
+    val isAppLocked: StateFlow<Boolean> = _isAppLocked.asStateFlow()
+
+    fun lockApp() {
+        if (!prefs.getString("user_saved_pin", null).isNullOrBlank()) {
+            _isAppLocked.value = true
+        }
+    }
+
+    fun unlockApp(pin: String): Boolean {
+        val savedPin = prefs.getString("user_saved_pin", null)
+        return if (savedPin == pin) {
+            _isAppLocked.value = false
+            true
+        } else {
+            false
+        }
+    }
+
+    fun unlockWithBiometric() {
+        _isAppLocked.value = false
+    }
+
+    fun updateProfile(name: String, pin: String, dob: String, gender: String, avatarIdx: Int, customPath: String?) {
+        _userSavedName.value = name
+        _userSavedPin.value = pin
+        _userDob.value = dob
+        _userGender.value = gender
+        _userAvatarIdx.value = avatarIdx
+        _userAvatarCustomPath.value = customPath
+        prefs.edit()
+            .putString("user_saved_name", name)
+            .putString("user_saved_pin", pin)
+            .putString("user_dob", dob)
+            .putString("user_gender", gender)
+            .putInt("user_avatar_idx", avatarIdx)
+            .putString("user_avatar_custom_path", customPath)
+            .apply()
+        // Automatically save local backup containing new credentials
+        autoBackupData()
+    }
+
+    private val _pendingAutoRestoreBackup = MutableStateFlow<PendingRestoreInfo?>(null)
+    val pendingAutoRestoreBackup: StateFlow<PendingRestoreInfo?> = _pendingAutoRestoreBackup.asStateFlow()
+
+    fun saveUserNameAndPin(name: String, pin: String) {
+        _userSavedName.value = name
+        _userSavedPin.value = pin
+        prefs.edit()
+            .putString("user_saved_name", name)
+            .putString("user_saved_pin", pin)
+            .apply()
+        // Create an automatic backup containing credentials
+        autoBackupData()
+    }
+
+    fun confirmRestore(
+        userNameInput: String,
+        userPinInput: String,
+        onSuccess: () -> Unit,
+        onError: (String) -> Unit
+    ) {
+        val pending = _pendingAutoRestoreBackup.value ?: return
+        
+        // If backup has credentials, verify them strictly (case insensitive name, match PIN)
+        if (pending.backupName.isNotEmpty()) {
+            val nameMatch = pending.backupName.trim().equals(userNameInput.trim(), ignoreCase = true)
+            val pinMatch = pending.backupPin.trim() == userPinInput.trim()
+            if (!nameMatch || !pinMatch) {
+                onError("Verification failed: Username or PIN is incorrect!")
+                return
+            }
+        }
+
+        // Proceed with database import
+        importBackupContent(
+            jsonStr = pending.jsonContent,
+            onSuccess = {
+                // Restore name/PIN credentials to preferences
+                val restoredName = if (pending.backupName.isNotEmpty()) pending.backupName else userNameInput
+                val restoredPin = if (pending.backupPin.isNotEmpty()) pending.backupPin else userPinInput
+                saveUserNameAndPin(restoredName, restoredPin)
+                
+                _pendingAutoRestoreBackup.value = null
+                prefs.edit().putBoolean("auto_restore_checked_v12", true).apply()
+                onSuccess()
+            },
+            onError = { err ->
+                onError(err)
+            }
+        )
+    }
+
+    fun cancelRestore() {
+        _pendingAutoRestoreBackup.value = null
+        prefs.edit().putBoolean("auto_restore_checked_v12", true).apply()
+    }
+
     init {
         val db = AppDatabase.getDatabase(application)
         repository = TransactionRepository(db.transactionDao(), db.bajarItemDao(), db.debtRecordDao())
@@ -358,7 +475,14 @@ class FinanceViewModel(application: Application) : AndroidViewModel(application)
         bajarItems: List<com.example.data.BajarItem>,
         debtRecords: List<com.example.data.DebtRecord>
     ): String {
-        val rootObj = JSONObject()
+        val rootObj = JSONObject().apply {
+            put("saved_name", prefs.getString("user_saved_name", "") ?: "")
+            put("saved_pin", prefs.getString("user_saved_pin", "") ?: "")
+            put("user_dob", prefs.getString("user_dob", "") ?: "")
+            put("user_gender", prefs.getString("user_gender", "") ?: "")
+            put("user_avatar_idx", prefs.getInt("user_avatar_idx", 0))
+            put("user_avatar_custom_path", prefs.getString("user_avatar_custom_path", "") ?: "")
+        }
 
         // 1. Transactions
         val transArray = JSONArray()
@@ -703,6 +827,21 @@ class FinanceViewModel(application: Application) : AndroidViewModel(application)
                 bajarList.forEach { repository.insertBajarItem(it) }
                 debtList.forEach { repository.insertDebt(it) }
 
+                val restoredDob = rootObj.optString("user_dob", "")
+                val restoredGender = rootObj.optString("user_gender", "")
+                val restoredAvatarIdx = rootObj.optInt("user_avatar_idx", 0)
+                val restoredCustomPath = rootObj.optString("user_avatar_custom_path", "")
+                _userDob.value = restoredDob
+                _userGender.value = restoredGender
+                _userAvatarIdx.value = restoredAvatarIdx
+                _userAvatarCustomPath.value = if (restoredCustomPath.isEmpty()) null else restoredCustomPath
+                prefs.edit()
+                    .putString("user_dob", restoredDob)
+                    .putString("user_gender", restoredGender)
+                    .putInt("user_avatar_idx", restoredAvatarIdx)
+                    .putString("user_avatar_custom_path", if (restoredCustomPath.isEmpty()) null else restoredCustomPath)
+                    .apply()
+
                 onSuccess()
                 
                 // Re-trigger a fresh backup of the imported contents to sync state
@@ -826,16 +965,14 @@ class FinanceViewModel(application: Application) : AndroidViewModel(application)
 
                 if (bestJson != null && maxRecordCount >= 0) {
                     android.util.Log.i("FinanceViewModel", "Best backup file selected for restore: $bestFilename with $maxRecordCount records.")
-                    importBackupContent(
-                        jsonStr = bestJson,
-                        onSuccess = {
-                            android.util.Log.i("FinanceViewModel", "Auto-restored backup from $bestFilename successfully on startup!")
-                            prefs.edit().putBoolean("auto_restore_checked_v12", true).apply()
-                        },
-                        onError = { err ->
-                            android.util.Log.e("FinanceViewModel", "Auto-restore parse error: $err")
-                            prefs.edit().putBoolean("auto_restore_checked_v12", true).apply()
-                        }
+                    val bRoot = JSONObject(bestJson)
+                    val bName = bRoot.optString("saved_name", "")
+                    val bPin = bRoot.optString("saved_pin", "")
+                    _pendingAutoRestoreBackup.value = PendingRestoreInfo(
+                        fileName = bestFilename ?: "personal_finance_backup.json",
+                        jsonContent = bestJson,
+                        backupName = bName,
+                        backupPin = bPin
                     )
                 } else {
                     android.util.Log.i("FinanceViewModel", "No local backup found with data for auto-restoring.")
@@ -853,4 +990,11 @@ data class Stats(
     val totalIncome: Double = 0.0,
     val totalExpense: Double = 0.0,
     val balance: Double = 0.0
+)
+
+data class PendingRestoreInfo(
+    val fileName: String,
+    val jsonContent: String,
+    val backupName: String,
+    val backupPin: String
 )

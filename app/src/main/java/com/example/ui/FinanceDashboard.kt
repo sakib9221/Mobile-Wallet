@@ -6,9 +6,12 @@ import coil.compose.AsyncImage
 import androidx.compose.foundation.Canvas
 import androidx.compose.foundation.rememberScrollState
 import androidx.compose.foundation.verticalScroll
+import androidx.compose.foundation.horizontalScroll
 import androidx.compose.ui.graphics.drawscope.rotate
 import androidx.compose.animation.core.spring
 import androidx.compose.animation.core.tween
+import androidx.compose.animation.core.animateDpAsState
+import androidx.compose.animation.animateColorAsState
 import androidx.compose.foundation.BorderStroke
 import androidx.compose.foundation.background
 import androidx.compose.foundation.border
@@ -25,6 +28,10 @@ import androidx.compose.foundation.text.KeyboardOptions
 import androidx.compose.foundation.text.BasicTextField
 import androidx.compose.foundation.text.KeyboardActions
 import androidx.compose.ui.text.input.ImeAction
+import androidx.biometric.BiometricPrompt
+import androidx.biometric.BiometricManager
+import androidx.core.content.ContextCompat
+import androidx.fragment.app.FragmentActivity
 import androidx.compose.ui.graphics.SolidColor
 import androidx.compose.ui.text.TextStyle
 import androidx.compose.material.icons.Icons
@@ -75,6 +82,10 @@ import androidx.compose.animation.core.animateFloatAsState
 import androidx.compose.animation.core.Spring
 import androidx.compose.ui.graphics.graphicsLayer
 import androidx.compose.ui.composed
+import androidx.compose.ui.input.pointer.pointerInput
+import androidx.compose.foundation.gestures.detectTapGestures
+import androidx.compose.ui.unit.IntSize
+import androidx.compose.ui.layout.onSizeChanged
 
 
 @Composable
@@ -199,6 +210,30 @@ fun FinanceDashboardScreen(
     val currentTab by viewModel.uiTab.collectAsStateWithLifecycle()
     val selectedTheme by viewModel.selectedTheme.collectAsStateWithLifecycle()
     val dailyExpenseLimit by viewModel.dailyExpenseLimit.collectAsStateWithLifecycle()
+    val userSavedName by viewModel.userSavedName.collectAsStateWithLifecycle()
+    val userSavedPin by viewModel.userSavedPin.collectAsStateWithLifecycle()
+    val pendingRestoreInfo by viewModel.pendingAutoRestoreBackup.collectAsStateWithLifecycle()
+    val userDob by viewModel.userDob.collectAsStateWithLifecycle()
+    val userGender by viewModel.userGender.collectAsStateWithLifecycle()
+    val userAvatarIdx by viewModel.userAvatarIdx.collectAsStateWithLifecycle()
+    val userAvatarCustomPath by viewModel.userAvatarCustomPath.collectAsStateWithLifecycle()
+    val isAppLocked by viewModel.isAppLocked.collectAsStateWithLifecycle()
+
+    var showProfileDialog by remember { mutableStateOf(false) }
+
+    // Setup lifecycle observer to lock the app on startup/resume when a PIN is set
+    val lifecycleOwner = androidx.lifecycle.compose.LocalLifecycleOwner.current
+    DisposableEffect(lifecycleOwner) {
+        val observer = androidx.lifecycle.LifecycleEventObserver { _, event ->
+            if (event == androidx.lifecycle.Lifecycle.Event.ON_START) {
+                viewModel.lockApp()
+            }
+        }
+        lifecycleOwner.lifecycle.addObserver(observer)
+        onDispose {
+            lifecycleOwner.lifecycle.removeObserver(observer)
+        }
+    }
 
     val localizedContext = remember(currentLanguage) {
         LocaleHelper.getLocalizedContext(context, currentLanguage)
@@ -346,8 +381,11 @@ fun FinanceDashboardScreen(
     }
 
     MeshBackground {
-        Scaffold(
-            modifier = modifier.fillMaxSize(),
+        if (isAppLocked && !userSavedPin.isNullOrBlank()) {
+            PinLockScreen(viewModel = viewModel, currentLanguage = currentLanguage)
+        } else {
+            Scaffold(
+                modifier = modifier.fillMaxSize(),
             containerColor = Color.Transparent,
             topBar = {
                 val isDark = isAppDark()
@@ -545,31 +583,45 @@ fun FinanceDashboardScreen(
                         .widthIn(max = 600.dp)
                         .verticalScroll(androidx.compose.foundation.rememberScrollState())
                 ) {
-            // Minimalist Monthly balance summary card
-            DashboardSummaryCard(
-                stats = stats,
-                transactions = transactions,
-                dailyLimit = dailyExpenseLimit,
-                onUpdateLimit = { limit -> viewModel.setDailyExpenseLimit(limit) },
-                lang = currentLanguage,
-                getString = getStringResource
-            )
+                    val onShowProfileClick = remember { { showProfileDialog = true } }
+                    
+                    // Welcome greeting context slider banner with custom illustration background
+                    SmartFinanceHeader(
+                        currentUser = currentUser,
+                        userSavedName = userSavedName,
+                        userAvatarIdx = userAvatarIdx,
+                        userCustomAvatarPath = userAvatarCustomPath,
+                        lang = currentLanguage,
+                        getString = getStringResource,
+                        onShowProfile = onShowProfileClick
+                    )
 
-            // Dynamic grid of 6 Actions & Tools (as requested!)
-            DashboardActionsGrid(
-                currentLanguage = currentLanguage,
-                onAddTransaction = { showAddDialog = true },
-                onViewHistory = { showAllTransactionsDialog = true },
-                onBajarList = { showBajarListDialog = true },
-                onDebtsLoans = { showDebtListDialog = true },
-                onDownloadPdf = { showReportPreviewDialog = true },
-                onImportBackup = { filePickerLauncher.launch("application/json") }
-            )
+                    // Minimalist Monthly balance summary card
+                    DashboardSummaryCard(
+                        stats = stats,
+                        transactions = transactions,
+                        dailyLimit = dailyExpenseLimit,
+                        onUpdateLimit = { limit -> viewModel.setDailyExpenseLimit(limit) },
+                        lang = currentLanguage,
+                        getString = getStringResource
+                    )
+
+                    // Dynamic grid of 6 Actions & Tools (as requested!)
+                    DashboardActionsGrid(
+                        currentLanguage = currentLanguage,
+                        onAddTransaction = { showAddDialog = true },
+                        onViewHistory = { showAllTransactionsDialog = true },
+                        onBajarList = { showBajarListDialog = true },
+                        onDebtsLoans = { showDebtListDialog = true },
+                        onDownloadPdf = { showReportPreviewDialog = true },
+                        onImportBackup = { filePickerLauncher.launch("application/json") }
+                    )
 
             Spacer(modifier = Modifier.height(24.dp))
             Spacer(modifier = Modifier.navigationBarsPadding())
             Spacer(modifier = Modifier.height(140.dp))
         }
+    }
     }
     }
     }
@@ -647,6 +699,10 @@ fun FinanceDashboardScreen(
             currentLanguage = currentLanguage,
             selectedTheme = selectedTheme,
             onThemeChange = onThemeChange,
+            onProfileClick = {
+                showSettingsDialog = false
+                showProfileDialog = true
+            },
             onLanguageClick = {
                 showLanguageDialog = true
             },
@@ -666,6 +722,318 @@ fun FinanceDashboardScreen(
                 showLanguageDialog = false
             },
             onDismiss = { showLanguageDialog = false }
+        )
+    }
+
+    // Automatic Startup Restore Verification Dialog
+    if (pendingRestoreInfo != null) {
+        androidx.compose.ui.window.Dialog(
+            onDismissRequest = { /* Enforce decision / credential check */ }
+        ) {
+            Surface(
+                modifier = Modifier
+                    .fillMaxWidth()
+                    .padding(16.dp)
+                    .testTag("auto_restore_verification_dialog"),
+                shape = RoundedCornerShape(28.dp),
+                color = MaterialTheme.colorScheme.surface,
+                tonalElevation = 6.dp
+            ) {
+                var inputName by remember { mutableStateOf("") }
+                var inputPin by remember { mutableStateOf("") }
+                var errorMessage by remember { mutableStateOf<String?>(null) }
+
+                Column(
+                    modifier = Modifier
+                        .fillMaxWidth()
+                        .padding(24.dp),
+                    horizontalAlignment = Alignment.CenterHorizontally
+                ) {
+                    Box(
+                        modifier = Modifier
+                            .size(56.dp)
+                            .clip(CircleShape)
+                            .background(MaterialTheme.colorScheme.primaryContainer),
+                        contentAlignment = Alignment.Center
+                    ) {
+                        Icon(
+                            imageVector = Icons.Default.Lock,
+                            contentDescription = "Restore Lock Symbol",
+                            tint = MaterialTheme.colorScheme.onPrimaryContainer,
+                            modifier = Modifier.size(28.dp)
+                        )
+                    }
+
+                    Spacer(modifier = Modifier.height(16.dp))
+
+                    Text(
+                        text = if (currentLanguage == "bn") "ব্যাকআপ পুনরুদ্ধার যাচাইকরণ" else "Restore Verification",
+                        style = MaterialTheme.typography.titleLarge,
+                        fontWeight = FontWeight.Bold,
+                        color = MaterialTheme.colorScheme.onSurface,
+                        textAlign = TextAlign.Center
+                    )
+
+                    Spacer(modifier = Modifier.height(10.dp))
+
+                    Text(
+                        text = if (currentLanguage == "bn")
+                            "আপনার পূর্বের একটি লোকাল ব্যাকআপ পাওয়া গিয়েছে। এটি পুনরুদ্ধার করতে আপনার পূর্বের নাম এবং পিন লিখুন।"
+                            else "A prior local backup has been found. To restore your data, please enter the name and PIN associated with that backup.",
+                        style = MaterialTheme.typography.bodyMedium,
+                        color = MaterialTheme.colorScheme.onSurfaceVariant,
+                        textAlign = TextAlign.Center
+                    )
+
+                    Spacer(modifier = Modifier.height(20.dp))
+
+                    OutlinedTextField(
+                        value = inputName,
+                        onValueChange = { 
+                            inputName = it
+                            errorMessage = null
+                        },
+                        label = { Text(if (currentLanguage == "bn") "ব্যবহারকারীর নাম" else "Your Name") },
+                        placeholder = { Text(if (currentLanguage == "bn") "নাম লিখুন" else "Enter your name") },
+                        singleLine = true,
+                        modifier = Modifier.fillMaxWidth().testTag("restore_username_input"),
+                        shape = RoundedCornerShape(12.dp)
+                    )
+
+                    Spacer(modifier = Modifier.height(12.dp))
+
+                    OutlinedTextField(
+                        value = inputPin,
+                        onValueChange = { 
+                            if (it.length <= 4 && it.all { char -> char.isDigit() }) {
+                                inputPin = it
+                                errorMessage = null
+                            }
+                        },
+                        label = { Text(if (currentLanguage == "bn") "৪-সংখ্যার গোপন পিন" else "4-Digit PIN") },
+                        placeholder = { Text("••••") },
+                        singleLine = true,
+                        visualTransformation = androidx.compose.ui.text.input.PasswordVisualTransformation(),
+                        keyboardOptions = androidx.compose.foundation.text.KeyboardOptions(
+                            keyboardType = androidx.compose.ui.text.input.KeyboardType.Number
+                        ),
+                        modifier = Modifier.fillMaxWidth().testTag("restore_pin_input"),
+                        shape = RoundedCornerShape(12.dp)
+                    )
+
+                    if (errorMessage != null) {
+                        Spacer(modifier = Modifier.height(8.dp))
+                        Text(
+                            text = errorMessage!!,
+                            color = MaterialTheme.colorScheme.error,
+                            style = MaterialTheme.typography.bodySmall,
+                            fontWeight = FontWeight.Bold,
+                            textAlign = TextAlign.Center
+                        )
+                    }
+
+                    Spacer(modifier = Modifier.height(24.dp))
+
+                    Row(
+                        modifier = Modifier.fillMaxWidth(),
+                        horizontalArrangement = Arrangement.spacedBy(10.dp)
+                    ) {
+                        OutlinedButton(
+                            onClick = { viewModel.cancelRestore() },
+                            modifier = Modifier.weight(1f).testTag("restore_cancel_button"),
+                            shape = RoundedCornerShape(14.dp)
+                        ) {
+                            Text(if (currentLanguage == "bn") "বাদ দিন" else "Cancel")
+                        }
+
+                        Button(
+                            onClick = {
+                                if (inputName.isBlank() || inputPin.length < 4) {
+                                    errorMessage = if (currentLanguage == "bn") 
+                                        "দয়া করে সঠিক নাম এবং ৪-সংখ্যার পিন লিখুন" 
+                                        else "Please provide valid name and 4-digit PIN."
+                                    return@Button
+                                }
+                                viewModel.confirmRestore(
+                                    userNameInput = inputName,
+                                    userPinInput = inputPin,
+                                    onSuccess = {
+                                        Toast.makeText(
+                                            context,
+                                            if (currentLanguage == "bn") "ব্যাকআপ সফলভাবে পুনরুদ্ধার করা হয়েছে!" else "Backup restored successfully!",
+                                            Toast.LENGTH_LONG
+                                        ).show()
+                                    },
+                                    onError = { err ->
+                                        errorMessage = err
+                                    }
+                                )
+                            },
+                            modifier = Modifier.weight(1f).testTag("restore_confirm_button"),
+                            shape = RoundedCornerShape(14.dp)
+                        ) {
+                            Text(if (currentLanguage == "bn") "পুনরুদ্ধার" else "Restore")
+                        }
+                    }
+                }
+            }
+        }
+    }
+
+    // One-Time Profile Setup Dialog (Prompted if no credentials run yet and no backup found)
+    if (userSavedName == null && pendingRestoreInfo == null) {
+        androidx.compose.ui.window.Dialog(
+            onDismissRequest = { /* Mandatory setup profile name to proceed as guest */ }
+        ) {
+            Surface(
+                modifier = Modifier
+                    .fillMaxWidth()
+                    .padding(16.dp)
+                    .testTag("setup_profile_dialog"),
+                shape = RoundedCornerShape(28.dp),
+                color = MaterialTheme.colorScheme.surface,
+                tonalElevation = 6.dp
+            ) {
+                var inputName by remember { mutableStateOf("") }
+                var inputPin by remember { mutableStateOf("") }
+                var errorMessage by remember { mutableStateOf<String?>(null) }
+
+                Column(
+                    modifier = Modifier
+                        .fillMaxWidth()
+                        .padding(24.dp),
+                    horizontalAlignment = Alignment.CenterHorizontally
+                ) {
+                    Box(
+                        modifier = Modifier
+                            .size(56.dp)
+                            .clip(CircleShape)
+                            .background(MaterialTheme.colorScheme.primaryContainer),
+                        contentAlignment = Alignment.Center
+                    ) {
+                        Icon(
+                            imageVector = Icons.Default.AccountCircle,
+                            contentDescription = "User Setup Profile",
+                            tint = MaterialTheme.colorScheme.onPrimaryContainer,
+                            modifier = Modifier.size(28.dp)
+                        )
+                    }
+
+                    Spacer(modifier = Modifier.height(16.dp))
+
+                    Text(
+                        text = if (currentLanguage == "bn") "আপনার প্রোফাইল সেট আপ করুন" else "Set Up Your Profile",
+                        style = MaterialTheme.typography.titleLarge,
+                        fontWeight = FontWeight.Bold,
+                        color = MaterialTheme.colorScheme.onSurface,
+                        textAlign = TextAlign.Center
+                    )
+
+                    Spacer(modifier = Modifier.height(8.dp))
+
+                    Text(
+                        text = if (currentLanguage == "bn")
+                            "আপনার নাম এবং ৪-সংখ্যার গোপন পিন দিন। এটি আপনাকে আপনার ড্যাশবোর্ড সাজাতে সাহায্য করবে।"
+                            else "Enter your name and a secure 4-digit PIN to personalize your wallet dashboard and protect your data backups.",
+                        style = MaterialTheme.typography.bodyMedium,
+                        color = MaterialTheme.colorScheme.onSurfaceVariant,
+                        textAlign = TextAlign.Center
+                    )
+
+                    Spacer(modifier = Modifier.height(20.dp))
+
+                    OutlinedTextField(
+                        value = inputName,
+                        onValueChange = { 
+                            inputName = it
+                            errorMessage = null
+                        },
+                        label = { Text(if (currentLanguage == "bn") "ব্যবহারকারীর নাম" else "Your Name") },
+                        placeholder = { Text(if (currentLanguage == "bn") "নাম লিখুন" else "Enter your name") },
+                        singleLine = true,
+                        modifier = Modifier.fillMaxWidth().testTag("setup_username_input"),
+                        shape = RoundedCornerShape(12.dp)
+                    )
+
+                    Spacer(modifier = Modifier.height(12.dp))
+
+                    OutlinedTextField(
+                        value = inputPin,
+                        onValueChange = { 
+                            if (it.length <= 4 && it.all { char -> char.isDigit() }) {
+                                inputPin = it
+                                errorMessage = null
+                            }
+                        },
+                        label = { Text(if (currentLanguage == "bn") "৪-সংখ্যার পিন" else "4-Digit PIN") },
+                        placeholder = { Text("••••") },
+                        singleLine = true,
+                        visualTransformation = androidx.compose.ui.text.input.PasswordVisualTransformation(),
+                        keyboardOptions = androidx.compose.foundation.text.KeyboardOptions(
+                            keyboardType = androidx.compose.ui.text.input.KeyboardType.Number
+                        ),
+                        modifier = Modifier.fillMaxWidth().testTag("setup_pin_input"),
+                        shape = RoundedCornerShape(12.dp)
+                    )
+
+                    if (errorMessage != null) {
+                        Spacer(modifier = Modifier.height(8.dp))
+                        Text(
+                            text = errorMessage!!,
+                            color = MaterialTheme.colorScheme.error,
+                            style = MaterialTheme.typography.bodySmall,
+                            fontWeight = FontWeight.Bold,
+                            textAlign = TextAlign.Center
+                        )
+                    }
+
+                    Spacer(modifier = Modifier.height(24.dp))
+
+                    Button(
+                        onClick = {
+                            if (inputName.isBlank() || inputName.length < 2) {
+                                errorMessage = if (currentLanguage == "bn") 
+                                    "নাম অন্তত ২ অক্ষরের হতে হবে!" 
+                                    else "Name must be at least 2 characters!"
+                                return@Button
+                            }
+                            if (inputPin.length < 4) {
+                                errorMessage = if (currentLanguage == "bn") 
+                                    "পিন অবশ্যই ৪ সংখ্যার হতে হবে!" 
+                                    else "PIN must be exactly 4 digits!"
+                                return@Button
+                            }
+                            viewModel.saveUserNameAndPin(inputName.trim(), inputPin.trim())
+                            Toast.makeText(
+                                context,
+                                if (currentLanguage == "bn") "প্রোফাইল সেটআপ সম্পন্ন হয়েছে!" else "Profile setup completed successfully!",
+                                Toast.LENGTH_SHORT
+                            ).show()
+                        },
+                        modifier = Modifier.fillMaxWidth().testTag("setup_save_button"),
+                        shape = RoundedCornerShape(14.dp)
+                    ) {
+                        Text(if (currentLanguage == "bn") "সংরক্ষণ করুন" else "Save & Get Started")
+                    }
+                }
+            }
+        }
+    }
+
+    if (showProfileDialog) {
+        UserProfileEditDialog(
+            currentLanguage = currentLanguage,
+            currentName = userSavedName ?: "",
+            currentPin = userSavedPin ?: "",
+            currentDob = userDob ?: "",
+            currentGender = userGender ?: "",
+            currentAvatarIdx = userAvatarIdx,
+            currentAvatarCustomPath = userAvatarCustomPath,
+            onSave = { name, pin, dob, gender, avatarIdx, customPath ->
+                viewModel.updateProfile(name, pin, dob, gender, avatarIdx, customPath)
+                showProfileDialog = false
+            },
+            onDismiss = { showProfileDialog = false }
         )
     }
 
@@ -4840,6 +5208,7 @@ fun SettingsDialog(
     currentLanguage: String,
     selectedTheme: String,
     onThemeChange: (String) -> Unit,
+    onProfileClick: () -> Unit,
     onLanguageClick: () -> Unit,
     onImportBackup: () -> Unit,
     onDismiss: () -> Unit
@@ -5137,6 +5506,65 @@ fun SettingsDialog(
                             .padding(16.dp),
                         verticalArrangement = Arrangement.spacedBy(12.dp)
                     ) {
+                        // User Profile Option
+                        Card(
+                            modifier = Modifier
+                                .fillMaxWidth()
+                                .android16Clickable(shape = RoundedCornerShape(14.dp)) {
+                                    onProfileClick()
+                                }
+                                .testTag("settings_profile_button"),
+                            shape = RoundedCornerShape(14.dp),
+                            colors = CardDefaults.cardColors(
+                                containerColor = if (isDark) Color(0xFF1E293B).copy(alpha = 0.35f) else Color(0xFFF8FAFC)
+                            ),
+                            border = BorderStroke(1.dp, if (isDark) Color(0xFF334155).copy(alpha = 0.3f) else Color(0xFFE2E8F0))
+                        ) {
+                            Row(
+                                modifier = Modifier
+                                    .fillMaxWidth()
+                                    .padding(12.dp),
+                                verticalAlignment = Alignment.CenterVertically
+                            ) {
+                                Box(
+                                    modifier = Modifier
+                                        .size(36.dp)
+                                        .background(
+                                            color = Color(0xFF8B5CF6).copy(alpha = 0.12f),
+                                            shape = CircleShape
+                                        ),
+                                    contentAlignment = Alignment.Center
+                                ) {
+                                    Icon(
+                                        imageVector = Icons.Default.Person,
+                                        contentDescription = "Profile Option",
+                                        tint = Color(0xFF8B5CF6),
+                                        modifier = Modifier.size(18.dp)
+                                    )
+                                }
+                                Spacer(modifier = Modifier.width(12.dp))
+                                Column(modifier = Modifier.weight(1f)) {
+                                    Text(
+                                        text = if (currentLanguage == "bn") "আমার প্রোফাইল সেটিংস" else if (currentLanguage == "hi") "मेरी प्रोफाइल" else "Manage Profile Settings",
+                                        style = MaterialTheme.typography.bodyMedium,
+                                        fontWeight = FontWeight.Bold,
+                                        color = textPrimary
+                                    )
+                                    Text(
+                                        text = if (currentLanguage == "bn") "নাম, পিন, লিঙ্গ, জন্ম তারিখ ও ছবি পরিবর্তন করুন" else if (currentLanguage == "hi") "नाम, लिंग, जन्मतिथि, फ़ोटो और पिन बदलें" else "Edit name, PIN, gender, DOB and avatar",
+                                        style = MaterialTheme.typography.labelSmall,
+                                        color = textSecondary
+                                    )
+                                }
+                                Icon(
+                                    imageVector = Icons.Default.ChevronRight,
+                                    contentDescription = null,
+                                    tint = textSecondary.copy(alpha = 0.7f),
+                                    modifier = Modifier.size(20.dp)
+                                )
+                            }
+                        }
+
                         // Language Selector Option
                         Card(
                             modifier = Modifier
@@ -5493,14 +5921,6 @@ fun DeveloperCreditDialog(
                                 accentColor = Color(0xFFA855F7),
                                 title = if (lang == "bn") "ডিপার্টমেন্ট" else "DEPARTMENT",
                                 value = "Computer Science and Technology"
-                            )
-
-                            CreditItemCard(
-                                isDark = isDark,
-                                icon = Icons.Default.School,
-                                accentColor = Color(0xFF3B82F6),
-                                title = if (lang == "bn") "ইনস্টিটিউট" else "INSTITUTE",
-                                value = "Park Polytechnic Institute"
                             )
                         }
 
@@ -6343,8 +6763,17 @@ fun GoogleAvatar(
             val avatarUrl = remember(email) {
                 "https://www.google.com/s2/photos/profile/${email.trim().lowercase()}?sz=250"
             }
+            val context = androidx.compose.ui.platform.LocalContext.current
+            val imageRequest = remember(avatarUrl, context) {
+                coil.request.ImageRequest.Builder(context)
+                    .data(avatarUrl)
+                    .crossfade(true)
+                    .diskCachePolicy(coil.request.CachePolicy.ENABLED)
+                    .memoryCachePolicy(coil.request.CachePolicy.ENABLED)
+                    .build()
+            }
             AsyncImage(
-                model = avatarUrl,
+                model = imageRequest,
                 contentDescription = "Google profile picture",
                 contentScale = ContentScale.Crop,
                 modifier = Modifier.fillMaxSize(),
@@ -9524,3 +9953,1442 @@ fun DeleteConfirmationDialog(
         }
     }
 }
+
+@Composable
+fun SmartFinanceHeader(
+    currentUser: String?,
+    userSavedName: String?,
+    userAvatarIdx: Int,
+    userCustomAvatarPath: String?,
+    lang: String,
+    getString: (Int) -> String,
+    onShowProfile: () -> Unit
+) {
+    val isDark = isAppDark()
+    
+    // Greeting depending on time of day
+    val greeting = remember(lang) {
+        val hour = java.util.Calendar.getInstance().get(java.util.Calendar.HOUR_OF_DAY)
+        when (lang) {
+            "bn" -> {
+                when (hour) {
+                    in 5..11 -> "শুভ সকাল"
+                    in 12..16 -> "শুভ দুপুর"
+                    in 17..19 -> "শুভ সন্ধ্যা"
+                    else -> "শুভ রাত্রি"
+                }
+            }
+            else -> {
+                when (hour) {
+                    in 5..11 -> "Good Morning"
+                    in 12..16 -> "Good Afternoon"
+                    in 17..19 -> "Good Evening"
+                    else -> "Good Night"
+                }
+            }
+        }
+    }
+
+    val systemDateStr = remember(lang) {
+        val sdf = java.text.SimpleDateFormat(
+            if (lang == "bn") "EEEE, dd MMMM" else "EEEE, MMM dd", 
+            if (lang == "bn") Locale("bn") else Locale.US
+        )
+        sdf.format(java.util.Date())
+    }
+
+    Column(
+        modifier = Modifier
+            .fillMaxWidth()
+            .padding(start = 16.dp, end = 16.dp, top = 8.dp, bottom = 12.dp)
+    ) {
+        Row(
+            modifier = Modifier.fillMaxWidth(),
+            horizontalArrangement = Arrangement.SpaceBetween,
+            verticalAlignment = Alignment.CenterVertically
+        ) {
+            Column {
+                Text(
+                    text = "$greeting,",
+                    style = MaterialTheme.typography.titleLarge.copy(
+                        fontWeight = FontWeight.Black,
+                        color = if (isDark) Color.White else Color(0xFF1E293B)
+                    )
+                )
+                Row(verticalAlignment = Alignment.CenterVertically) {
+                    val displayName = when {
+                        currentUser != null -> currentUser.substringBefore("@")
+                        !userSavedName.isNullOrBlank() -> userSavedName
+                        else -> null
+                    }
+                    if (displayName != null) {
+                        Text(
+                            text = displayName,
+                            style = MaterialTheme.typography.headlineSmall.copy(
+                                fontWeight = FontWeight.Black,
+                                brush = Brush.linearGradient(
+                                    colors = listOf(Color(0xFF10B981), Color(0xFF3B82F6))
+                                )
+                            )
+                        )
+                        Spacer(modifier = Modifier.width(4.dp))
+                    }
+                    Text(
+                        text = "👋",
+                        style = MaterialTheme.typography.titleLarge
+                    )
+                }
+            }
+
+            Row(
+                verticalAlignment = Alignment.CenterVertically,
+                horizontalArrangement = Arrangement.spacedBy(8.dp)
+            ) {
+                // Quick date pill
+                Box(
+                    modifier = Modifier
+                        .clip(RoundedCornerShape(12.dp))
+                        .background(if (isDark) Color(0xFF1E293B).copy(alpha = 0.45f) else Color(0xFFE2E8F0))
+                        .border(1.dp, if (isDark) Color(0xFF334155).copy(alpha = 0.4f) else Color(0xFFCBD5E1).copy(alpha = 0.6f), RoundedCornerShape(12.dp))
+                        .padding(horizontal = 10.dp, vertical = 6.dp)
+                ) {
+                    Text(
+                        text = systemDateStr,
+                        style = MaterialTheme.typography.labelSmall,
+                        fontWeight = FontWeight.Bold,
+                        color = if (isDark) Color(0xFF94A3B8) else Color(0xFF475569)
+                    )
+                }
+
+                // Beautiful glowing round profile pic avatar
+                val avatars = listOf(
+                    "🦊", "🦁", "🐯", "🐼", "🐨", "🐱", "🐶", "🦄", "🚀", "💻", 
+                    "🧠", "🕶️", "🦸", "🧙", "🧭", "⚽", "🍿", "🎨", "🎸"
+                )
+                val avatarIdx = if (userAvatarIdx in avatars.indices) userAvatarIdx else 0
+                val selectedAvatar = avatars[avatarIdx]
+
+                if (!userCustomAvatarPath.isNullOrBlank()) {
+                    val context = androidx.compose.ui.platform.LocalContext.current
+                    val imageRequest = remember(userCustomAvatarPath, context) {
+                        coil.request.ImageRequest.Builder(context)
+                            .data(java.io.File(userCustomAvatarPath))
+                            .crossfade(true)
+                            .diskCachePolicy(coil.request.CachePolicy.ENABLED)
+                            .memoryCachePolicy(coil.request.CachePolicy.ENABLED)
+                            .build()
+                    }
+                    AsyncImage(
+                        model = imageRequest,
+                        contentDescription = "Custom Profile Portrait",
+                        modifier = Modifier
+                            .size(38.dp)
+                            .clip(CircleShape)
+                            .border(1.5.dp, Color(0xFF10B981), CircleShape)
+                            .android16Clickable { onShowProfile() }
+                            .testTag("dashboard_profile_avatar"),
+                        contentScale = ContentScale.Crop
+                    )
+                } else {
+                    Box(
+                        modifier = Modifier
+                            .size(38.dp)
+                            .clip(CircleShape)
+                            .background(
+                                brush = Brush.linearGradient(
+                                    colors = listOf(Color(0xFF10B981), Color(0xFF3B82F6))
+                                ),
+                                shape = CircleShape
+                            )
+                            .android16Clickable { onShowProfile() }
+                            .testTag("dashboard_profile_avatar"),
+                        contentAlignment = Alignment.Center
+                    ) {
+                        Text(
+                            text = selectedAvatar,
+                            style = MaterialTheme.typography.bodyMedium.copy(fontSize = 18.sp)
+                        )
+                    }
+                }
+            }
+        }
+
+        Spacer(modifier = Modifier.height(14.dp))
+
+        // Gorgeous Hero Card containing our generated image
+        Card(
+            modifier = Modifier
+                .fillMaxWidth()
+                .height(130.dp)
+                .testTag("onboarding_illustration_card"),
+            shape = RoundedCornerShape(24.dp),
+            elevation = CardDefaults.cardElevation(defaultElevation = 0.dp)
+        ) {
+            Box(modifier = Modifier.fillMaxSize()) {
+                // Background generated image
+                androidx.compose.foundation.Image(
+                    painter = androidx.compose.ui.res.painterResource(id = R.drawable.img_finance_hero_1781980069534),
+                    contentDescription = "Finance illustration background",
+                    modifier = Modifier.fillMaxSize(),
+                    contentScale = androidx.compose.ui.layout.ContentScale.Crop
+                )
+
+                // High-contrast smooth horizontal gradient block to make text pop out cleanly
+                Box(
+                    modifier = Modifier
+                        .fillMaxSize()
+                        .background(
+                            Brush.horizontalGradient(
+                                colors = listOf(
+                                    Color(0xE60F172A), // Midnight Dark Solid
+                                    Color(0x990F172A), 
+                                    Color(0x1F0F172A)
+                                )
+                            )
+                        )
+                )
+
+                // Motivational Text Content
+                Column(
+                    modifier = Modifier
+                        .fillMaxSize()
+                        .padding(16.dp),
+                    verticalArrangement = Arrangement.Center,
+                    horizontalAlignment = Alignment.Start
+                ) {
+                    Text(
+                        text = if (lang == "bn") "পরিকল্পিত ব্যয় নিশ্চিত করে সমৃদ্ধ ভবিষ্যৎ!" else "Smart tracking ensures prosperous future!",
+                        style = MaterialTheme.typography.titleMedium,
+                        fontWeight = FontWeight.ExtraBold,
+                        color = Color.White
+                    )
+                    Spacer(modifier = Modifier.height(4.dp))
+                    Text(
+                        text = if (lang == "bn") "হিসাব রাখুন নির্ভুলভাবে, বাঁচান আপনার অতিমূল্য টাকা।" else "Keep accurate cash records to safeguard your hard earned money.",
+                        style = MaterialTheme.typography.bodySmall,
+                        fontWeight = FontWeight.Medium,
+                        color = Color(0xFFCBD5E1),
+                        modifier = Modifier.fillMaxWidth(0.85f),
+                        maxLines = 2,
+                        overflow = TextOverflow.Ellipsis
+                    )
+                }
+            }
+        }
+    }
+}
+
+@OptIn(androidx.compose.foundation.layout.ExperimentalLayoutApi::class)
+@Composable
+fun CategoryDonutChart(
+    transactions: List<Transaction>,
+    lang: String,
+    getString: (Int) -> String,
+    isDark: Boolean
+) {
+    // 1. Filter expense transactions
+    val expenses = remember(transactions) {
+        transactions.filter { it.type == "EXPENSE" }
+    }
+    
+    if (expenses.isEmpty()) {
+        return
+    }
+
+    // 2. Group expenses by category
+    val categoryTotals = remember(expenses) {
+        expenses.groupBy { it.category }.mapValues { entry ->
+            entry.value.sumOf { it.amount }
+        }.toList().sortedByDescending { it.second }
+    }
+
+    val totalExpense = remember(categoryTotals) {
+        categoryTotals.sumOf { it.second }
+    }
+
+    if (totalExpense <= 0.0) return
+
+    val totalFormatted = remember(totalExpense, lang) {
+        formatCurrency(totalExpense, lang)
+    }
+
+    // 3. Keep track of selected category key
+    var selectedIndex by remember(categoryTotals) { mutableStateOf(-1) }
+
+    // Map each category to color and icon
+    val categoryDetails = remember(categoryTotals) {
+        categoryTotals.map { (catId, amt) ->
+            val resId = catId.toIntOrNull()
+            val name = if (resId != null) getString(resId) else catId
+            val color = when (resId) {
+                R.string.category_salary -> Color(0xFF10B981) // Emerald Green
+                R.string.category_food -> Color(0xFFF59E0B) // Golden Amber
+                R.string.category_groceries -> Color(0xFF84CC16) // Lime Green
+                R.string.category_utilities -> Color(0xFF6366F1) // Indigo Blue
+                R.string.category_entertainment -> Color(0xFFEC4899) // Hot Pink
+                R.string.category_transport -> Color(0xFF06B6D4) // Cyan
+                R.string.category_freelance -> Color(0xFF3B82F6) // Electric Blue
+                else -> Color(0xFF8E9CB2)
+            }
+            val percentage = (amt / totalExpense) * 100f
+            Triple(name, color, percentage)
+        }
+    }
+
+    val chartBorderColor = if (isDark) Color(0xFF475569).copy(alpha = 0.5f) else Color(0xFFCBD5E1).copy(alpha = 0.7f)
+    val containerBg = if (isDark) Color(0xFF1E293B).copy(alpha = 0.45f) else Color.White.copy(alpha = 0.72f)
+
+    Card(
+        modifier = Modifier
+            .fillMaxWidth()
+            .padding(horizontal = 16.dp, vertical = 8.dp)
+            .testTag("spending_breakdown_donut_card"),
+        shape = RoundedCornerShape(24.dp),
+        border = BorderStroke(1.dp, chartBorderColor),
+        colors = CardDefaults.cardColors(containerColor = containerBg),
+        elevation = CardDefaults.cardElevation(defaultElevation = 0.dp)
+    ) {
+        Column(
+            modifier = Modifier
+                .fillMaxWidth()
+                .padding(16.dp),
+            horizontalAlignment = Alignment.CenterHorizontally
+        ) {
+            // Header
+            Row(
+                modifier = Modifier.fillMaxWidth(),
+                horizontalArrangement = Arrangement.SpaceBetween,
+                verticalAlignment = Alignment.CenterVertically
+            ) {
+                Text(
+                    text = if (lang == "bn") "খরচ বিশ্লেষণ (চার্ট)" else "Expense Breakdown",
+                    style = MaterialTheme.typography.titleMedium,
+                    fontWeight = FontWeight.Black,
+                    color = if (isDark) Color.White else Color(0xFF1F2937)
+                )
+                Box(
+                    modifier = Modifier
+                        .clip(RoundedCornerShape(8.dp))
+                        .background(if (isDark) Color(0x33F43F5E) else Color(0xFFFEE2E2))
+                        .padding(horizontal = 8.dp, vertical = 4.dp)
+                ) {
+                    Text(
+                        text = if (lang == "bn") "মোট ব্যয়: $totalFormatted" else "Total Outflow: $totalFormatted",
+                        style = MaterialTheme.typography.labelSmall,
+                        fontWeight = FontWeight.Bold,
+                        color = if (isDark) Color(0xFFFDA4AF) else Color(0xFFDC2626)
+                    )
+                }
+            }
+            
+            Spacer(modifier = Modifier.height(16.dp))
+
+            // Box for canvas + inner text
+            Box(
+                modifier = Modifier
+                    .size(200.dp)
+                    .testTag("donut_chart_canvas_box"),
+                contentAlignment = Alignment.Center
+            ) {
+                val strokeWidthDp = 24.dp
+                val density = androidx.compose.ui.platform.LocalDensity.current
+                val strokeWidthPx = remember(strokeWidthDp) { with(density) { strokeWidthDp.toPx() } }
+                var canvasSize by remember { mutableStateOf(IntSize.Zero) }
+
+                Canvas(
+                    modifier = Modifier
+                        .fillMaxSize()
+                        .onSizeChanged { canvasSize = it }
+                        .pointerInput(categoryTotals) {
+                            detectTapGestures { offset ->
+                                val cx = canvasSize.width / 2f
+                                val cy = canvasSize.height / 2f
+                                val dx = offset.x - cx
+                                val dy = offset.y - cy
+                                val distance = Math.sqrt((dx * dx + dy * dy).toDouble())
+
+                                // Only trigger if click is inside the donut band
+                                val innerRadius = (canvasSize.width - strokeWidthPx) / 2f - strokeWidthPx / 2f
+                                val outerRadius = (canvasSize.width - strokeWidthPx) / 2f + strokeWidthPx / 2f
+                                if (distance in innerRadius..outerRadius) {
+                                    var angle = Math.toDegrees(Math.atan2(dy.toDouble(), dx.toDouble()))
+                                    if (angle < 0) {
+                                        angle += 360.0
+                                    }
+
+                                    // Find which category matches the angle
+                                    var currentAngle = 0f
+                                    var clickedIdx = -1
+                                    for (i in categoryTotals.indices) {
+                                        val amt = categoryTotals[i].second
+                                        val sweep = (amt / totalExpense).toFloat() * 360f
+                                        val nextAngle = currentAngle + sweep
+                                        if (angle >= currentAngle && angle < nextAngle) {
+                                            clickedIdx = i
+                                            break
+                                        }
+                                        currentAngle = nextAngle
+                                    }
+                                    if (clickedIdx != -1) {
+                                        selectedIndex = if (selectedIndex == clickedIdx) -1 else clickedIdx
+                                    }
+                                }
+                            }
+                        }
+                ) {
+                    var currentAngle = 0f
+                    categoryTotals.forEachIndexed { index, (catId, amt) ->
+                        val sweep = (amt / totalExpense).toFloat() * 360f
+                        val color = categoryDetails[index].second
+                        val isSelected = index == selectedIndex
+                        
+                        val widthPx = if (isSelected) strokeWidthPx * 1.35f else strokeWidthPx
+
+                        drawArc(
+                            color = color,
+                            startAngle = currentAngle,
+                            sweepAngle = sweep,
+                            useCenter = false,
+                            style = androidx.compose.ui.graphics.drawscope.Stroke(
+                                width = widthPx,
+                                cap = androidx.compose.ui.graphics.StrokeCap.Round
+                            ),
+                            size = size.copy(
+                                width = size.width - widthPx,
+                                height = size.height - widthPx
+                            ),
+                            topLeft = androidx.compose.ui.geometry.Offset(widthPx / 2, widthPx / 2)
+                        )
+                        currentAngle += sweep
+                    }
+                }
+
+                // Center Text Display (Donut Hole)
+                Column(
+                    horizontalAlignment = Alignment.CenterHorizontally,
+                    verticalArrangement = Arrangement.Center,
+                    modifier = Modifier.padding(32.dp)
+                ) {
+                    if (selectedIndex == -1) {
+                        Text(
+                            text = if (lang == "bn") "খরচের বিশ্লেষণ" else "Tap Slices",
+                            style = MaterialTheme.typography.labelSmall,
+                            fontWeight = FontWeight.Bold,
+                            color = if (isDark) Color(0xFF94A3B8) else Color(0xFF64748B),
+                            textAlign = TextAlign.Center
+                        )
+                        Spacer(modifier = Modifier.height(2.dp))
+                        Text(
+                            text = if (lang == "bn") "জানতে এখানে চাপুন" else "For Details",
+                            style = MaterialTheme.typography.bodySmall,
+                            fontWeight = FontWeight.Medium,
+                            color = if (isDark) Color(0xFF64748B) else Color(0xFF94A3B8),
+                            textAlign = TextAlign.Center
+                        )
+                    } else {
+                        val details = categoryDetails[selectedIndex]
+                        val rawAmt = categoryTotals[selectedIndex].second
+                        val categoryAmountFormatted = formatCurrency(rawAmt, lang)
+                        Text(
+                            text = details.first.uppercase(),
+                            style = MaterialTheme.typography.labelSmall,
+                            fontWeight = FontWeight.ExtraBold,
+                            color = details.second,
+                            maxLines = 1,
+                            overflow = TextOverflow.Ellipsis
+                        )
+                        Spacer(modifier = Modifier.height(2.dp))
+                        Text(
+                            text = categoryAmountFormatted,
+                            style = MaterialTheme.typography.titleMedium,
+                            fontWeight = FontWeight.Black,
+                            color = if (isDark) Color.White else Color(0xFF1F2937),
+                            maxLines = 1,
+                            overflow = TextOverflow.Ellipsis
+                        )
+                        Spacer(modifier = Modifier.height(1.dp))
+                        Text(
+                            text = String.format(Locale.US, "%.1f%%", details.third),
+                            style = MaterialTheme.typography.labelMedium,
+                            fontWeight = FontWeight.Black,
+                            color = if (isDark) Color(0xFF10B981) else Color(0xFF0D9488)
+                        )
+                    }
+                }
+            }
+
+            Spacer(modifier = Modifier.height(14.dp))
+
+            // Category Legends
+            androidx.compose.foundation.layout.FlowRow(
+                modifier = Modifier.fillMaxWidth(),
+                horizontalArrangement = Arrangement.Center,
+                maxItemsInEachRow = 3
+            ) {
+                categoryTotals.forEachIndexed { index, (catId, amt) ->
+                    val isSelected = index == selectedIndex
+                    val details = categoryDetails[index]
+                    
+                    Box(
+                        modifier = Modifier
+                            .padding(4.dp)
+                            .clip(RoundedCornerShape(12.dp))
+                            .background(
+                                if (isSelected) details.second.copy(alpha = 0.2f)
+                                else if (isDark) Color(0xFF334155).copy(alpha = 0.3f)
+                                else Color(0xFFF1F5F9)
+                            )
+                            .border(
+                                width = 1.dp,
+                                color = if (isSelected) details.second else Color.Transparent,
+                                shape = RoundedCornerShape(12.dp)
+                            )
+                            .android16Clickable {
+                                selectedIndex = if (selectedIndex == index) -1 else index
+                            }
+                            .padding(horizontal = 8.dp, vertical = 6.dp)
+                    ) {
+                        Row(
+                            verticalAlignment = Alignment.CenterVertically,
+                            horizontalArrangement = Arrangement.spacedBy(4.dp)
+                        ) {
+                            Box(
+                                modifier = Modifier
+                                    .size(8.dp)
+                                    .background(details.second, CircleShape)
+                            )
+                            Text(
+                                text = details.first,
+                                style = MaterialTheme.typography.labelSmall,
+                                fontWeight = if (isSelected) FontWeight.ExtraBold else FontWeight.Medium,
+                                color = if (isDark) Color.White else Color(0xFF374151)
+                            )
+                        }
+                    }
+                }
+            }
+        }
+    }
+}
+
+@Composable
+fun UserProfileEditDialog(
+    currentLanguage: String,
+    currentName: String,
+    currentPin: String,
+    currentDob: String,
+    currentGender: String,
+    currentAvatarIdx: Int,
+    currentAvatarCustomPath: String?,
+    onSave: (String, String, String, String, Int, String?) -> Unit,
+    onDismiss: () -> Unit
+) {
+    val isDark = isAppDark()
+    val textPrimary = if (isDark) Color.White else Color(0xFF0F172A)
+    val textSecondary = if (isDark) Color(0xFF94A3B8) else Color(0xFF64748B)
+
+    var inputName by remember { mutableStateOf(currentName) }
+    var inputPin by remember { mutableStateOf(currentPin) }
+    var inputDob by remember { mutableStateOf(currentDob) }
+    var inputGender by remember { mutableStateOf(currentGender) }
+    var selectedAvatarIdx by remember { mutableStateOf(currentAvatarIdx) }
+    var errorMessage by remember { mutableStateOf<String?>(null) }
+
+    val avatars = listOf(
+        "🦊", "🦁", "🐯", "🐼", "🐨", "🐱", "🐶", "🦄", "🚀", "💻", 
+        "🧠", "🕶️", "🦸", "🧙", "🧭", "⚽", "🍿", "🎨", "🎸"
+    )
+
+    val context = androidx.compose.ui.platform.LocalContext.current
+    var customAvatarPath by remember { mutableStateOf(currentAvatarCustomPath) }
+
+    val imagePickerLauncher = androidx.activity.compose.rememberLauncherForActivityResult(
+        contract = androidx.activity.result.contract.ActivityResultContracts.GetContent()
+    ) { uri: android.net.Uri? ->
+        uri?.let {
+            val savedPath = saveUserPictureInternal(context, it)
+            if (savedPath != null) {
+                customAvatarPath = savedPath
+            }
+        }
+    }
+
+    androidx.compose.ui.window.Dialog(
+        onDismissRequest = onDismiss
+    ) {
+        Surface(
+            modifier = Modifier
+                .fillMaxWidth()
+                .padding(16.dp)
+                .testTag("user_profile_edit_dialog"),
+            shape = RoundedCornerShape(28.dp),
+            color = if (isDark) Color(0xFF1E293B) else Color.White,
+            tonalElevation = 6.dp
+        ) {
+            Column(
+                modifier = Modifier
+                    .fillMaxWidth()
+                    .padding(20.dp)
+                    .verticalScroll(androidx.compose.foundation.rememberScrollState()),
+                horizontalAlignment = Alignment.CenterHorizontally
+            ) {
+                // Header Title
+                Row(
+                    modifier = Modifier.fillMaxWidth(),
+                    horizontalArrangement = Arrangement.SpaceBetween,
+                    verticalAlignment = Alignment.CenterVertically
+                ) {
+                    Text(
+                        text = if (currentLanguage == "bn") "প্রোফাইল সংশোধন" else "Edit Profile",
+                        style = MaterialTheme.typography.titleLarge,
+                        fontWeight = FontWeight.Bold,
+                        color = textPrimary
+                    )
+                    IconButton(onClick = onDismiss) {
+                        Icon(
+                            imageVector = Icons.Default.Close,
+                            contentDescription = "Close",
+                            tint = textSecondary
+                        )
+                    }
+                }
+
+                Spacer(modifier = Modifier.height(16.dp))
+
+                // Custom personal profile picture upload section
+                Row(
+                    modifier = Modifier
+                        .fillMaxWidth()
+                        .background(
+                            if (isDark) Color(0xFF0F172A).copy(alpha = 0.4f) else Color(0xFFF8FAFC),
+                            RoundedCornerShape(16.dp)
+                        )
+                        .border(
+                            1.dp,
+                            if (isDark) Color(0xFF334155).copy(alpha = 0.5f) else Color(0xFFE2E8F0),
+                            RoundedCornerShape(16.dp)
+                        )
+                        .padding(12.dp),
+                    verticalAlignment = Alignment.CenterVertically,
+                    horizontalArrangement = Arrangement.spacedBy(16.dp)
+                ) {
+                    // Profile preview circle
+                    Box(
+                        modifier = Modifier
+                            .size(64.dp)
+                            .clip(CircleShape)
+                            .background(
+                                if (isDark) Color(0xFF1E293B) else Color(0xFFE2E8F0)
+                            )
+                            .border(2.dp, Color(0xFF10B981), CircleShape),
+                        contentAlignment = Alignment.Center
+                    ) {
+                        if (!customAvatarPath.isNullOrBlank()) {
+                            val context = androidx.compose.ui.platform.LocalContext.current
+                            val imageRequest = remember(customAvatarPath, context) {
+                                coil.request.ImageRequest.Builder(context)
+                                    .data(java.io.File(customAvatarPath!!))
+                                    .crossfade(true)
+                                    .diskCachePolicy(coil.request.CachePolicy.ENABLED)
+                                    .memoryCachePolicy(coil.request.CachePolicy.ENABLED)
+                                    .build()
+                            }
+                            AsyncImage(
+                                model = imageRequest,
+                                contentDescription = "Active Custom Profile",
+                                modifier = Modifier
+                                    .fillMaxSize()
+                                    .clip(CircleShape),
+                                contentScale = ContentScale.Crop
+                            )
+                        } else {
+                            val activeAvatar = avatars.getOrElse(selectedAvatarIdx) { "🦊" }
+                            Text(
+                                text = activeAvatar,
+                                style = MaterialTheme.typography.displaySmall.copy(fontSize = 28.sp)
+                            )
+                        }
+                    }
+
+                    Column(
+                        modifier = Modifier.weight(1f),
+                        verticalArrangement = Arrangement.spacedBy(6.dp)
+                    ) {
+                        Text(
+                            text = if (currentLanguage == "bn") "নিজস্ব ছবি আপলোড করুন" else "Upload Personal Photo",
+                            style = MaterialTheme.typography.bodyMedium,
+                            fontWeight = FontWeight.Bold,
+                            color = textPrimary
+                        )
+
+                        Row(
+                            modifier = Modifier.fillMaxWidth(),
+                            horizontalArrangement = Arrangement.spacedBy(8.dp)
+                        ) {
+                            // Picker button
+                            Button(
+                                onClick = { imagePickerLauncher.launch("image/*") },
+                                shape = RoundedCornerShape(10.dp),
+                                contentPadding = PaddingValues(horizontal = 6.dp, vertical = 6.dp),
+                                colors = ButtonDefaults.buttonColors(
+                                    containerColor = Color(0xFF10B981),
+                                    contentColor = Color.White
+                                ),
+                                modifier = Modifier
+                                    .weight(1f)
+                                    .height(34.dp)
+                            ) {
+                                Row(
+                                    verticalAlignment = Alignment.CenterVertically,
+                                    horizontalArrangement = Arrangement.spacedBy(2.dp)
+                                ) {
+                                    Icon(
+                                        imageVector = Icons.Default.PhotoLibrary,
+                                        contentDescription = null,
+                                        modifier = Modifier.size(12.dp)
+                                    )
+                                    Text(
+                                        text = if (currentLanguage == "bn") "গ্যালারি" else "Gallery",
+                                        style = MaterialTheme.typography.labelSmall.copy(fontSize = 11.sp),
+                                        fontWeight = FontWeight.Bold,
+                                        maxLines = 1
+                                    )
+                                }
+                            }
+
+                            // Delete / Clear button if custom picture is active
+                            if (!customAvatarPath.isNullOrBlank()) {
+                                OutlinedButton(
+                                    onClick = { customAvatarPath = null },
+                                    shape = RoundedCornerShape(10.dp),
+                                    contentPadding = PaddingValues(horizontal = 6.dp, vertical = 6.dp),
+                                    colors = ButtonDefaults.outlinedButtonColors(
+                                        contentColor = Color(0xFFEF4444)
+                                    ),
+                                    border = BorderStroke(1.dp, Color(0xFFEF4444).copy(alpha = 0.8f)),
+                                    modifier = Modifier
+                                        .weight(1f)
+                                        .height(34.dp)
+                                ) {
+                                    Row(
+                                        verticalAlignment = Alignment.CenterVertically,
+                                        horizontalArrangement = Arrangement.spacedBy(2.dp)
+                                    ) {
+                                        Icon(
+                                            imageVector = Icons.Default.DeleteOutline,
+                                            contentDescription = null,
+                                            modifier = Modifier.size(12.dp)
+                                        )
+                                        Text(
+                                            text = if (currentLanguage == "bn") "মুছুন" else "Remove",
+                                            style = MaterialTheme.typography.labelSmall.copy(fontSize = 11.sp),
+                                            fontWeight = FontWeight.Bold,
+                                            maxLines = 1
+                                        )
+                                    }
+                                }
+                            } else {
+                                Spacer(modifier = Modifier.weight(1f))
+                            }
+                        }
+                    }
+                }
+
+                Spacer(modifier = Modifier.height(16.dp))
+
+                // Avatar selection Label
+                Text(
+                    text = if (currentLanguage == "bn") "অথবা পছন্দের একটি অবতার নির্বাচন করুন" else "Or select standard profile avatar",
+                    style = MaterialTheme.typography.labelMedium,
+                    fontWeight = FontWeight.Bold,
+                    color = textSecondary,
+                    modifier = Modifier.align(Alignment.Start)
+                )
+
+                Spacer(modifier = Modifier.height(8.dp))
+
+                // Horizontal scroll of beautiful round selection avatar circles
+                Row(
+                    modifier = Modifier
+                        .fillMaxWidth()
+                        .horizontalScroll(androidx.compose.foundation.rememberScrollState())
+                        .padding(vertical = 4.dp),
+                    horizontalArrangement = Arrangement.spacedBy(10.dp)
+                ) {
+                    avatars.forEachIndexed { index, avatar ->
+                        val isSelected = index == selectedAvatarIdx
+                        Box(
+                            modifier = Modifier
+                                .size(54.dp)
+                                .clip(CircleShape)
+                                .background(
+                                    if (isSelected) {
+                                        if (isDark) Color(0xFF38BDF8).copy(alpha = 0.25f) else Color(0xFFEFF6FF)
+                                    } else {
+                                        if (isDark) Color(0xFF334155).copy(alpha = 0.5f) else Color(0xFFF1F5F9)
+                                    }
+                                )
+                                .border(
+                                    width = if (isSelected) 2.6.dp else 1.dp,
+                                    color = if (isSelected) {
+                                        if (isDark) Color(0xFF38BDF8) else Color(0xFF2563EB)
+                                    } else {
+                                        if (isDark) Color(0xFF475569) else Color(0xFFCBD5E1)
+                                    },
+                                    shape = CircleShape
+                                )
+                                .android16Clickable {
+                                    selectedAvatarIdx = index
+                                }
+                                .testTag("avatar_select_$index"),
+                            contentAlignment = Alignment.Center
+                        ) {
+                            Text(
+                                text = avatar,
+                                style = MaterialTheme.typography.titleLarge.copy(fontSize = 24.sp)
+                            )
+                        }
+                    }
+                }
+
+                Spacer(modifier = Modifier.height(16.dp))
+
+                // Name Input Field
+                OutlinedTextField(
+                    value = inputName,
+                    onValueChange = {
+                        inputName = it
+                        errorMessage = null
+                    },
+                    label = { Text(if (currentLanguage == "bn") "ব্যবহারকারীর নাম" else "Your Name") },
+                    placeholder = { Text(if (currentLanguage == "bn") "নাম লিখুন" else "Enter your name") },
+                    singleLine = true,
+                    modifier = Modifier.fillMaxWidth().testTag("edit_username_input"),
+                    shape = RoundedCornerShape(12.dp)
+                )
+
+                Spacer(modifier = Modifier.height(12.dp))
+
+                // Date of Birth Input Field (YYYY-MM-DD)
+                OutlinedTextField(
+                    value = inputDob,
+                    onValueChange = {
+                        inputDob = it
+                        errorMessage = null
+                    },
+                    label = { Text(if (currentLanguage == "bn") "জন্ম তারিখ (যেমন: ১৯৯৮-১২-৩১)" else "Date of Birth (e.g., 1998-12-31)") },
+                    placeholder = { Text("YYYY-MM-DD") },
+                    singleLine = true,
+                    leadingIcon = {
+                        Icon(imageVector = Icons.Default.CalendarToday, contentDescription = null, tint = textSecondary)
+                    },
+                    modifier = Modifier.fillMaxWidth().testTag("edit_dob_input"),
+                    shape = RoundedCornerShape(12.dp)
+                )
+
+                Spacer(modifier = Modifier.height(12.dp))
+
+                // Gender Selector Label
+                Text(
+                    text = if (currentLanguage == "bn") "লিঙ্গ নির্বাচন করুন" else "Select Gender",
+                    style = MaterialTheme.typography.labelMedium,
+                    fontWeight = FontWeight.Bold,
+                    color = textSecondary,
+                    modifier = Modifier.align(Alignment.Start)
+                )
+
+                Spacer(modifier = Modifier.height(8.dp))
+
+                // Horizontal selection of beautiful round custom pills
+                Row(
+                    modifier = Modifier.fillMaxWidth(),
+                    horizontalArrangement = Arrangement.spacedBy(8.dp)
+                ) {
+                    val genders = listOf(
+                        Pair("MALE", Pair("পুরুষ", "Male")),
+                        Pair("FEMALE", Pair("নারী", "Female")),
+                        Pair("OTHER", Pair("অন্যান্য", "Other"))
+                    )
+
+                    genders.forEach { (genderId, labels) ->
+                        val label = if (currentLanguage == "bn") labels.first else labels.second
+                        val isSelected = inputGender.uppercase() == genderId
+                        
+                        Box(
+                            modifier = Modifier
+                                .weight(1f)
+                                .clip(RoundedCornerShape(14.dp))
+                                .background(
+                                    if (isSelected) {
+                                        if (isDark) Color(0xFF38BDF8).copy(alpha = 0.2f) else Color(0xFFEFF6FF)
+                                    } else {
+                                        if (isDark) Color(0xFF334155).copy(alpha = 0.3f) else Color(0xFFF8FAFC)
+                                    }
+                                )
+                                .border(
+                                    width = if (isSelected) 2.dp else 1.dp,
+                                    color = if (isSelected) {
+                                        if (isDark) Color(0xFF38BDF8) else Color(0xFF2563EB)
+                                    } else {
+                                        if (isDark) Color(0xFF475569) else Color(0xFFE2E8F0)
+                                    },
+                                    shape = RoundedCornerShape(14.dp)
+                                )
+                                .android16Clickable {
+                                    inputGender = genderId
+                                }
+                                .padding(vertical = 10.dp),
+                            contentAlignment = Alignment.Center
+                        ) {
+                            Text(
+                                text = label,
+                                style = MaterialTheme.typography.bodyMedium,
+                                fontWeight = if (isSelected) FontWeight.ExtraBold else FontWeight.Medium,
+                                color = if (isSelected) {
+                                    if (isDark) Color(0xFF38BDF8) else Color(0xFF2563EB)
+                                } else {
+                                    textSecondary
+                                }
+                            )
+                        }
+                    }
+                }
+
+                Spacer(modifier = Modifier.height(16.dp))
+
+                // PIN Input Field
+                OutlinedTextField(
+                    value = inputPin,
+                    onValueChange = {
+                        if (it.length <= 4 && it.all { char -> char.isDigit() }) {
+                            inputPin = it
+                            errorMessage = null
+                        }
+                    },
+                    label = { Text(if (currentLanguage == "bn") "৪-সংখ্যার পিন লক" else "4-Digit PIN Lock") },
+                    placeholder = { Text("••••") },
+                    singleLine = true,
+                    visualTransformation = androidx.compose.ui.text.input.PasswordVisualTransformation(),
+                    keyboardOptions = androidx.compose.foundation.text.KeyboardOptions(
+                        keyboardType = androidx.compose.ui.text.input.KeyboardType.Number
+                    ),
+                    modifier = Modifier.fillMaxWidth().testTag("edit_pin_input"),
+                    shape = RoundedCornerShape(12.dp)
+                )
+
+                if (errorMessage != null) {
+                    Spacer(modifier = Modifier.height(10.dp))
+                    Text(
+                        text = errorMessage!!,
+                        color = MaterialTheme.colorScheme.error,
+                        style = MaterialTheme.typography.bodySmall,
+                        fontWeight = FontWeight.Bold,
+                        textAlign = TextAlign.Center
+                    )
+                }
+
+                Spacer(modifier = Modifier.height(24.dp))
+
+                // Save / Cancel Footer Row
+                Row(
+                    modifier = Modifier.fillMaxWidth(),
+                    horizontalArrangement = Arrangement.spacedBy(10.dp)
+                ) {
+                    OutlinedButton(
+                        onClick = onDismiss,
+                        modifier = Modifier.weight(1f).testTag("edit_cancel_button"),
+                        shape = RoundedCornerShape(14.dp)
+                    ) {
+                        Text(if (currentLanguage == "bn") "বাতিল" else "Cancel")
+                    }
+
+                    Button(
+                        onClick = {
+                            if (inputName.isBlank() || inputName.length < 2) {
+                                errorMessage = if (currentLanguage == "bn") 
+                                    "নাম অন্তত ২ অক্ষরের হতে হবে!" 
+                                    else "Name must be at least 2 characters!"
+                                return@Button
+                            }
+                            if (inputPin.length < 4) {
+                                errorMessage = if (currentLanguage == "bn") 
+                                    "পিন অবশ্যই ৪ সংখ্যার হতে হবে!" 
+                                    else "PIN must be exactly 4 digits!"
+                                return@Button
+                            }
+                            onSave(inputName.trim(), inputPin.trim(), inputDob.trim(), inputGender.trim(), selectedAvatarIdx, customAvatarPath)
+                        },
+                        modifier = Modifier.weight(1.3f).testTag("edit_save_button"),
+                        shape = RoundedCornerShape(14.dp)
+                    ) {
+                        Text(
+                            text = if (currentLanguage == "bn") "সংরক্ষণ" else "Save",
+                            maxLines = 1,
+                            style = MaterialTheme.typography.bodyLarge,
+                            fontWeight = FontWeight.Bold
+                        )
+                    }
+                }
+            }
+        }
+    }
+}
+
+fun isBiometricSupported(context: android.content.Context): Boolean {
+    val biometricManager = BiometricManager.from(context)
+    val authenticators = BiometricManager.Authenticators.BIOMETRIC_STRONG or BiometricManager.Authenticators.BIOMETRIC_WEAK
+    return biometricManager.canAuthenticate(authenticators) == BiometricManager.BIOMETRIC_SUCCESS
+}
+
+fun showBiometricPrompt(
+    activity: FragmentActivity,
+    title: String,
+    subtitle: String,
+    onSuccess: () -> Unit,
+    onError: (String) -> Unit
+) {
+    val executor = ContextCompat.getMainExecutor(activity)
+    val biometricPrompt = BiometricPrompt(
+        activity,
+        executor,
+        object : BiometricPrompt.AuthenticationCallback() {
+            override fun onAuthenticationError(errorCode: Int, errString: CharSequence) {
+                super.onAuthenticationError(errorCode, errString)
+                if (errorCode != BiometricPrompt.ERROR_USER_CANCELED && errorCode != BiometricPrompt.ERROR_NEGATIVE_BUTTON) {
+                    onError(errString.toString())
+                }
+            }
+
+            override fun onAuthenticationSucceeded(result: BiometricPrompt.AuthenticationResult) {
+                super.onAuthenticationSucceeded(result)
+                onSuccess()
+            }
+
+            override fun onAuthenticationFailed() {
+                super.onAuthenticationFailed()
+                onError("Authentication failed")
+            }
+        }
+    )
+
+    val promptInfo = BiometricPrompt.PromptInfo.Builder()
+        .setTitle(title)
+        .setSubtitle(subtitle)
+        .setNegativeButtonText(if (title.contains("বায়োমেট্রিক") || title.contains("পিন")) "পিন ব্যবহার করুন" else "Use PIN")
+        .setAllowedAuthenticators(BiometricManager.Authenticators.BIOMETRIC_STRONG or BiometricManager.Authenticators.BIOMETRIC_WEAK)
+        .build()
+
+    try {
+        biometricPrompt.authenticate(promptInfo)
+    } catch (e: Exception) {
+        onError(e.message ?: "Authentication error")
+    }
+}
+
+@Composable
+fun RowScope.PinKeyButton(
+    key: String,
+    isDark: Boolean,
+    textPrimary: Color,
+    textSecondary: Color,
+    onClick: () -> Unit
+) {
+    val interactionSource = remember { androidx.compose.foundation.interaction.MutableInteractionSource() }
+    val isPressed by interactionSource.collectIsPressedAsState()
+    val scale by androidx.compose.animation.core.animateFloatAsState(
+        targetValue = if (isPressed) 0.86f else 1.0f,
+        animationSpec = spring(
+            dampingRatio = androidx.compose.animation.core.Spring.DampingRatioMediumBouncy,
+            stiffness = androidx.compose.animation.core.Spring.StiffnessMedium
+        )
+    )
+
+    Box(
+        modifier = Modifier
+            .weight(1f)
+            .aspectRatio(1f)
+            .graphicsLayer {
+                scaleX = scale
+                scaleY = scale
+            }
+            .clip(CircleShape)
+            .background(
+                if (key == "❌" || key == "⌫") {
+                    Color.Transparent
+                } else {
+                    if (isDark) Color(0xFF1E293B) else Color(0xFFE2E8F0)
+                }
+            )
+            .clickable(
+                interactionSource = interactionSource,
+                indication = androidx.compose.foundation.LocalIndication.current,
+                onClick = onClick
+            )
+            .border(
+                width = 1.dp,
+                color = if (key == "❌" || key == "⌫") {
+                    Color.Transparent
+                } else {
+                    if (isDark) Color(0xFF334155).copy(alpha = 0.5f) else Color(0xFFCBD5E1).copy(alpha = 0.5f)
+                },
+                shape = CircleShape
+            ),
+        contentAlignment = Alignment.Center
+    ) {
+        if (key == "⌫") {
+            Icon(
+                imageVector = Icons.Default.Backspace,
+                contentDescription = "Backspace",
+                tint = if (isDark) Color(0xFFEF4444) else Color(0xFFDC2626),
+                modifier = Modifier.size(24.dp)
+            )
+        } else if (key == "❌") {
+            Icon(
+                imageVector = Icons.Default.DeleteOutline,
+                contentDescription = "Clear",
+                tint = textSecondary,
+                modifier = Modifier.size(24.dp)
+            )
+        } else {
+            Text(
+                text = key,
+                style = MaterialTheme.typography.titleLarge.copy(fontSize = 25.sp),
+                fontWeight = FontWeight.ExtraBold,
+                color = textPrimary
+            )
+        }
+    }
+}
+
+@Composable
+fun PinLockScreen(
+    viewModel: FinanceViewModel,
+    currentLanguage: String
+) {
+    val isDark = isAppDark()
+    val textPrimary = if (isDark) Color.White else Color(0xFF0F172A)
+    val textSecondary = if (isDark) Color(0xFF94A3B8) else Color(0xFF64748B)
+    
+    var pinInput by remember { mutableStateOf("") }
+    var showError by remember { mutableStateOf(false) }
+
+    val context = LocalContext.current
+    val activity = context as? FragmentActivity
+    val isBiometricAvailable = remember(context) { isBiometricSupported(context) }
+
+    val biometricTitle = if (currentLanguage == "bn") "বায়োমেট্রিক যাচাইকরণ" else "Biometric Authentication"
+    val biometricSubtitle = if (currentLanguage == "bn") "অ্যাপ আনলক করতে আপনার ফিঙ্গারপ্রিন্ট অথবা ফেস আইডি ব্যবহার করুন" else "Confirm your fingerprint or face recognition to unlock your wallet"
+
+    LaunchedEffect(isBiometricAvailable, activity) {
+        if (isBiometricAvailable && activity != null) {
+            showBiometricPrompt(
+                activity = activity,
+                title = biometricTitle,
+                subtitle = biometricSubtitle,
+                onSuccess = {
+                    viewModel.unlockWithBiometric()
+                },
+                onError = { _ ->
+                    // Fallback to manual PIN entry if failed or canceled
+                }
+            )
+        }
+    }
+
+    val userSavedName by viewModel.userSavedName.collectAsStateWithLifecycle()
+    val userAvatarIdx by viewModel.userAvatarIdx.collectAsStateWithLifecycle()
+    val userAvatarCustomPath by viewModel.userAvatarCustomPath.collectAsStateWithLifecycle()
+
+    val titleText = if (currentLanguage == "bn") "স্বাগতম, $userSavedName" else "Welcome back, $userSavedName"
+    val subtitleText = if (currentLanguage == "bn") "অ্যাপে প্রবেশ করতে ৪-সংখ্যার গোপন পিন দিন" else "Please enter your 4-digit PIN to access your wallet"
+
+    val avatars = listOf(
+        "🦊", "🦁", "🐯", "🐼", "🐨", "🐱", "🐶", "🦄", "🚀", "💻", 
+        "🧠", "🕶️", "🦸", "🧙", "🧭", "⚽", "🍿", "🎨", "🎸"
+    )
+    val avatarIdx = if (userAvatarIdx in avatars.indices) userAvatarIdx else 0
+    val selectedAvatar = avatars[avatarIdx]
+
+    // Error shaking animation offset
+    val shakeOffset = remember { androidx.compose.animation.core.Animatable(0f) }
+    LaunchedEffect(showError) {
+        if (showError) {
+            repeat(4) {
+                shakeOffset.animateTo(
+                    targetValue = if (it % 2 == 0) 12f else -12f,
+                    animationSpec = androidx.compose.animation.core.tween(durationMillis = 60)
+                )
+            }
+            shakeOffset.animateTo(
+                targetValue = 0f,
+                animationSpec = androidx.compose.animation.core.tween(durationMillis = 65)
+            )
+        }
+    }
+
+    // Screen content
+    Box(
+        modifier = Modifier
+            .fillMaxSize()
+            .background(if (isDark) Color(0xFF0F172A) else Color(0xFFF1F5F9))
+            .statusBarsPadding()
+            .navigationBarsPadding(),
+        contentAlignment = Alignment.Center
+    ) {
+        Column(
+            horizontalAlignment = Alignment.CenterHorizontally,
+            modifier = Modifier
+                .fillMaxWidth()
+                .padding(24.dp)
+                .verticalScroll(androidx.compose.foundation.rememberScrollState()),
+            verticalArrangement = Arrangement.Center
+        ) {
+            // Elegant avatar representation with gradient circle and breathing shadow
+            Box(
+                modifier = Modifier
+                    .size(105.dp)
+                    .shadow(12.dp, CircleShape)
+                    .clip(CircleShape)
+                    .background(
+                        brush = Brush.linearGradient(
+                            colors = listOf(Color(0xFF10B981), Color(0xFF3B82F6))
+                        )
+                    )
+                    .padding(4.dp),
+                contentAlignment = Alignment.Center
+            ) {
+                Box(
+                    modifier = Modifier
+                        .fillMaxSize()
+                        .clip(CircleShape)
+                        .background(if (isDark) Color(0xFF0F172A) else Color.White),
+                    contentAlignment = Alignment.Center
+                ) {
+                    if (!userAvatarCustomPath.isNullOrBlank()) {
+                        val context = androidx.compose.ui.platform.LocalContext.current
+                        val imageRequest = remember(userAvatarCustomPath, context) {
+                            coil.request.ImageRequest.Builder(context)
+                                .data(java.io.File(userAvatarCustomPath!!))
+                                .crossfade(true)
+                                .diskCachePolicy(coil.request.CachePolicy.ENABLED)
+                                .memoryCachePolicy(coil.request.CachePolicy.ENABLED)
+                                .build()
+                        }
+                        AsyncImage(
+                            model = imageRequest,
+                            contentDescription = "User Profile Picture",
+                            modifier = Modifier
+                                .fillMaxSize()
+                                .clip(CircleShape),
+                            contentScale = ContentScale.Crop
+                        )
+                    } else {
+                        Text(
+                            text = selectedAvatar,
+                            style = MaterialTheme.typography.displaySmall.copy(fontSize = 42.sp)
+                        )
+                    }
+                }
+            }
+
+            Spacer(modifier = Modifier.height(20.dp))
+
+            Text(
+                text = titleText,
+                style = MaterialTheme.typography.headlineSmall,
+                fontWeight = FontWeight.ExtraBold,
+                color = textPrimary,
+                textAlign = TextAlign.Center
+            )
+
+            Spacer(modifier = Modifier.height(8.dp))
+
+            Text(
+                text = subtitleText,
+                style = MaterialTheme.typography.bodyMedium,
+                color = textSecondary,
+                textAlign = TextAlign.Center
+            )
+
+            Spacer(modifier = Modifier.height(24.dp))
+
+            // PIN Dots Indicator with Shake Effect & Pulsating Scaling Animation
+            Row(
+                modifier = Modifier.offset(x = shakeOffset.value.dp),
+                horizontalArrangement = Arrangement.spacedBy(16.dp),
+                verticalAlignment = Alignment.CenterVertically
+            ) {
+                for (i in 0 until 4) {
+                    val isFilled = i < pinInput.length
+                    val dotWeight by animateFloatAsState(
+                        targetValue = if (isFilled) 1.25f else 1.0f,
+                        animationSpec = spring(
+                            dampingRatio = Spring.DampingRatioHighBouncy,
+                            stiffness = Spring.StiffnessMedium
+                        )
+                    )
+                    val dotColor by animateColorAsState(
+                        targetValue = if (showError) {
+                            MaterialTheme.colorScheme.error
+                        } else if (isFilled) {
+                            Color(0xFF10B981) // Beautiful active Emerald status
+                        } else {
+                            if (isDark) Color(0xFF334155) else Color(0xFFCBD5E1)
+                        },
+                        animationSpec = tween(durationMillis = 150)
+                    )
+                    Box(
+                        modifier = Modifier
+                            .size((14 * dotWeight).dp)
+                            .background(
+                                color = dotColor,
+                                shape = CircleShape
+                            )
+                            .border(
+                                width = 1.dp,
+                                color = if (isDark) Color(0xFF475569) else Color(0xFF94A3B8),
+                                shape = CircleShape
+                            )
+                    )
+                }
+            }
+
+            if (showError) {
+                Spacer(modifier = Modifier.height(12.dp))
+                Text(
+                    text = if (currentLanguage == "bn") "ভুল পিন টাইপ করা হয়েছে, আবার চেষ্টা করুন!" else "Incorrect PIN, please try again!",
+                    color = MaterialTheme.colorScheme.error,
+                    style = MaterialTheme.typography.bodySmall,
+                    fontWeight = FontWeight.Bold,
+                    textAlign = TextAlign.Center
+                )
+            }
+
+            Spacer(modifier = Modifier.height(36.dp))
+
+            // Elegant circular numeric layout keyboard grid with springy press interactions
+            Column(
+                modifier = Modifier.widthIn(max = 280.dp),
+                verticalArrangement = Arrangement.spacedBy(12.dp)
+            ) {
+                val buttonRows = listOf(
+                    listOf("1", "2", "3"),
+                    listOf("4", "5", "6"),
+                    listOf("7", "8", "9"),
+                    listOf("❌", "0", "⌫")
+                )
+
+                for (row in buttonRows) {
+                    Row(
+                        modifier = Modifier.fillMaxWidth(),
+                        horizontalArrangement = Arrangement.spacedBy(12.dp)
+                    ) {
+                        for (key in row) {
+                            PinKeyButton(
+                                key = key,
+                                isDark = isDark,
+                                textPrimary = textPrimary,
+                                textSecondary = textSecondary,
+                                onClick = {
+                                    showError = false
+                                    when (key) {
+                                        "❌" -> {
+                                            pinInput = ""
+                                        }
+                                        "⌫" -> {
+                                            if (pinInput.isNotEmpty()) {
+                                                pinInput = pinInput.dropLast(1)
+                                            }
+                                        }
+                                        else -> {
+                                            if (pinInput.length < 4) {
+                                                pinInput += key
+                                                if (pinInput.length == 4) {
+                                                    val unlocked = viewModel.unlockApp(pinInput)
+                                                    if (!unlocked) {
+                                                        showError = true
+                                                        pinInput = ""
+                                                    }
+                                                }
+                                             }
+                                         }
+                                     }
+                                 }
+                            )
+                        }
+                    }
+                }
+            }
+
+            if (isBiometricAvailable) {
+                Spacer(modifier = Modifier.height(24.dp))
+                
+                Button(
+                    onClick = {
+                        activity?.let {
+                            showBiometricPrompt(
+                                activity = it,
+                                title = biometricTitle,
+                                subtitle = biometricSubtitle,
+                                onSuccess = {
+                                    viewModel.unlockWithBiometric()
+                                },
+                                onError = { _ ->
+                                    // Handle or show subtle feedback
+                                }
+                            )
+                        }
+                    },
+                    colors = ButtonDefaults.buttonColors(
+                        containerColor = if (isDark) Color(0xFF1E293B) else Color(0xFFE2E8F0),
+                        contentColor = textPrimary
+                    ),
+                    modifier = Modifier
+                        .widthIn(max = 280.dp)
+                        .fillMaxWidth()
+                        .height(52.dp)
+                        .border(
+                            width = 1.dp,
+                            color = if (isDark) Color(0xFF334155) else Color(0xFFCBD5E1),
+                            shape = CircleShape
+                        )
+                        .testTag("biometric_unlock_button"),
+                    shape = CircleShape,
+                    contentPadding = PaddingValues(horizontal = 24.dp)
+                ) {
+                    Icon(
+                        imageVector = Icons.Default.Fingerprint,
+                        contentDescription = "Biometric Lock",
+                        tint = Color(0xFF10B981),
+                        modifier = Modifier.size(24.dp)
+                    )
+                    Spacer(modifier = Modifier.width(11.dp))
+                    Text(
+                        text = if (currentLanguage == "bn") "বায়োমেট্রিক আনলক" else "Biometric Unlock",
+                        fontWeight = FontWeight.ExtraBold,
+                        style = MaterialTheme.typography.labelLarge.copy(fontSize = 15.sp)
+                    )
+                }
+            }
+        }
+    }
+}
+
+fun saveUserPictureInternal(context: android.content.Context, uri: android.net.Uri): String? {
+    return try {
+        val inputStream = context.contentResolver.openInputStream(uri)
+        val file = java.io.File(context.filesDir, "custom_profile_image_${System.currentTimeMillis()}.jpg")
+        val outputStream = java.io.FileOutputStream(file)
+        inputStream?.use { input ->
+            outputStream.use { output ->
+                input.copyTo(output)
+            }
+        }
+        file.absolutePath
+    } catch (e: Exception) {
+        e.printStackTrace()
+        null
+    }
+}
+
+
