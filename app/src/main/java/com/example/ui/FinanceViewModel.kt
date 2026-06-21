@@ -82,12 +82,144 @@ class FinanceViewModel(application: Application) : AndroidViewModel(application)
     private val _userAvatarCustomPath = MutableStateFlow<String?>(prefs.getString("user_avatar_custom_path", null))
     val userAvatarCustomPath: StateFlow<String?> = _userAvatarCustomPath.asStateFlow()
 
+    private val _personalSavings = MutableStateFlow<Double>(prefs.getFloat("personal_savings_amount", 0f).toDouble())
+    val personalSavings: StateFlow<Double> = _personalSavings.asStateFlow()
+
+    private val _savingsByTargets = MutableStateFlow<Map<String, Double>>(loadSavingsByTargets())
+    val savingsByTargets: StateFlow<Map<String, Double>> = _savingsByTargets.asStateFlow()
+
+    private fun loadSavingsByTargets(): Map<String, Double> {
+        val jsonStr = prefs.getString("savings_by_targets", null)
+        if (jsonStr.isNullOrBlank()) {
+            val legacy = prefs.getFloat("personal_savings_amount", 0f).toDouble()
+            if (legacy > 0) {
+                return mapOf("Personal Account" to legacy)
+            }
+            return emptyMap()
+        }
+        return try {
+            val json = JSONObject(jsonStr)
+            val map = mutableMapOf<String, Double>()
+            json.keys().forEach { key ->
+                map[key] = json.getDouble(key)
+            }
+            map
+        } catch (e: Exception) {
+            emptyMap()
+        }
+    }
+
+    fun saveMoneyToPersonalAccount(amount: Double, note: String, currentLanguage: String) {
+        saveMoneyToTarget("Personal Account", amount, note, currentLanguage)
+    }
+
+    fun saveMoneyToTarget(target: String, amount: Double, note: String, currentLanguage: String) {
+        val updatedMap = _savingsByTargets.value.toMutableMap()
+        val currentVal = updatedMap[target] ?: 0.0
+        updatedMap[target] = currentVal + amount
+        _savingsByTargets.value = updatedMap
+
+        val json = JSONObject()
+        updatedMap.forEach { (key, value) ->
+            json.put(key, value)
+        }
+        prefs.edit().putString("savings_by_targets", json.toString()).apply()
+
+        val total = updatedMap.values.sum()
+        _personalSavings.value = total
+        prefs.edit().putFloat("personal_savings_amount", total.toFloat()).apply()
+
+        val categoryName = if (currentLanguage == "bn") "সঞ্চয়" else "Savings"
+        val displayTarget = getLocalizedTargetName(target, currentLanguage)
+        val noteContent = note.ifBlank {
+            if (currentLanguage == "bn") {
+                "$displayTarget-এর কাছে জমা করা হয়েছে"
+            } else {
+                "Saved money with $displayTarget"
+            }
+        }
+        addTransaction(
+            amount = amount,
+            category = categoryName,
+            type = "EXPENSE",
+            note = noteContent,
+            dateLong = System.currentTimeMillis()
+        )
+    }
+
+    fun withdrawMoneyFromTarget(target: String, amount: Double, note: String, currentLanguage: String): Boolean {
+        val updatedMap = _savingsByTargets.value.toMutableMap()
+        val currentVal = updatedMap[target] ?: 0.0
+        if (currentVal < amount) return false
+
+        updatedMap[target] = currentVal - amount
+        _savingsByTargets.value = updatedMap
+
+        val json = JSONObject()
+        updatedMap.forEach { (key, value) ->
+            json.put(key, value)
+        }
+        prefs.edit().putString("savings_by_targets", json.toString()).apply()
+
+        val total = updatedMap.values.sum()
+        _personalSavings.value = total
+        prefs.edit().putFloat("personal_savings_amount", total.toFloat()).apply()
+
+        val categoryName = if (currentLanguage == "bn") "সঞ্চয় উঠানো" else "Savings Withdrawal"
+        val displayTarget = getLocalizedTargetName(target, currentLanguage)
+        val noteContent = note.ifBlank {
+            if (currentLanguage == "bn") {
+                "$displayTarget-এর কাছ থেকে উঠানো হয়েছে"
+            } else {
+                "Withdrawn money from $displayTarget"
+            }
+        }
+        addTransaction(
+            amount = amount,
+            category = categoryName,
+            type = "INCOME",
+            note = noteContent,
+            dateLong = System.currentTimeMillis()
+        )
+        return true
+    }
+
+    private fun getLocalizedTargetName(target: String, lang: String): String {
+        return when (target) {
+            "Wife" -> if (lang == "bn") "বউ (স্ত্রী)" else "Wife"
+            "Father" -> if (lang == "bn") "বাবা" else "Father"
+            "Personal Account" -> if (lang == "bn") "ব্যক্তিগত ব্যাংক" else "Personal Account"
+            else -> target
+        }
+    }
+
+    private val _isAppLockEnabled = MutableStateFlow<Boolean>(prefs.getBoolean("app_lock_enabled", true))
+    val isAppLockEnabled: StateFlow<Boolean> = _isAppLockEnabled.asStateFlow()
+
+    private val _isBiometricEnabled = MutableStateFlow<Boolean>(prefs.getBoolean("biometric_enabled", true))
+    val isBiometricEnabled: StateFlow<Boolean> = _isBiometricEnabled.asStateFlow()
+
+    fun setAppLockEnabled(enabled: Boolean) {
+        _isAppLockEnabled.value = enabled
+        prefs.edit().putBoolean("app_lock_enabled", enabled).apply()
+        if (!enabled) {
+            _isAppLocked.value = false
+        }
+    }
+
+    fun setBiometricEnabled(enabled: Boolean) {
+        _isBiometricEnabled.value = enabled
+        prefs.edit().putBoolean("biometric_enabled", enabled).apply()
+    }
+
     private val _isAppLocked = MutableStateFlow<Boolean>(false)
     val isAppLocked: StateFlow<Boolean> = _isAppLocked.asStateFlow()
 
     fun lockApp() {
-        if (!prefs.getString("user_saved_pin", null).isNullOrBlank()) {
+        if (_isAppLockEnabled.value && !prefs.getString("user_saved_pin", null).isNullOrBlank()) {
             _isAppLocked.value = true
+        } else {
+            _isAppLocked.value = false
         }
     }
 

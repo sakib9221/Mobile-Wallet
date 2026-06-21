@@ -309,6 +309,7 @@ fun FinanceDashboardScreen(
     var showReportPreviewDialog by remember { mutableStateOf(false) }
     var showAllTransactionsDialog by remember { mutableStateOf(false) }
     var showLanguageDialog by remember { mutableStateOf(false) }
+    var showSaveMoneyDialog by remember { mutableStateOf(false) }
     var transactionToDelete by remember { mutableStateOf<Transaction?>(null) }
     val bItems by viewModel.bajarItems.collectAsStateWithLifecycle()
     val debtRecords by viewModel.debtRecords.collectAsStateWithLifecycle()
@@ -614,7 +615,8 @@ fun FinanceDashboardScreen(
                         onBajarList = { showBajarListDialog = true },
                         onDebtsLoans = { showDebtListDialog = true },
                         onDownloadPdf = { showReportPreviewDialog = true },
-                        onImportBackup = { filePickerLauncher.launch("application/json") }
+                        onImportBackup = { filePickerLauncher.launch("application/json") },
+                        onSaveMoney = { showSaveMoneyDialog = true }
                     )
 
             Spacer(modifier = Modifier.height(24.dp))
@@ -696,6 +698,7 @@ fun FinanceDashboardScreen(
     // Dialog 0.5: Settings Dialog
     if (showSettingsDialog) {
         SettingsDialog(
+            viewModel = viewModel,
             currentLanguage = currentLanguage,
             selectedTheme = selectedTheme,
             onThemeChange = onThemeChange,
@@ -722,6 +725,14 @@ fun FinanceDashboardScreen(
                 showLanguageDialog = false
             },
             onDismiss = { showLanguageDialog = false }
+        )
+    }
+
+    if (showSaveMoneyDialog) {
+        SaveMoneyDialog(
+            viewModel = viewModel,
+            currentLanguage = currentLanguage,
+            onDismiss = { showSaveMoneyDialog = false }
         )
     }
 
@@ -4007,10 +4018,15 @@ fun GoogleAuthDialog(
                                             },
                                             modifier = Modifier
                                                 .weight(1f)
-                                                .height(48.dp),
+                                                .heightIn(min = 48.dp),
+                                             contentPadding = PaddingValues(horizontal = 8.dp, vertical = 4.dp),
                                             shape = RoundedCornerShape(12.dp)
                                         ) {
-                                            Text(if (lang == "bn") "ফিরে যান" else "Back")
+                                            Text(
+                                                text = if (lang == "bn") "ফিরে যান" else "Back",
+                                                maxLines = 1,
+                                                overflow = TextOverflow.Ellipsis
+                                            )
                                         }
 
                                         Button(
@@ -4025,14 +4041,20 @@ fun GoogleAuthDialog(
                                             },
                                             modifier = Modifier
                                                 .weight(1.5f)
-                                                .height(48.dp)
+                                                .heightIn(min = 48.dp)
                                                 .testTag("google_signin_submit"),
+                                            contentPadding = PaddingValues(horizontal = 8.dp, vertical = 4.dp),
                                             shape = RoundedCornerShape(12.dp),
                                             colors = ButtonDefaults.buttonColors(
                                                 containerColor = MaterialTheme.colorScheme.primary
                                             )
                                         ) {
-                                            Text(if (lang == "bn") "সাইন-ইন" else "Sign In", fontWeight = FontWeight.Bold)
+                                            Text(
+                                                text = if (lang == "bn") "সাইন-ইন" else "Sign In",
+                                                fontWeight = FontWeight.Bold,
+                                                maxLines = 1,
+                                                overflow = TextOverflow.Ellipsis
+                                            )
                                         }
                                     }
                                 }
@@ -5205,6 +5227,7 @@ private fun FeatureItemRow(
 
 @Composable
 fun SettingsDialog(
+    viewModel: FinanceViewModel,
     currentLanguage: String,
     selectedTheme: String,
     onThemeChange: (String) -> Unit,
@@ -5487,6 +5510,120 @@ fun SettingsDialog(
                                     }
                                 }
                             }
+                        }
+                    }
+
+                    // Security & App Lock settings card block
+                    Column(
+                        modifier = Modifier
+                            .fillMaxWidth()
+                            .background(
+                                color = containerBg,
+                                shape = RoundedCornerShape(24.dp)
+                            )
+                            .border(
+                                width = 1.dp,
+                                color = if (isDark) Color(0xFF334155).copy(alpha = 0.5f) else Color(0xFFE2E8F0),
+                                shape = RoundedCornerShape(24.dp)
+                            )
+                            .padding(16.dp),
+                        verticalArrangement = Arrangement.spacedBy(14.dp)
+                    ) {
+                        Row(
+                            verticalAlignment = Alignment.CenterVertically,
+                            modifier = Modifier.padding(bottom = 4.dp)
+                        ) {
+                            Box(
+                                modifier = Modifier
+                                    .size(24.dp)
+                                    .background(Color(0xFF10B981).copy(alpha = 0.15f), CircleShape),
+                                contentAlignment = Alignment.Center
+                            ) {
+                                Icon(
+                                    imageVector = Icons.Default.Lock,
+                                    contentDescription = null,
+                                    tint = Color(0xFF10B981),
+                                    modifier = Modifier.size(14.dp)
+                                )
+                            }
+                            Spacer(modifier = Modifier.width(8.dp))
+                            Text(
+                                text = if (currentLanguage == "bn") "নিরাপত্তা ও লক সেটিংস" else "Security & App Lock",
+                                style = MaterialTheme.typography.titleSmall,
+                                fontWeight = FontWeight.Black,
+                                color = textPrimary
+                            )
+                        }
+
+                        val isAppLockEnabled by viewModel.isAppLockEnabled.collectAsStateWithLifecycle()
+                        val isBiometricEnabled by viewModel.isBiometricEnabled.collectAsStateWithLifecycle()
+
+                        Row(
+                            modifier = Modifier
+                                .fillMaxWidth()
+                                .padding(vertical = 4.dp),
+                            verticalAlignment = Alignment.CenterVertically,
+                            horizontalArrangement = Arrangement.SpaceBetween
+                        ) {
+                            Column(modifier = Modifier.weight(1f)) {
+                                Text(
+                                    text = if (currentLanguage == "bn") "গোপন পিন লক সচল করুন" else "Enable App Lock",
+                                    style = MaterialTheme.typography.bodyMedium,
+                                    fontWeight = FontWeight.Bold,
+                                    color = textPrimary
+                                )
+                                Text(
+                                    text = if (currentLanguage == "bn") "অ্যাপে ঢুকতে ৪ ডিজিটের পিন আবশ্যক করুন" else "Require 4-digit PIN when opening app",
+                                    style = MaterialTheme.typography.labelSmall,
+                                    color = textSecondary
+                                )
+                            }
+                            Switch(
+                                checked = isAppLockEnabled,
+                                onCheckedChange = { viewModel.setAppLockEnabled(it) },
+                                colors = SwitchDefaults.colors(
+                                    checkedThumbColor = Color(0xFF10B981),
+                                    checkedTrackColor = Color(0xFF10B981).copy(alpha = 0.4f)
+                                ),
+                                modifier = Modifier.testTag("app_lock_toggle")
+                            )
+                        }
+
+                        HorizontalDivider(
+                            color = if (isDark) Color(0xFF334155).copy(alpha = 0.5f) else Color(0xFFE2E8F0),
+                            thickness = 1.dp
+                        )
+
+                        Row(
+                            modifier = Modifier
+                                .fillMaxWidth()
+                                .padding(vertical = 4.dp),
+                            verticalAlignment = Alignment.CenterVertically,
+                            horizontalArrangement = Arrangement.SpaceBetween
+                        ) {
+                            Column(modifier = Modifier.weight(1f)) {
+                                Text(
+                                    text = if (currentLanguage == "bn") "বায়োমেট্রিক দিয়ে আনলক" else "Biometric Authentication",
+                                    style = MaterialTheme.typography.bodyMedium,
+                                    fontWeight = FontWeight.Bold,
+                                    color = textPrimary
+                                )
+                                Text(
+                                    text = if (currentLanguage == "bn") "ফিঙ্গারপ্রিন্ট বা ফেস আইডি দিয়ে আনলক করুন" else "Use fingerprint or face recognition helper",
+                                    style = MaterialTheme.typography.labelSmall,
+                                    color = textSecondary
+                                )
+                            }
+                            Switch(
+                                checked = isBiometricEnabled,
+                                onCheckedChange = { viewModel.setBiometricEnabled(it) },
+                                colors = SwitchDefaults.colors(
+                                    checkedThumbColor = Color(0xFF10B981),
+                                    checkedTrackColor = Color(0xFF10B981).copy(alpha = 0.4f)
+                                ),
+                                enabled = isAppLockEnabled,
+                                modifier = Modifier.testTag("biometric_lock_toggle")
+                            )
                         }
                     }
 
@@ -8847,9 +8984,10 @@ fun ReportPreviewDialog(
                             onClick = { onSharePdf(activeTransactions) },
                             shape = RoundedCornerShape(12.dp),
                             border = BorderStroke(1.dp, if (isDark) Color(0xFF334155) else Color(0xFFCBD5E1)),
+                            contentPadding = PaddingValues(horizontal = 8.dp, vertical = 4.dp),
                             modifier = Modifier
                                 .weight(1.5f)
-                                .height(46.dp)
+                                .heightIn(min = 46.dp)
                         ) {
                             Icon(
                                 imageVector = Icons.Default.Share,
@@ -8857,12 +8995,13 @@ fun ReportPreviewDialog(
                                 modifier = Modifier.size(16.dp),
                                 tint = if (isDark) Color.White else Color(0xFF475569)
                             )
-                            Spacer(modifier = Modifier.width(6.dp))
+                            Spacer(modifier = Modifier.width(4.dp))
                             Text(
                                 text = if (currentLanguage == "bn") "শেয়ার করুন" else "Share Report",
                                 style = MaterialTheme.typography.labelMedium.copy(fontWeight = FontWeight.Bold),
                                 color = if (isDark) Color.White else Color(0xFF475569),
-                                maxLines = 1
+                                maxLines = 1,
+                                overflow = TextOverflow.Ellipsis
                             )
                         }
 
@@ -8873,9 +9012,10 @@ fun ReportPreviewDialog(
                                 containerColor = if (isDark) MaterialTheme.colorScheme.primary else Color(0xFF2563EB),
                                 contentColor = Color.White
                             ),
+                            contentPadding = PaddingValues(horizontal = 8.dp, vertical = 4.dp),
                             modifier = Modifier
                                 .weight(1.8f)
-                                .height(46.dp)
+                                .heightIn(min = 46.dp)
                         ) {
                             Icon(
                                 imageVector = Icons.Default.Download,
@@ -8883,12 +9023,13 @@ fun ReportPreviewDialog(
                                 modifier = Modifier.size(16.dp),
                                 tint = Color.White
                             )
-                            Spacer(modifier = Modifier.width(6.dp))
+                            Spacer(modifier = Modifier.width(4.dp))
                             Text(
                                 text = if (currentLanguage == "bn") "ডাউনলোড ও সেভ" else "Download & Save",
                                 style = MaterialTheme.typography.labelMedium.copy(fontWeight = FontWeight.Bold),
                                 color = Color.White,
-                                maxLines = 1
+                                maxLines = 1,
+                                overflow = TextOverflow.Ellipsis
                             )
                         }
                     }
@@ -8909,7 +9050,8 @@ fun DashboardActionsGrid(
     onBajarList: () -> Unit,
     onDebtsLoans: () -> Unit,
     onDownloadPdf: () -> Unit,
-    onImportBackup: () -> Unit
+    onImportBackup: () -> Unit,
+    onSaveMoney: () -> Unit
 ) {
     val isDark = isAppDark()
     val cardBg = if (isDark) Color(0xFF1E293B).copy(alpha = 0.55f) else Color.White.copy(alpha = 0.72f)
@@ -8937,7 +9079,7 @@ fun DashboardActionsGrid(
                 color = if (isDark) Color(0xFF94A3B8) else Color(0xFFCBD5E1)
             )
 
-            // 5 Vertical Actions & Tools as requested
+            // 6 Vertical Actions & Tools as requested
             DropdownItem(
                 icon = Icons.Default.Add,
                 iconBg = if (isDark) Color(0xFF4F46E5) else Color(0xFF6366F1),
@@ -8973,6 +9115,15 @@ fun DashboardActionsGrid(
                 desc = if (currentLanguage == "bn") "কারো থেকে ঋণ গ্রহণ বা প্রদানের হিসাব" else "Track active loans or lendings",
                 isDark = isDark,
                 onClick = onDebtsLoans
+            )
+
+            DropdownItem(
+                icon = Icons.Default.Savings,
+                iconBg = Color(0xFFEC4899),
+                title = if (currentLanguage == "bn") "ব্যক্তিগত ব্যাংকে জমানো" else "Personal Savings",
+                desc = if (currentLanguage == "bn") "মেইন ব্যালেন্স থেকে টাকা কেটে সঞ্চয় হিসাব যোগ করুন" else "Deduct from main balance and save to personal account",
+                isDark = isDark,
+                onClick = onSaveMoney
             )
 
             DropdownItem(
@@ -9910,7 +10061,7 @@ fun DeleteConfirmationDialog(
                 // Actions Button Row
                 Row(
                     modifier = Modifier.fillMaxWidth(),
-                    horizontalArrangement = Arrangement.spacedBy(12.dp)
+                    horizontalArrangement = Arrangement.spacedBy(8.dp)
                 ) {
                     // Cancel button
                     Button(
@@ -9922,11 +10073,14 @@ fun DeleteConfirmationDialog(
                         ),
                         modifier = Modifier
                             .weight(1f)
-                            .height(48.dp)
+                            .heightIn(min = 48.dp),
+                        contentPadding = PaddingValues(horizontal = 8.dp, vertical = 4.dp)
                     ) {
                         Text(
                             text = cancelText,
-                            style = MaterialTheme.typography.labelLarge.copy(fontWeight = FontWeight.Black)
+                            style = MaterialTheme.typography.labelLarge.copy(fontWeight = FontWeight.Black),
+                            maxLines = 1,
+                            overflow = TextOverflow.Ellipsis
                         )
                     }
 
@@ -9940,12 +10094,15 @@ fun DeleteConfirmationDialog(
                         ),
                         modifier = Modifier
                             .weight(1f)
-                            .height(48.dp)
+                            .heightIn(min = 48.dp),
+                        contentPadding = PaddingValues(horizontal = 8.dp, vertical = 4.dp)
                     ) {
                         Text(
                             text = deleteText,
                             style = MaterialTheme.typography.labelLarge.copy(fontWeight = FontWeight.Black),
-                            color = Color.White
+                            color = Color.White,
+                            maxLines = 1,
+                            overflow = TextOverflow.Ellipsis
                         )
                     }
                 }
@@ -11075,12 +11232,15 @@ fun PinLockScreen(
     val context = LocalContext.current
     val activity = context as? FragmentActivity
     val isBiometricAvailable = remember(context) { isBiometricSupported(context) }
+    val isBiometricEnabled by viewModel.isBiometricEnabled.collectAsStateWithLifecycle()
+    val isAppLockEnabled by viewModel.isAppLockEnabled.collectAsStateWithLifecycle()
 
     val biometricTitle = if (currentLanguage == "bn") "বায়োমেট্রিক যাচাইকরণ" else "Biometric Authentication"
     val biometricSubtitle = if (currentLanguage == "bn") "অ্যাপ আনলক করতে আপনার ফিঙ্গারপ্রিন্ট অথবা ফেস আইডি ব্যবহার করুন" else "Confirm your fingerprint or face recognition to unlock your wallet"
 
-    LaunchedEffect(isBiometricAvailable, activity) {
-        if (isBiometricAvailable && activity != null) {
+    val shouldTriggerAutoBiometric = isBiometricAvailable && isBiometricEnabled && isAppLockEnabled
+    LaunchedEffect(shouldTriggerAutoBiometric, activity) {
+        if (shouldTriggerAutoBiometric && activity != null) {
             showBiometricPrompt(
                 activity = activity,
                 title = biometricTitle,
@@ -11320,7 +11480,7 @@ fun PinLockScreen(
                 }
             }
 
-            if (isBiometricAvailable) {
+            if (isBiometricAvailable && isBiometricEnabled) {
                 Spacer(modifier = Modifier.height(24.dp))
                 
                 Button(
@@ -11388,6 +11548,450 @@ fun saveUserPictureInternal(context: android.content.Context, uri: android.net.U
     } catch (e: Exception) {
         e.printStackTrace()
         null
+    }
+}
+
+@Composable
+fun SaveMoneyDialog(
+    viewModel: FinanceViewModel,
+    currentLanguage: String,
+    onDismiss: () -> Unit
+) {
+    val isDark = isAppDark()
+    val personalSavings by viewModel.personalSavings.collectAsStateWithLifecycle()
+    val savingsByTargets by viewModel.savingsByTargets.collectAsStateWithLifecycle()
+    val stats by viewModel.stats.collectAsStateWithLifecycle()
+
+    var isWithdrawMode by remember { mutableStateOf(false) }
+    var selectedTarget by remember { mutableStateOf("Personal Account") }
+    var customTargetInput by remember { mutableStateOf("") }
+    var amountInput by remember { mutableStateOf("") }
+    var noteInput by remember { mutableStateOf("") }
+    var showError by remember { mutableStateOf(false) }
+    var errorMessage by remember { mutableStateOf("") }
+
+    val context = LocalContext.current
+
+    val dialogBg = if (isDark) Color(0xFF0F172A) else Color.White
+    val cardBg = if (isDark) Color(0xFF1E293B) else Color(0xFFF1F5F9)
+    val textPrimary = if (isDark) Color.White else Color(0xFF0F172A)
+    val textSecondary = if (isDark) Color(0xFF94A3B8) else Color(0xFF64748B)
+
+    val predefinedTargets = remember { listOf("Personal Account", "Wife", "Father") }
+    val allTargets = remember(savingsByTargets) {
+        val list = predefinedTargets.toMutableList()
+        savingsByTargets.keys.forEach { key ->
+            if (key !in list && key.isNotBlank()) {
+                list.add(key)
+            }
+        }
+        list
+    }
+
+    androidx.compose.ui.window.Dialog(
+        onDismissRequest = onDismiss,
+        properties = androidx.compose.ui.window.DialogProperties(
+            dismissOnBackPress = true,
+            dismissOnClickOutside = true
+        )
+    ) {
+        Card(
+            modifier = Modifier
+                .fillMaxWidth()
+                .padding(vertical = 12.dp, horizontal = 8.dp)
+                .testTag("save_money_dialog_container"),
+            shape = RoundedCornerShape(28.dp),
+            colors = CardDefaults.cardColors(containerColor = dialogBg),
+            border = BorderStroke(1.dp, if (isDark) Color(0xFF334155) else Color(0xFFE2E8F0))
+        ) {
+            Column(
+                modifier = Modifier
+                    .fillMaxWidth()
+                    .padding(20.dp)
+                    .verticalScroll(androidx.compose.foundation.rememberScrollState()),
+                horizontalAlignment = Alignment.CenterHorizontally,
+                verticalArrangement = Arrangement.spacedBy(14.dp)
+            ) {
+                Box(
+                    modifier = Modifier
+                        .size(56.dp)
+                        .background(Color(0xFFEC4899).copy(alpha = 0.15f), CircleShape),
+                    contentAlignment = Alignment.Center
+                ) {
+                    Icon(
+                        imageVector = Icons.Default.Savings,
+                        contentDescription = null,
+                        tint = Color(0xFFEC4899),
+                        modifier = Modifier.size(32.dp)
+                    )
+                }
+
+                Text(
+                    text = if (currentLanguage == "bn") "ব্যক্তিগত ব্যাংকিং ও সঞ্চয়" else "Personal Savings Vault",
+                    style = MaterialTheme.typography.titleLarge,
+                    fontWeight = FontWeight.Black,
+                    color = textPrimary
+                )
+
+                // Mode Toggle (Deposit vs Withdraw)
+                Row(
+                    modifier = Modifier
+                        .fillMaxWidth()
+                        .background(if (isDark) Color(0xFF1E293B) else Color(0xFFF1F5F9), RoundedCornerShape(12.dp))
+                        .padding(4.dp),
+                    horizontalArrangement = Arrangement.spacedBy(4.dp)
+                ) {
+                    listOf(false, true).forEach { mode ->
+                        val isSel = isWithdrawMode == mode
+                        val title = if (mode) {
+                            if (currentLanguage == "bn") "টাকা উঠান (Withdraw)" else "Withdraw"
+                        } else {
+                            if (currentLanguage == "bn") "টাকা জমান (Save)" else "Save Funds"
+                        }
+
+                        Box(
+                            modifier = Modifier
+                                .weight(1f)
+                                .background(
+                                    if (isSel) Color(0xFFEC4899) else Color.Transparent,
+                                    RoundedCornerShape(8.dp)
+                                )
+                                .clickable { 
+                                    isWithdrawMode = mode
+                                    showError = false
+                                }
+                                .padding(vertical = 8.dp),
+                            contentAlignment = Alignment.Center
+                        ) {
+                            Text(
+                                text = title,
+                                style = MaterialTheme.typography.labelMedium,
+                                fontWeight = FontWeight.Bold,
+                                color = if (isSel) Color.White else textSecondary
+                            )
+                        }
+                    }
+                }
+
+                Text(
+                    text = if (isWithdrawMode) {
+                        if (currentLanguage == "bn") "উত্তোলনকৃত অর্থ আপনার মেইন ব্যালেন্সে পুনরায় যোগ হবে।" else "Withdrawn funds will be added back to your wallet balance."
+                    } else {
+                        if (currentLanguage == "bn") "সঞ্চয়কৃত অর্থ আপনার মেইন ব্যালেন্স থেকে কর্তন করা হবে।" else "Saved funds will be deducted from your main balance wallet."
+                    },
+                    style = MaterialTheme.typography.bodySmall,
+                    color = textSecondary,
+                    textAlign = TextAlign.Center
+                )
+
+                // Cumulative balance card
+                Card(
+                    modifier = Modifier.fillMaxWidth(),
+                    shape = RoundedCornerShape(16.dp),
+                    colors = CardDefaults.cardColors(containerColor = cardBg),
+                    border = BorderStroke(1.dp, if (isDark) Color(0xFF334155).copy(alpha = 0.3f) else Color(0xFFE2E8F0))
+                ) {
+                    Column(
+                        modifier = Modifier
+                            .fillMaxWidth()
+                            .padding(12.dp),
+                        horizontalAlignment = Alignment.CenterHorizontally
+                    ) {
+                        Text(
+                            text = if (currentLanguage == "bn") "মোট সঞ্চিত ব্যালেন্স" else "Cumulative Savings Wallet",
+                            style = MaterialTheme.typography.labelSmall,
+                            color = textSecondary
+                        )
+                        Text(
+                            text = String.format("%.2f ৳", personalSavings),
+                            style = MaterialTheme.typography.titleLarge,
+                            fontWeight = FontWeight.ExtraBold,
+                            color = Color(0xFFEC4899)
+                        )
+                    }
+                }
+
+                // Target Selector Label
+                Row(
+                    modifier = Modifier.fillMaxWidth(),
+                    horizontalArrangement = Arrangement.Start
+                ) {
+                    Text(
+                        text = if (isWithdrawMode) {
+                            if (currentLanguage == "bn") "কার কাছ থেকে উঠাবেন?" else "Withdraw from whom?"
+                        } else {
+                            if (currentLanguage == "bn") "কার কাছে জমা রাখবেন?" else "Save/Keep with whom?"
+                        },
+                        style = MaterialTheme.typography.labelMedium,
+                        fontWeight = FontWeight.Bold,
+                        color = textPrimary
+                    )
+                }
+
+                // Horizontal Target Selector Carousel
+                Row(
+                    modifier = Modifier
+                        .fillMaxWidth()
+                        .horizontalScroll(androidx.compose.foundation.rememberScrollState()),
+                    horizontalArrangement = Arrangement.spacedBy(8.dp)
+                ) {
+                    val displayLoopTargets = allTargets + "Other"
+                    displayLoopTargets.forEach { targetKey ->
+                        val isOther = targetKey == "Other"
+                        val isSelected = if (isOther) {
+                            selectedTarget !in allTargets
+                        } else {
+                            selectedTarget == targetKey
+                        }
+
+                        val displayName = when (targetKey) {
+                            "Personal Account" -> if (currentLanguage == "bn") "ব্যক্তিগত ব্যাংক" else "Personal Bank"
+                            "Wife" -> if (currentLanguage == "bn") "বউ (স্ত্রী)" else "Wife"
+                            "Father" -> if (currentLanguage == "bn") "বাবা" else "Father"
+                            "Other" -> if (currentLanguage == "bn") "+ নতুন ব্যক্তি" else "+ New Person"
+                            else -> targetKey
+                        }
+
+                        val balance = if (isOther) 0.0 else (savingsByTargets[targetKey] ?: 0.0)
+
+                        val icon = when (targetKey) {
+                            "Personal Account" -> Icons.Default.Savings
+                            "Wife" -> Icons.Default.Favorite
+                            "Father" -> Icons.Default.Person
+                            "Other" -> Icons.Default.Add
+                            else -> Icons.Default.Face
+                        }
+
+                        val tintColor = when (targetKey) {
+                            "Personal Account" -> Color(0xFFF59E0B) // Amber
+                            "Wife" -> Color(0xFFEC4899) // Pink
+                            "Father" -> Color(0xFF10B981) // Emerald
+                            "Other" -> Color(0xFF6366F1) // Indigo
+                            else -> Color(0xFF06B6D4) // Cyan
+                        }
+
+                        Card(
+                            modifier = Modifier
+                                .width(115.dp)
+                                .clickable {
+                                    if (isOther) {
+                                        selectedTarget = ""
+                                    } else {
+                                        selectedTarget = targetKey
+                                    }
+                                    showError = false
+                                },
+                            shape = RoundedCornerShape(12.dp),
+                            colors = CardDefaults.cardColors(
+                                containerColor = if (isSelected) tintColor.copy(alpha = 0.15f) else cardBg
+                            ),
+                            border = BorderStroke(
+                                width = if (isSelected) 2.dp else 1.dp,
+                                color = if (isSelected) tintColor else if (isDark) Color(0xFF334155) else Color(0xFFE2E8F0)
+                            )
+                        ) {
+                            Column(
+                                modifier = Modifier
+                                    .fillMaxWidth()
+                                    .padding(8.dp),
+                                horizontalAlignment = Alignment.CenterHorizontally,
+                                verticalArrangement = Arrangement.spacedBy(4.dp)
+                            ) {
+                                Icon(
+                                    imageVector = icon,
+                                    contentDescription = null,
+                                    tint = tintColor,
+                                    modifier = Modifier.size(24.dp)
+                                )
+                                Text(
+                                    text = displayName,
+                                    style = MaterialTheme.typography.labelSmall,
+                                    fontWeight = FontWeight.Bold,
+                                    color = textPrimary,
+                                    maxLines = 1,
+                                    overflow = TextOverflow.Ellipsis
+                                )
+                                if (!isOther) {
+                                    Text(
+                                        text = String.format("%.0f ৳", balance),
+                                        style = MaterialTheme.typography.bodySmall,
+                                        fontWeight = FontWeight.Bold,
+                                        color = Color(0xFFEC4899),
+                                        maxLines = 1,
+                                        overflow = TextOverflow.Ellipsis
+                                    )
+                                } else {
+                                    Text(
+                                        text = if (currentLanguage == "bn") "সংযোজন" else "Create",
+                                        style = MaterialTheme.typography.bodySmall,
+                                        color = textSecondary,
+                                        maxLines = 1
+                                    )
+                                }
+                            }
+                        }
+                    }
+                }
+
+                // Custom Target input text field
+                if (selectedTarget !in allTargets) {
+                    OutlinedTextField(
+                        value = customTargetInput,
+                        onValueChange = { 
+                            customTargetInput = it 
+                            showError = false
+                        },
+                        label = { Text(if (currentLanguage == "bn") "ব্যক্তির নাম লিখুন (উদা: মা, ভাই)" else "Enter Person's Name (e.g. Mother, Brother)") },
+                        placeholder = { Text(if (currentLanguage == "bn") "নাম লিখুন..." else "Enter name...") },
+                        singleLine = true,
+                        shape = RoundedCornerShape(14.dp),
+                        modifier = Modifier
+                            .fillMaxWidth()
+                            .testTag("custom_target_name_input")
+                    )
+                }
+
+                if (showError) {
+                    Text(
+                        text = errorMessage,
+                        style = MaterialTheme.typography.labelMedium,
+                        color = MaterialTheme.colorScheme.error,
+                        textAlign = TextAlign.Center
+                    )
+                }
+
+                OutlinedTextField(
+                    value = amountInput,
+                    onValueChange = {
+                        if (it.isEmpty() || it.toDoubleOrNull() != null) {
+                            amountInput = it
+                            showError = false
+                        }
+                    },
+                    label = { Text(if (currentLanguage == "bn") "কত টাকা?" else "Amount") },
+                    placeholder = { Text("0.00") },
+                    keyboardOptions = androidx.compose.foundation.text.KeyboardOptions(
+                        keyboardType = androidx.compose.ui.text.input.KeyboardType.Number
+                    ),
+                    singleLine = true,
+                    shape = RoundedCornerShape(14.dp),
+                    modifier = Modifier
+                        .fillMaxWidth()
+                        .testTag("save_money_amount_input")
+                )
+
+                OutlinedTextField(
+                    value = noteInput,
+                    onValueChange = { noteInput = it },
+                    label = { Text(if (currentLanguage == "bn") "মন্তব্য (ঐচ্ছিক)" else "Note (Optional)") },
+                    placeholder = { Text(if (currentLanguage == "bn") "উদা: ঘরের সঞ্চয়" else "e.g. House savings") },
+                    singleLine = true,
+                    shape = RoundedCornerShape(14.dp),
+                    modifier = Modifier
+                        .fillMaxWidth()
+                        .testTag("save_money_note_input")
+                )
+
+                Row(
+                    modifier = Modifier.fillMaxWidth(),
+                    horizontalArrangement = Arrangement.spacedBy(8.dp)
+                ) {
+                    OutlinedButton(
+                        onClick = onDismiss,
+                        shape = RoundedCornerShape(16.dp),
+                        modifier = Modifier
+                            .weight(1f)
+                            .heightIn(min = 48.dp),
+                        contentPadding = PaddingValues(horizontal = 8.dp, vertical = 4.dp),
+                        colors = ButtonDefaults.outlinedButtonColors(
+                            contentColor = textSecondary
+                        ),
+                        border = BorderStroke(1.dp, if (isDark) Color(0xFF334155) else Color(0xFFCBD5E1))
+                    ) {
+                        Text(
+                            text = if (currentLanguage == "bn") "বাতিল" else "Cancel",
+                            maxLines = 1,
+                            overflow = TextOverflow.Ellipsis
+                        )
+                    }
+
+                    Button(
+                        onClick = {
+                            val amount = amountInput.toDoubleOrNull()
+                            val finalTarget = if (selectedTarget.isNotEmpty()) selectedTarget else customTargetInput.trim()
+
+                            if (finalTarget.isEmpty()) {
+                                errorMessage = if (currentLanguage == "bn") "অনুগ্রহ করে একজন ব্যক্তি সিলেক্ট করুন বা নাম লিখুন!" else "Please select a target person or enter a name!"
+                                showError = true
+                            } else if (amount == null || amount <= 0) {
+                                errorMessage = if (currentLanguage == "bn") "অনুগ্রহ করে একটি সঠিক টাকার পরিমাণ দিন!" else "Please write a valid amount!"
+                                showError = true
+                            } else {
+                                if (!isWithdrawMode) {
+                                    // DEPOSIT
+                                    if (amount > stats.balance) {
+                                        errorMessage = if (currentLanguage == "bn") "আপনার মেইন ব্যালেন্সের চেয়ে বেশি জমানো সম্ভব নয়!" else "Insufficient Wallet Balance to perform savings deposit!"
+                                        showError = true
+                                    } else {
+                                        viewModel.saveMoneyToTarget(finalTarget, amount, noteInput, currentLanguage)
+                                        Toast.makeText(
+                                            context,
+                                            if (currentLanguage == "bn") "সাফল্যের সাথে টাকা জমা করা হয়েছে!" else "Fund saved successfully!",
+                                            Toast.LENGTH_LONG
+                                        ).show()
+                                        onDismiss()
+                                    }
+                                } else {
+                                    // WITHDRAW
+                                    val currentSavedBalance = savingsByTargets[finalTarget] ?: 0.0
+                                    if (amount > currentSavedBalance) {
+                                        errorMessage = if (currentLanguage == "bn") {
+                                            "উনার কাছে এত টাকা নেই! (সর্বোচ্চ: ${String.format("%.2f", currentSavedBalance)} ৳)"
+                                        } else {
+                                            "Insufficient target funds! (Max: ${String.format("%.2f", currentSavedBalance)} ৳)"
+                                        }
+                                        showError = true
+                                    } else {
+                                        val success = viewModel.withdrawMoneyFromTarget(finalTarget, amount, noteInput, currentLanguage)
+                                        if (success) {
+                                            Toast.makeText(
+                                                context,
+                                                if (currentLanguage == "bn") "সাফল্যের সাথে সঞ্চয় উঠানো হয়েছে!" else "Fund withdrawn successfully!",
+                                                Toast.LENGTH_LONG
+                                            ).show()
+                                            onDismiss()
+                                        } else {
+                                            errorMessage = if (currentLanguage == "bn") "অপারেশন ব্যর্থ হয়েছে!" else "Operation failed!"
+                                            showError = true
+                                        }
+                                    }
+                                }
+                            }
+                        },
+                        shape = RoundedCornerShape(16.dp),
+                        modifier = Modifier
+                            .weight(1f)
+                            .heightIn(min = 48.dp)
+                            .testTag("confirm_save_money_button"),
+                        contentPadding = PaddingValues(horizontal = 8.dp, vertical = 4.dp),
+                        colors = ButtonDefaults.buttonColors(
+                            containerColor = Color(0xFFEC4899),
+                            contentColor = Color.White
+                        )
+                    ) {
+                        Text(
+                            text = if (isWithdrawMode) {
+                                if (currentLanguage == "bn") "উত্তোলন করুন" else "Withdraw"
+                            } else {
+                                if (currentLanguage == "bn") "জমা করুন" else "Save Funds"
+                            },
+                            maxLines = 1,
+                            overflow = TextOverflow.Ellipsis
+                        )
+                    }
+                }
+            }
+        }
     }
 }
 
