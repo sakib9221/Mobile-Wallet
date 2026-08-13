@@ -6963,34 +6963,22 @@ fun BajarListDialog(
     val addButtonText = if (lang == "bn") "যোগ করুন" else "Add Item"
     val emptyText = if (lang == "bn") "কোন বাজারের তালিকা নেই!" else "No items in Bajar list!"
     val closeButtonText = if (lang == "bn") "বন্ধ করুন" else "Close"
-
     val finishButtonText = if (lang == "bn") "বাজার শেষ করুন" else "Finish Shopping"
 
-    Dialog(onDismissRequest = onDismiss) {
-        AnimatedDialogContent {
-            val dialogSurfaceBg = if (isDark) Color(0xFF1E293B).copy(alpha = 0.92f) else Color.White.copy(alpha = 0.95f)
-            val dialogBorder = if (isDark) Color(0xFF475569).copy(alpha = 0.5f) else Color(0xFFCBD5E1).copy(alpha = 0.7f)
-            val screenHeight = androidx.compose.ui.platform.LocalConfiguration.current.screenHeightDp.dp
-            Card(
-                modifier = Modifier
-                    .fillMaxWidth()
-                    .widthIn(max = 500.dp)
-                    .heightIn(max = screenHeight - 48.dp)
-                    .padding(16.dp)
-                    .testTag("bajar_list_dialog_card"),
-                shape = RoundedCornerShape(20.dp),
-                border = BorderStroke(1.dp, dialogBorder),
-                colors = CardDefaults.cardColors(
-                    containerColor = dialogSurfaceBg,
-                    contentColor = if (isDark) Color.White else Color(0xFF0F172A)
-                ),
-                elevation = CardDefaults.cardElevation(defaultElevation = 8.dp)
-            ) {
+    Dialog(
+        onDismissRequest = onDismiss,
+        properties = androidx.compose.ui.window.DialogProperties(usePlatformDefaultWidth = false)
+    ) {
+        Surface(
+            modifier = Modifier.fillMaxSize(),
+            color = if (isDark) Color(0xFF0F172A) else Color(0xFFF8FAFC)
+        ) {
             Column(
                 modifier = Modifier
-                    .padding(20.dp)
-                    .fillMaxWidth()
-                    .verticalScroll(androidx.compose.foundation.rememberScrollState())
+                    .fillMaxSize()
+                    .statusBarsPadding()
+                    .navigationBarsPadding()
+                    .padding(start = 16.dp, end = 16.dp, top = 16.dp, bottom = 48.dp)
             ) {
                 if (!isFinishingShopping) {
                     // Header
@@ -6999,79 +6987,106 @@ fun BajarListDialog(
                         horizontalArrangement = Arrangement.SpaceBetween,
                         verticalAlignment = Alignment.CenterVertically
                     ) {
-                        Text(
-                            text = titleText,
-                            style = MaterialTheme.typography.titleMedium,
-                            fontWeight = FontWeight.Bold,
-                            color = MaterialTheme.colorScheme.onSurface
-                        )
+                        Row(
+                            verticalAlignment = Alignment.CenterVertically,
+                            modifier = Modifier.weight(1f)
+                        ) {
+                            Icon(
+                                imageVector = Icons.Default.ShoppingCart,
+                                contentDescription = null,
+                                tint = Color(0xFF10B981),
+                                modifier = Modifier.size(28.dp).padding(end = 8.dp)
+                            )
+                            Text(
+                                text = titleText,
+                                style = MaterialTheme.typography.titleLarge,
+                                fontWeight = FontWeight.Bold,
+                                color = if (isDark) Color.White else Color(0xFF0F172A),
+                                maxLines = 1,
+                                overflow = TextOverflow.Ellipsis
+                            )
+                        }
                         IconButton(onClick = onDismiss, modifier = Modifier.testTag("bajar_dismiss_icon_button")) {
                             Icon(
                                 imageVector = Icons.Default.Close,
                                 contentDescription = "Close",
-                                tint = MaterialTheme.colorScheme.onSurfaceVariant
+                                tint = if (isDark) Color(0xFF94A3B8) else Color(0xFF64748B)
                             )
-                        }
-                    }
-
-                    Spacer(modifier = Modifier.height(12.dp))
-
-                    // Input form to add a new Bajar item
-                    OutlinedTextField(
-                        value = nameInput,
-                        onValueChange = { nameInput = it },
-                        label = { Text(itemPlaceholder) },
-                        singleLine = true,
-                        modifier = Modifier.fillMaxWidth().testTag("bajar_name_input"),
-                        shape = RoundedCornerShape(12.dp)
-                    )
-
-                    Spacer(modifier = Modifier.height(8.dp))
-
-                    Row(
-                        modifier = Modifier.fillMaxWidth(),
-                        verticalAlignment = Alignment.CenterVertically,
-                        horizontalArrangement = Arrangement.spacedBy(8.dp)
-                    ) {
-                        OutlinedTextField(
-                            value = qtyInput,
-                            onValueChange = { qtyInput = it },
-                            label = { Text(qtyPlaceholder) },
-                            singleLine = true,
-                            modifier = Modifier.weight(1f).testTag("bajar_cost_input"),
-                            shape = RoundedCornerShape(12.dp)
-                        )
-
-                        Button(
-                            onClick = {
-                                val name = nameInput.trim()
-                                val qty = qtyInput.trim()
-                                if (name.isNotEmpty()) {
-                                    val finalQty = if (qty.isEmpty()) "1" else qty
-                                    onAdd(name, finalQty)
-                                    nameInput = ""
-                                    qtyInput = ""
-                                }
-                            },
-                            modifier = Modifier.testTag("bajar_add_button"),
-                            shape = RoundedCornerShape(12.dp),
-                            colors = ButtonDefaults.buttonColors(
-                                containerColor = Color(0xFF10B981),
-                                contentColor = Color.White
-                            )
-                        ) {
-                            Text(addButtonText, fontWeight = FontWeight.Bold)
                         }
                     }
 
                     Spacer(modifier = Modifier.height(16.dp))
 
+                    // Input form to add a new Bajar item
+                    Card(
+                        modifier = Modifier.fillMaxWidth(),
+                        shape = RoundedCornerShape(16.dp),
+                        colors = CardDefaults.cardColors(
+                            containerColor = if (isDark) Color(0xFF1E293B) else Color.White
+                        ),
+                        border = BorderStroke(1.dp, if (isDark) Color(0xFF334155) else Color(0xFFE2E8F0))
+                    ) {
+                        Column(modifier = Modifier.padding(16.dp), verticalArrangement = Arrangement.spacedBy(10.dp)) {
+                            OutlinedTextField(
+                                value = nameInput,
+                                onValueChange = { nameInput = it },
+                                label = { Text(itemPlaceholder) },
+                                singleLine = true,
+                                modifier = Modifier.fillMaxWidth().testTag("bajar_name_input"),
+                                shape = RoundedCornerShape(12.dp)
+                            )
+
+                            Row(
+                                modifier = Modifier.fillMaxWidth(),
+                                verticalAlignment = Alignment.CenterVertically,
+                                horizontalArrangement = Arrangement.spacedBy(8.dp)
+                            ) {
+                                OutlinedTextField(
+                                    value = qtyInput,
+                                    onValueChange = { qtyInput = it },
+                                    label = { Text(qtyPlaceholder) },
+                                    singleLine = true,
+                                    modifier = Modifier.weight(1f).testTag("bajar_cost_input"),
+                                    shape = RoundedCornerShape(12.dp)
+                                )
+
+                                Button(
+                                    onClick = {
+                                        val name = nameInput.trim()
+                                        val qty = qtyInput.trim()
+                                        if (name.isNotEmpty()) {
+                                            val finalQty = if (qty.isEmpty()) "1" else qty
+                                            onAdd(name, finalQty)
+                                            nameInput = ""
+                                            qtyInput = ""
+                                        }
+                                    },
+                                    modifier = Modifier.testTag("bajar_add_button").height(52.dp),
+                                    shape = RoundedCornerShape(12.dp),
+                                    colors = ButtonDefaults.buttonColors(
+                                        containerColor = Color(0xFF10B981),
+                                        contentColor = Color.White
+                                    )
+                                ) {
+                                    Text(
+                                        text = addButtonText,
+                                        fontWeight = FontWeight.Bold,
+                                        maxLines = 1,
+                                        overflow = TextOverflow.Ellipsis
+                                    )
+                                }
+                            }
+                        }
+                    }
+
+                    Spacer(modifier = Modifier.height(20.dp))
+
                     // List of items
                     Text(
                         text = if (lang == "bn") "তালিকাভুক্ত পণ্যসমূহ" else "Items",
-                        style = MaterialTheme.typography.labelMedium,
+                        style = MaterialTheme.typography.titleMedium,
                         fontWeight = FontWeight.Bold,
-                        color = MaterialTheme.colorScheme.onSurfaceVariant
+                        color = if (isDark) Color(0xFF94A3B8) else Color(0xFF475569)
                     )
 
                     Spacer(modifier = Modifier.height(8.dp))
@@ -7079,43 +7094,51 @@ fun BajarListDialog(
                     Box(
                         modifier = Modifier
                             .fillMaxWidth()
-                            .heightIn(max = 240.dp)
+                            .weight(1f)
                     ) {
                         if (bajarItems.isEmpty()) {
                             Box(
                                 modifier = Modifier
-                                    .fillMaxWidth()
+                                    .fillMaxSize()
                                     .padding(vertical = 32.dp),
                                 contentAlignment = Alignment.Center
                             ) {
-                                Text(
-                                    text = emptyText,
-                                    style = MaterialTheme.typography.bodyMedium,
-                                    color = MaterialTheme.colorScheme.onSurfaceVariant.copy(alpha = 0.6f)
-                                )
+                                Column(horizontalAlignment = Alignment.CenterHorizontally, verticalArrangement = Arrangement.spacedBy(8.dp)) {
+                                    Icon(
+                                        imageVector = Icons.Default.ShoppingCart,
+                                        contentDescription = null,
+                                        tint = if (isDark) Color(0xFF334155) else Color(0xFFCBD5E1),
+                                        modifier = Modifier.size(64.dp)
+                                    )
+                                    Text(
+                                        text = emptyText,
+                                        style = MaterialTheme.typography.bodyMedium,
+                                        color = if (isDark) Color(0xFF64748B) else Color(0xFF94A3B8)
+                                    )
+                                }
                             }
                         } else {
                             LazyColumn(
-                                verticalArrangement = Arrangement.spacedBy(8.dp),
-                                modifier = Modifier.fillMaxWidth()
+                                verticalArrangement = Arrangement.spacedBy(10.dp),
+                                modifier = Modifier.fillMaxSize()
                             ) {
                                 items(
                                     items = bajarItems,
-                                    key = { it.id },
+                                    key = { item -> item.id },
                                     contentType = { "bajar_item" }
                                 ) { item ->
                                     Row(
                                         modifier = Modifier
                                             .fillMaxWidth()
-                                            .clip(RoundedCornerShape(12.dp))
+                                            .clip(RoundedCornerShape(14.dp))
                                             .background(
-                                                if (isDark) Color(0xFF334155).copy(alpha = 0.5f)
-                                                else Color(0xFFF1F5F9)
+                                                if (isDark) Color(0xFF1E293B)
+                                                else Color.White
                                             )
-                                            .padding(horizontal = 12.dp, vertical = 6.dp),
+                                            .border(1.dp, if (isDark) Color(0xFF334155).copy(alpha = 0.5f) else Color(0xFFE2E8F0), RoundedCornerShape(14.dp))
+                                            .padding(horizontal = 12.dp, vertical = 8.dp),
                                         verticalAlignment = Alignment.CenterVertically
                                     ) {
-                                        // Checkbox with click listener
                                         Checkbox(
                                             checked = item.isCompleted,
                                             onCheckedChange = { isChecked ->
@@ -7134,32 +7157,31 @@ fun BajarListDialog(
                                         ) {
                                             Text(
                                                 text = item.name,
-                                                style = MaterialTheme.typography.bodyMedium.copy(
+                                                style = MaterialTheme.typography.bodyLarge.copy(
                                                     textDecoration = if (item.isCompleted) androidx.compose.ui.text.style.TextDecoration.LineThrough else null
                                                 ),
                                                 fontWeight = if (item.isCompleted) FontWeight.Normal else FontWeight.Bold,
-                                                color = if (item.isCompleted) MaterialTheme.colorScheme.onSurfaceVariant.copy(alpha = 0.6f)
-                                                        else MaterialTheme.colorScheme.onSurface
+                                                color = if (item.isCompleted) (if (isDark) Color(0xFF64748B) else Color(0xFF94A3B8))
+                                                        else (if (isDark) Color.White else Color(0xFF0F172A))
                                             )
 
                                             Text(
                                                 text = if (lang == "bn") "পরিমাণ: ${item.quantity}" else "Qty: ${item.quantity}",
-                                                style = MaterialTheme.typography.bodySmall,
-                                                color = if (item.isCompleted) MaterialTheme.colorScheme.onSurfaceVariant.copy(alpha = 0.5f)
+                                                style = MaterialTheme.typography.bodyMedium,
+                                                color = if (item.isCompleted) (if (isDark) Color(0xFF475569) else Color(0xFFCBD5E1))
                                                         else Color(0xFF10B981)
                                             )
                                         }
 
-                                        // Delete button
                                         IconButton(
                                             onClick = { onDelete(item) },
-                                            modifier = Modifier.size(36.dp).testTag("bajar_delete_button_${item.id}")
+                                            modifier = Modifier.size(40.dp).testTag("bajar_delete_button_${item.id}")
                                         ) {
                                             Icon(
                                                 imageVector = Icons.Default.Delete,
                                                 contentDescription = "Delete Item",
                                                 tint = MaterialTheme.colorScheme.error.copy(alpha = 0.8f),
-                                                modifier = Modifier.size(20.dp)
+                                                modifier = Modifier.size(22.dp)
                                             )
                                         }
                                     }
@@ -7172,37 +7194,30 @@ fun BajarListDialog(
 
                     val completedItems = bajarItems.filter { it.isCompleted }
 
-                    Row(
-                        modifier = Modifier.fillMaxWidth(),
-                        horizontalArrangement = Arrangement.SpaceBetween,
-                        verticalAlignment = Alignment.CenterVertically
-                    ) {
-                        if (completedItems.isNotEmpty()) {
-                            Button(
-                                onClick = { isFinishingShopping = true },
-                                modifier = Modifier.testTag("bajar_finish_shopping_button"),
-                                colors = ButtonDefaults.buttonColors(
-                                    containerColor = Color(0xFF10B981),
-                                    contentColor = Color.White
-                                ),
-                                shape = RoundedCornerShape(12.dp)
-                            ) {
-                                Icon(
-                                    imageVector = Icons.Default.Check,
-                                    contentDescription = "Complete",
-                                    modifier = Modifier.padding(end = 4.dp).size(16.dp)
-                                )
-                                Text(finishButtonText, fontWeight = FontWeight.Bold)
-                            }
-                        } else {
-                            Spacer(modifier = Modifier.width(1.dp))
-                        }
-
-                        TextButton(
-                            onClick = onDismiss,
-                            modifier = Modifier.testTag("bajar_dialog_close_button")
+                    if (completedItems.isNotEmpty()) {
+                        Button(
+                            onClick = { isFinishingShopping = true },
+                            modifier = Modifier
+                                .fillMaxWidth()
+                                .height(48.dp)
+                                .testTag("bajar_finish_shopping_button"),
+                            colors = ButtonDefaults.buttonColors(
+                                containerColor = Color(0xFF10B981),
+                                contentColor = Color.White
+                            ),
+                            shape = RoundedCornerShape(12.dp)
                         ) {
-                            Text(closeButtonText, fontWeight = FontWeight.Bold)
+                            Icon(
+                                imageVector = Icons.Default.Check,
+                                contentDescription = "Complete",
+                                modifier = Modifier.padding(end = 6.dp).size(20.dp)
+                            )
+                            Text(
+                                text = finishButtonText,
+                                fontWeight = FontWeight.Bold,
+                                maxLines = 1,
+                                overflow = TextOverflow.Ellipsis
+                            )
                         }
                     }
                 } else {
@@ -7227,27 +7242,28 @@ fun BajarListDialog(
                     ) {
                         Text(
                             text = finishPromptTitle,
-                            style = MaterialTheme.typography.titleMedium,
+                            style = MaterialTheme.typography.titleLarge,
                             fontWeight = FontWeight.Bold,
-                            color = MaterialTheme.colorScheme.onSurface
+                            color = if (isDark) Color.White else Color(0xFF0F172A)
                         )
                         IconButton(onClick = { isFinishingShopping = false }) {
                             Icon(
                                 imageVector = Icons.Default.Close,
-                                contentDescription = "Close"
+                                contentDescription = "Close",
+                                tint = if (isDark) Color(0xFF94A3B8) else Color(0xFF64748B)
                             )
                         }
                     }
 
-                    Spacer(modifier = Modifier.height(12.dp))
+                    Spacer(modifier = Modifier.height(16.dp))
 
                     Text(
                         text = finishPromptSub,
-                        style = MaterialTheme.typography.bodyMedium,
-                        color = MaterialTheme.colorScheme.onSurfaceVariant
+                        style = MaterialTheme.typography.bodyLarge,
+                        color = if (isDark) Color(0xFF94A3B8) else Color(0xFF475569)
                     )
 
-                    Spacer(modifier = Modifier.height(6.dp))
+                    Spacer(modifier = Modifier.height(8.dp))
 
                     Text(
                         text = completedNames,
@@ -7256,15 +7272,16 @@ fun BajarListDialog(
                         color = Color(0xFF10B981),
                         modifier = Modifier
                             .fillMaxWidth()
-                            .clip(RoundedCornerShape(8.dp))
+                            .clip(RoundedCornerShape(12.dp))
                             .background(
-                                if (isDark) Color(0xFF334155).copy(alpha = 0.3f)
-                                else Color(0xFFF1F5F9)
+                                if (isDark) Color(0xFF1E293B)
+                                else Color.White
                             )
-                            .padding(12.dp)
+                            .border(1.dp, if (isDark) Color(0xFF334155) else Color(0xFFE2E8F0), RoundedCornerShape(12.dp))
+                            .padding(16.dp)
                     )
 
-                    Spacer(modifier = Modifier.height(16.dp))
+                    Spacer(modifier = Modifier.height(24.dp))
 
                     OutlinedTextField(
                         value = totalCostInput,
@@ -7276,7 +7293,7 @@ fun BajarListDialog(
                         shape = RoundedCornerShape(12.dp)
                     )
 
-                    Spacer(modifier = Modifier.height(24.dp))
+                    Spacer(modifier = Modifier.weight(1f))
 
                     Row(
                         modifier = Modifier.fillMaxWidth(),
@@ -7284,8 +7301,9 @@ fun BajarListDialog(
                     ) {
                         OutlinedButton(
                             onClick = { isFinishingShopping = false },
-                            modifier = Modifier.weight(1f),
-                            shape = RoundedCornerShape(12.dp)
+                            modifier = Modifier.weight(1f).height(50.dp),
+                            shape = RoundedCornerShape(12.dp),
+                            border = BorderStroke(1.dp, if (isDark) Color(0xFF334155) else Color(0xFFCBD5E1))
                         ) {
                             Text(backBtnText, fontWeight = FontWeight.Bold)
                         }
@@ -7298,7 +7316,7 @@ fun BajarListDialog(
                                 }
                             },
                             enabled = totalCostInput.trim().toDoubleOrNull() != null,
-                            modifier = Modifier.weight(1.5f).testTag("bajar_finish_shopping_confirm_button"),
+                            modifier = Modifier.weight(1.5f).testTag("bajar_finish_shopping_confirm_button").height(50.dp),
                             colors = ButtonDefaults.buttonColors(
                                 containerColor = Color(0xFF10B981),
                                 contentColor = Color.White
@@ -7312,7 +7330,6 @@ fun BajarListDialog(
             }
         }
     }
-}
 }
 
 // Dialog 4: Debts & Lending Tracker Dialog
@@ -7350,31 +7367,20 @@ fun DebtListDialog(
     }
     val emptyText = if (lang == "bn") "কোনো দেন-পাওনার রেকর্ড নেই" else "No active debt records"
 
-    Dialog(onDismissRequest = onDismiss) {
-        AnimatedDialogContent {
-            val dialogSurfaceBg = if (isDark) Color(0xFF1E293B).copy(alpha = 0.92f) else Color.White.copy(alpha = 0.95f)
-            val dialogBorder = if (isDark) Color(0xFF475569).copy(alpha = 0.5f) else Color(0xFFCBD5E1).copy(alpha = 0.7f)
-            val screenHeight = androidx.compose.ui.platform.LocalConfiguration.current.screenHeightDp.dp
-            Card(
-                modifier = Modifier
-                    .fillMaxWidth()
-                    .widthIn(max = 500.dp)
-                    .heightIn(max = screenHeight - 48.dp)
-                    .padding(16.dp)
-                    .testTag("debt_list_dialog_card"),
-                shape = RoundedCornerShape(20.dp),
-                border = BorderStroke(1.dp, dialogBorder),
-                colors = CardDefaults.cardColors(
-                    containerColor = dialogSurfaceBg,
-                    contentColor = if (isDark) Color.White else Color(0xFF0F172A)
-                ),
-                elevation = CardDefaults.cardElevation(defaultElevation = 8.dp)
-            ) {
+    Dialog(
+        onDismissRequest = onDismiss,
+        properties = androidx.compose.ui.window.DialogProperties(usePlatformDefaultWidth = false)
+    ) {
+        Surface(
+            modifier = Modifier.fillMaxSize(),
+            color = if (isDark) Color(0xFF0F172A) else Color(0xFFF8FAFC)
+        ) {
             Column(
                 modifier = Modifier
-                    .padding(20.dp)
-                    .fillMaxWidth()
-                    .verticalScroll(androidx.compose.foundation.rememberScrollState())
+                    .fillMaxSize()
+                    .statusBarsPadding()
+                    .navigationBarsPadding()
+                    .padding(start = 16.dp, end = 16.dp, top = 16.dp, bottom = 48.dp)
             ) {
                 // Header
                 Row(
@@ -7382,218 +7388,220 @@ fun DebtListDialog(
                     horizontalArrangement = Arrangement.SpaceBetween,
                     verticalAlignment = Alignment.CenterVertically
                 ) {
-                    Text(
-                        text = titleText,
-                        style = MaterialTheme.typography.titleMedium,
-                        fontWeight = FontWeight.Bold,
-                        color = MaterialTheme.colorScheme.onSurface
-                    )
+                    Row(verticalAlignment = Alignment.CenterVertically) {
+                        Icon(
+                            imageVector = Icons.Default.SwapHoriz,
+                            contentDescription = null,
+                            tint = Color(0xFF3B82F6),
+                            modifier = Modifier.size(28.dp).padding(end = 8.dp)
+                        )
+                        Text(
+                            text = titleText,
+                            style = MaterialTheme.typography.titleLarge,
+                            fontWeight = FontWeight.Bold,
+                            color = if (isDark) Color.White else Color(0xFF0F172A)
+                        )
+                    }
                     IconButton(onClick = onDismiss, modifier = Modifier.testTag("debt_dismiss_icon_button")) {
                         Icon(
                             imageVector = Icons.Default.Close,
                             contentDescription = "Close",
-                            tint = MaterialTheme.colorScheme.onSurfaceVariant
-                        )
-                    }
-                }
-
-                Spacer(modifier = Modifier.height(12.dp))
-
-                // Input form to add a new Debt record
-                OutlinedTextField(
-                    value = nameInput,
-                    onValueChange = { nameInput = it },
-                    label = { Text(namePlaceholder) },
-                    singleLine = true,
-                    modifier = Modifier.fillMaxWidth().testTag("debt_name_input"),
-                    shape = RoundedCornerShape(12.dp)
-                )
-
-                Spacer(modifier = Modifier.height(8.dp))
-
-                Row(
-                    modifier = Modifier.fillMaxWidth(),
-                    horizontalArrangement = Arrangement.spacedBy(8.dp),
-                    verticalAlignment = Alignment.CenterVertically
-                ) {
-                    OutlinedTextField(
-                        value = amountInput,
-                        onValueChange = { amountInput = it },
-                        label = { Text(amountPlaceholder) },
-                        singleLine = true,
-                        keyboardOptions = androidx.compose.foundation.text.KeyboardOptions(
-                            keyboardType = androidx.compose.ui.text.input.KeyboardType.Number
-                        ),
-                        modifier = Modifier.weight(1f).testTag("debt_amount_input"),
-                        shape = RoundedCornerShape(12.dp)
-                    )
-
-                    // Direction Selector Button
-                    Button(
-                        onClick = {
-                            selectedDirection = if (selectedDirection == "PAYABLE") "RECEIVABLE" else "PAYABLE"
-                        },
-                        colors = ButtonDefaults.buttonColors(
-                            containerColor = if (selectedDirection == "PAYABLE") Color(0xFFEF4444) else Color(0xFF10B981)
-                        ),
-                        shape = RoundedCornerShape(12.dp),
-                        modifier = Modifier.android16Clickable(shape = RoundedCornerShape(12.dp)) {
-                            selectedDirection = if (selectedDirection == "PAYABLE") "RECEIVABLE" else "PAYABLE"
-                        }
-                    ) {
-                        Text(
-                            text = if (selectedDirection == "PAYABLE") {
-                                if (lang == "bn") "আমি দেবো" else "I owe"
-                            } else {
-                                if (lang == "bn") "আমি পাবো" else "I get"
-                            },
-                            fontWeight = FontWeight.Bold,
-                            color = Color.White
-                        )
-                    }
-                }
-
-                Spacer(modifier = Modifier.height(8.dp))
-
-                OutlinedTextField(
-                    value = noteInput,
-                    onValueChange = { noteInput = it },
-                    label = { Text(notePlaceholder) },
-                    singleLine = true,
-                    modifier = Modifier.fillMaxWidth().testTag("debt_note_input"),
-                    shape = RoundedCornerShape(12.dp)
-                )
-
-                Spacer(modifier = Modifier.height(12.dp))
-
-                Button(
-                    onClick = {
-                        val name = nameInput.trim()
-                        val amt = amountInput.toDoubleOrNull()
-                        if (name.isNotEmpty() && amt != null && amt > 0.0) {
-                            if (isEditing && editingDebt != null) {
-                                val updated = editingDebt!!.copy(
-                                    personName = name,
-                                    amount = amt,
-                                    direction = selectedDirection,
-                                    note = noteInput.trim()
-                                )
-                                onUpdateDebt(updated)
-                                editingDebt = null
-                            } else {
-                                onAddDebt(name, amt, selectedDirection, noteInput.trim())
-                            }
-                            nameInput = ""
-                            amountInput = ""
-                            noteInput = ""
-                        }
-                    },
-                    modifier = Modifier.fillMaxWidth().android16Clickable(shape = RoundedCornerShape(12.dp)) {
-                        val name = nameInput.trim()
-                        val amt = amountInput.toDoubleOrNull()
-                        if (name.isNotEmpty() && amt != null && amt > 0.0) {
-                            if (isEditing && editingDebt != null) {
-                                val updated = editingDebt!!.copy(
-                                    personName = name,
-                                    amount = amt,
-                                    direction = selectedDirection,
-                                    note = noteInput.trim()
-                                )
-                                onUpdateDebt(updated)
-                                editingDebt = null
-                            } else {
-                                onAddDebt(name, amt, selectedDirection, noteInput.trim())
-                            }
-                            nameInput = ""
-                            amountInput = ""
-                            noteInput = ""
-                        }
-                    },
-                    shape = RoundedCornerShape(12.dp),
-                    colors = ButtonDefaults.buttonColors(
-                        containerColor = if (isEditing) MaterialTheme.colorScheme.secondary else MaterialTheme.colorScheme.primary,
-                        contentColor = if (isEditing) MaterialTheme.colorScheme.onSecondary else MaterialTheme.colorScheme.onPrimary
-                    )
-                ) {
-                    Text(addButtonText, fontWeight = FontWeight.Bold)
-                }
-
-                if (isEditing) {
-                    Spacer(modifier = Modifier.height(8.dp))
-                    OutlinedButton(
-                        onClick = {
-                            editingDebt = null
-                            nameInput = ""
-                            amountInput = ""
-                            noteInput = ""
-                            selectedDirection = "PAYABLE"
-                        },
-                        modifier = Modifier.fillMaxWidth().android16Clickable(shape = RoundedCornerShape(12.dp)) {
-                            editingDebt = null
-                            nameInput = ""
-                            amountInput = ""
-                            noteInput = ""
-                            selectedDirection = "PAYABLE"
-                        },
-                        shape = RoundedCornerShape(12.dp)
-                    ) {
-                        Text(
-                            text = if (lang == "bn") "বাতিল" else "Cancel",
-                            fontWeight = FontWeight.Bold
+                            tint = if (isDark) Color(0xFF94A3B8) else Color(0xFF64748B)
                         )
                     }
                 }
 
                 Spacer(modifier = Modifier.height(16.dp))
 
-                // List of items
+                // Input Form Card
+                Card(
+                    modifier = Modifier.fillMaxWidth(),
+                    shape = RoundedCornerShape(16.dp),
+                    colors = CardDefaults.cardColors(
+                        containerColor = if (isDark) Color(0xFF1E293B) else Color.White
+                    ),
+                    border = BorderStroke(1.dp, if (isDark) Color(0xFF334155) else Color(0xFFE2E8F0))
+                ) {
+                    Column(
+                        modifier = Modifier.padding(16.dp),
+                        verticalArrangement = Arrangement.spacedBy(10.dp)
+                    ) {
+                        OutlinedTextField(
+                            value = nameInput,
+                            onValueChange = { nameInput = it },
+                            label = { Text(namePlaceholder) },
+                            singleLine = true,
+                            modifier = Modifier.fillMaxWidth().testTag("debt_name_input"),
+                            shape = RoundedCornerShape(12.dp)
+                        )
+
+                        Row(
+                            modifier = Modifier.fillMaxWidth(),
+                            horizontalArrangement = Arrangement.spacedBy(8.dp),
+                            verticalAlignment = Alignment.CenterVertically
+                        ) {
+                            OutlinedTextField(
+                                value = amountInput,
+                                onValueChange = { amountInput = it },
+                                label = { Text(amountPlaceholder) },
+                                singleLine = true,
+                                keyboardOptions = androidx.compose.foundation.text.KeyboardOptions(
+                                    keyboardType = androidx.compose.ui.text.input.KeyboardType.Number
+                                ),
+                                modifier = Modifier.weight(1f).testTag("debt_amount_input"),
+                                shape = RoundedCornerShape(12.dp)
+                            )
+
+                            Button(
+                                onClick = {
+                                    selectedDirection = if (selectedDirection == "PAYABLE") "RECEIVABLE" else "PAYABLE"
+                                },
+                                colors = ButtonDefaults.buttonColors(
+                                    containerColor = if (selectedDirection == "PAYABLE") Color(0xFFEF4444) else Color(0xFF10B981)
+                                ),
+                                shape = RoundedCornerShape(12.dp),
+                                modifier = Modifier.height(52.dp)
+                            ) {
+                                Text(
+                                    text = if (selectedDirection == "PAYABLE") {
+                                        if (lang == "bn") "আমি দেবো" else "I owe"
+                                    } else {
+                                        if (lang == "bn") "আমি পাবো" else "I get"
+                                    },
+                                    fontWeight = FontWeight.Bold,
+                                    color = Color.White
+                                )
+                            }
+                        }
+
+                        OutlinedTextField(
+                            value = noteInput,
+                            onValueChange = { noteInput = it },
+                            label = { Text(notePlaceholder) },
+                            singleLine = true,
+                            modifier = Modifier.fillMaxWidth().testTag("debt_note_input"),
+                            shape = RoundedCornerShape(12.dp)
+                        )
+
+                        Row(
+                            modifier = Modifier.fillMaxWidth(),
+                            horizontalArrangement = Arrangement.spacedBy(8.dp)
+                        ) {
+                            if (isEditing) {
+                                OutlinedButton(
+                                    onClick = {
+                                        editingDebt = null
+                                        nameInput = ""
+                                        amountInput = ""
+                                        noteInput = ""
+                                        selectedDirection = "PAYABLE"
+                                    },
+                                    modifier = Modifier.weight(1f).height(48.dp),
+                                    shape = RoundedCornerShape(12.dp),
+                                    border = BorderStroke(1.dp, if (isDark) Color(0xFF334155) else Color(0xFFCBD5E1))
+                                ) {
+                                    Text(
+                                        text = if (lang == "bn") "বাতিল" else "Cancel",
+                                        fontWeight = FontWeight.Bold
+                                    )
+                                }
+                            }
+
+                            Button(
+                                onClick = {
+                                    val name = nameInput.trim()
+                                    val amt = amountInput.toDoubleOrNull()
+                                    if (name.isNotEmpty() && amt != null && amt > 0.0) {
+                                        if (isEditing && editingDebt != null) {
+                                            val updated = editingDebt!!.copy(
+                                                personName = name,
+                                                amount = amt,
+                                                direction = selectedDirection,
+                                                note = noteInput.trim()
+                                            )
+                                            onUpdateDebt(updated)
+                                            editingDebt = null
+                                        } else {
+                                            onAddDebt(name, amt, selectedDirection, noteInput.trim())
+                                        }
+                                        nameInput = ""
+                                        amountInput = ""
+                                        noteInput = ""
+                                    }
+                                },
+                                modifier = Modifier.weight(1.5f).height(48.dp),
+                                shape = RoundedCornerShape(12.dp),
+                                colors = ButtonDefaults.buttonColors(
+                                    containerColor = if (isEditing) Color(0xFF6366F1) else Color(0xFF3B82F6),
+                                    contentColor = Color.White
+                                )
+                            ) {
+                                Text(addButtonText, fontWeight = FontWeight.Bold)
+                            }
+                        }
+                    }
+                }
+
+                Spacer(modifier = Modifier.height(20.dp))
+
+                // List header
                 Text(
                     text = if (lang == "bn") "সক্রিয় দেন-পাওনা সমূহ" else "Active Debt Records",
-                    style = MaterialTheme.typography.labelMedium,
+                    style = MaterialTheme.typography.titleMedium,
                     fontWeight = FontWeight.Bold,
-                    color = MaterialTheme.colorScheme.onSurfaceVariant
+                    color = if (isDark) Color(0xFF94A3B8) else Color(0xFF475569)
                 )
 
                 Spacer(modifier = Modifier.height(8.dp))
 
+                // Scrollable List container
                 Box(
                     modifier = Modifier
                         .fillMaxWidth()
-                        .heightIn(max = 240.dp)
+                        .weight(1f)
                 ) {
                     val activeDebts = remember(debtRecords) { debtRecords.filter { !it.isSettled } }
                     if (activeDebts.isEmpty()) {
                         Box(
                             modifier = Modifier
-                                .fillMaxWidth()
+                                .fillMaxSize()
                                 .padding(vertical = 32.dp),
                             contentAlignment = Alignment.Center
                         ) {
-                            Text(
-                                text = emptyText,
-                                style = MaterialTheme.typography.bodyMedium,
-                                color = MaterialTheme.colorScheme.onSurfaceVariant.copy(alpha = 0.6f)
-                            )
+                            Column(horizontalAlignment = Alignment.CenterHorizontally, verticalArrangement = Arrangement.spacedBy(8.dp)) {
+                                Icon(
+                                    imageVector = Icons.Default.SwapHoriz,
+                                    contentDescription = null,
+                                    tint = if (isDark) Color(0xFF334155) else Color(0xFFCBD5E1),
+                                    modifier = Modifier.size(64.dp)
+                                )
+                                Text(
+                                    text = emptyText,
+                                    style = MaterialTheme.typography.bodyMedium,
+                                    color = if (isDark) Color(0xFF64748B) else Color(0xFF94A3B8)
+                                )
+                            }
                         }
                     } else {
                         LazyColumn(
-                            verticalArrangement = Arrangement.spacedBy(8.dp),
-                            modifier = Modifier.fillMaxWidth()
+                            verticalArrangement = Arrangement.spacedBy(10.dp),
+                            modifier = Modifier.fillMaxSize()
                         ) {
                             items(
                                 items = activeDebts,
-                                key = { it.id },
+                                key = { item -> item.id },
                                 contentType = { "debt_item" }
                             ) { item ->
                                 Row(
                                     modifier = Modifier
                                         .fillMaxWidth()
-                                        .clip(RoundedCornerShape(12.dp))
+                                        .clip(RoundedCornerShape(14.dp))
                                         .background(
-                                            if (isDark) Color(0xFF334155).copy(alpha = 0.5f)
-                                            else Color(0xFFF1F5F9)
+                                            if (isDark) Color(0xFF1E293B)
+                                            else Color.White
                                         )
-                                        .padding(horizontal = 12.dp, vertical = 8.dp),
+                                        .border(1.dp, if (isDark) Color(0xFF334155).copy(alpha = 0.5f) else Color(0xFFE2E8F0), RoundedCornerShape(14.dp))
+                                        .padding(12.dp),
                                     verticalAlignment = Alignment.CenterVertically
                                 ) {
                                     Column(
@@ -7607,12 +7615,11 @@ fun DebtListDialog(
                                         ) {
                                             Text(
                                                 text = item.personName,
-                                                style = MaterialTheme.typography.bodyMedium,
+                                                style = MaterialTheme.typography.bodyLarge,
                                                 fontWeight = FontWeight.Bold,
-                                                color = MaterialTheme.colorScheme.onSurface
+                                                color = if (isDark) Color.White else Color(0xFF0F172A)
                                             )
                                             
-                                            // Badge for direction
                                             Box(
                                                 modifier = Modifier
                                                     .clip(RoundedCornerShape(6.dp))
@@ -7637,26 +7644,28 @@ fun DebtListDialog(
                                         if (item.note.isNotEmpty()) {
                                             Text(
                                                 text = item.note,
-                                                style = MaterialTheme.typography.bodySmall,
-                                                color = MaterialTheme.colorScheme.onSurfaceVariant
+                                                style = MaterialTheme.typography.bodyMedium,
+                                                color = if (isDark) Color(0xFF94A3B8) else Color(0xFF475569),
+                                                modifier = Modifier.padding(top = 2.dp)
                                             )
                                         }
 
                                         Text(
                                             text = formatDate(item.timestamp, lang),
                                             style = MaterialTheme.typography.labelSmall,
-                                            color = MaterialTheme.colorScheme.onSurfaceVariant.copy(alpha = 0.5f)
+                                            color = if (isDark) Color(0xFF64748B) else Color(0xFF94A3B8),
+                                            modifier = Modifier.padding(top = 4.dp)
                                         )
                                     }
 
                                     Column(
                                         horizontalAlignment = Alignment.End,
-                                        verticalArrangement = Arrangement.spacedBy(4.dp)
+                                        verticalArrangement = Arrangement.spacedBy(6.dp)
                                     ) {
                                         Text(
                                             text = formatCurrency(item.amount, lang),
-                                            style = MaterialTheme.typography.bodyMedium,
-                                            fontWeight = FontWeight.Bold,
+                                            style = MaterialTheme.typography.bodyLarge,
+                                            fontWeight = FontWeight.ExtraBold,
                                             color = if (item.direction == "PAYABLE") Color(0xFFEF4444) else Color(0xFF10B981)
                                         )
 
@@ -7675,12 +7684,7 @@ fun DebtListDialog(
                                                     containerColor = if (item.direction == "PAYABLE") Color(0xFFEF4444) else Color(0xFF10B981)
                                                 ),
                                                 shape = RoundedCornerShape(8.dp),
-                                                modifier = Modifier
-                                                    .height(28.dp)
-                                                    .android16Clickable(shape = RoundedCornerShape(8.dp)) { 
-                                                        partialSettleTarget = item
-                                                        partialSettleAmount = item.amount.toString()
-                                                    }
+                                                modifier = Modifier.height(32.dp)
                                             ) {
                                                 Text(
                                                     text = if (lang == "bn") "শোধ" else "Settle",
@@ -7699,32 +7703,26 @@ fun DebtListDialog(
                                                     noteInput = item.note
                                                     selectedDirection = item.direction
                                                 },
-                                                modifier = Modifier.size(28.dp).android16Clickable(shape = CircleShape) {
-                                                    editingDebt = item
-                                                    nameInput = item.personName
-                                                    amountInput = item.amount.toString()
-                                                    noteInput = item.note
-                                                    selectedDirection = item.direction
-                                                }
+                                                modifier = Modifier.size(32.dp)
                                             ) {
                                                 Icon(
                                                     imageVector = Icons.Default.Edit,
                                                     contentDescription = "Edit record",
-                                                    tint = MaterialTheme.colorScheme.primary,
-                                                    modifier = Modifier.size(16.dp)
+                                                    tint = Color(0xFF3B82F6),
+                                                    modifier = Modifier.size(18.dp)
                                                 )
                                             }
 
                                             // Delete icon button
                                             IconButton(
                                                 onClick = { onDeleteDebt(item) },
-                                                modifier = Modifier.size(28.dp).android16Clickable(shape = CircleShape) { onDeleteDebt(item) }
+                                                modifier = Modifier.size(32.dp)
                                             ) {
                                                 Icon(
                                                     imageVector = Icons.Default.Delete,
                                                     contentDescription = "Delete record",
                                                     tint = MaterialTheme.colorScheme.error,
-                                                    modifier = Modifier.size(16.dp)
+                                                    modifier = Modifier.size(18.dp)
                                                 )
                                             }
                                         }
@@ -7831,7 +7829,6 @@ fun DebtListDialog(
             }
         }
     }
-}
 }
 
 @Composable
@@ -11297,237 +11294,164 @@ fun PinLockScreen(
     ) {
         Column(
             horizontalAlignment = Alignment.CenterHorizontally,
+            verticalArrangement = Arrangement.spacedBy(24.dp),
             modifier = Modifier
                 .fillMaxWidth()
-                .padding(24.dp)
-                .verticalScroll(androidx.compose.foundation.rememberScrollState()),
-            verticalArrangement = Arrangement.Center
+                .padding(horizontal = 24.dp)
         ) {
-            // Elegant avatar representation with gradient circle and breathing shadow
+            // Profile image / Avatar
             Box(
                 modifier = Modifier
-                    .size(105.dp)
-                    .shadow(12.dp, CircleShape)
+                    .size(90.dp)
                     .clip(CircleShape)
-                    .background(
-                        brush = Brush.linearGradient(
-                            colors = listOf(Color(0xFF10B981), Color(0xFF3B82F6))
-                        )
-                    )
-                    .padding(4.dp),
+                    .background(if (isDark) Color(0xFF1E293B) else Color.White)
+                    .border(2.dp, Color(0xFFEC4899), CircleShape),
                 contentAlignment = Alignment.Center
             ) {
-                Box(
-                    modifier = Modifier
-                        .fillMaxSize()
-                        .clip(CircleShape)
-                        .background(if (isDark) Color(0xFF0F172A) else Color.White),
-                    contentAlignment = Alignment.Center
-                ) {
-                    if (!userAvatarCustomPath.isNullOrBlank()) {
-                        val context = androidx.compose.ui.platform.LocalContext.current
-                        val imageRequest = remember(userAvatarCustomPath, context) {
-                            coil.request.ImageRequest.Builder(context)
-                                .data(java.io.File(userAvatarCustomPath!!))
-                                .crossfade(true)
-                                .diskCachePolicy(coil.request.CachePolicy.ENABLED)
-                                .memoryCachePolicy(coil.request.CachePolicy.ENABLED)
-                                .build()
-                        }
-                        AsyncImage(
-                            model = imageRequest,
-                            contentDescription = "User Profile Picture",
-                            modifier = Modifier
-                                .fillMaxSize()
-                                .clip(CircleShape),
-                            contentScale = ContentScale.Crop
-                        )
-                    } else {
-                        Text(
-                            text = selectedAvatar,
-                            style = MaterialTheme.typography.displaySmall.copy(fontSize = 42.sp)
-                        )
-                    }
+                if (!userAvatarCustomPath.isNullOrBlank() && java.io.File(userAvatarCustomPath!!).exists()) {
+                    val painter = coil.compose.rememberAsyncImagePainter(
+                        model = coil.request.ImageRequest.Builder(context)
+                            .data(java.io.File(userAvatarCustomPath!!))
+                            .crossfade(true)
+                            .build()
+                    )
+                    Image(
+                        painter = painter,
+                        contentDescription = "User Avatar",
+                        modifier = Modifier.fillMaxSize(),
+                        contentScale = androidx.compose.ui.layout.ContentScale.Crop
+                    )
+                } else {
+                    Text(
+                        text = selectedAvatar,
+                        style = MaterialTheme.typography.displayMedium
+                    )
                 }
             }
 
-            Spacer(modifier = Modifier.height(20.dp))
-
-            Text(
-                text = titleText,
-                style = MaterialTheme.typography.headlineSmall,
-                fontWeight = FontWeight.ExtraBold,
-                color = textPrimary,
-                textAlign = TextAlign.Center
-            )
-
-            Spacer(modifier = Modifier.height(8.dp))
-
-            Text(
-                text = subtitleText,
-                style = MaterialTheme.typography.bodyMedium,
-                color = textSecondary,
-                textAlign = TextAlign.Center
-            )
-
-            Spacer(modifier = Modifier.height(24.dp))
-
-            // PIN Dots Indicator with Shake Effect & Pulsating Scaling Animation
-            Row(
-                modifier = Modifier.offset(x = shakeOffset.value.dp),
-                horizontalArrangement = Arrangement.spacedBy(16.dp),
-                verticalAlignment = Alignment.CenterVertically
+            // Welcome texts
+            Column(
+                horizontalAlignment = Alignment.CenterHorizontally,
+                verticalArrangement = Arrangement.spacedBy(6.dp)
             ) {
-                for (i in 0 until 4) {
-                    val isFilled = i < pinInput.length
-                    val dotWeight by animateFloatAsState(
-                        targetValue = if (isFilled) 1.25f else 1.0f,
-                        animationSpec = spring(
-                            dampingRatio = Spring.DampingRatioHighBouncy,
-                            stiffness = Spring.StiffnessMedium
-                        )
-                    )
-                    val dotColor by animateColorAsState(
-                        targetValue = if (showError) {
-                            MaterialTheme.colorScheme.error
-                        } else if (isFilled) {
-                            Color(0xFF10B981) // Beautiful active Emerald status
-                        } else {
-                            if (isDark) Color(0xFF334155) else Color(0xFFCBD5E1)
-                        },
-                        animationSpec = tween(durationMillis = 150)
-                    )
-                    Box(
-                        modifier = Modifier
-                            .size((14 * dotWeight).dp)
-                            .background(
-                                color = dotColor,
-                                shape = CircleShape
-                            )
-                            .border(
-                                width = 1.dp,
-                                color = if (isDark) Color(0xFF475569) else Color(0xFF94A3B8),
-                                shape = CircleShape
-                            )
-                    )
-                }
-            }
-
-            if (showError) {
-                Spacer(modifier = Modifier.height(12.dp))
                 Text(
-                    text = if (currentLanguage == "bn") "ভুল পিন টাইপ করা হয়েছে, আবার চেষ্টা করুন!" else "Incorrect PIN, please try again!",
-                    color = MaterialTheme.colorScheme.error,
-                    style = MaterialTheme.typography.bodySmall,
+                    text = titleText,
+                    style = MaterialTheme.typography.headlineMedium,
                     fontWeight = FontWeight.Bold,
+                    color = textPrimary,
+                    textAlign = TextAlign.Center
+                )
+                Text(
+                    text = subtitleText,
+                    style = MaterialTheme.typography.bodyMedium,
+                    color = textSecondary,
                     textAlign = TextAlign.Center
                 )
             }
 
-            Spacer(modifier = Modifier.height(36.dp))
-
-            // Elegant circular numeric layout keyboard grid with springy press interactions
-            Column(
-                modifier = Modifier.widthIn(max = 280.dp),
-                verticalArrangement = Arrangement.spacedBy(12.dp)
+            // PIN Dots view
+            Row(
+                horizontalArrangement = Arrangement.spacedBy(16.dp),
+                modifier = Modifier
+                    .offset(x = shakeOffset.value.dp)
+                    .padding(vertical = 12.dp)
             ) {
-                val buttonRows = listOf(
-                    listOf("1", "2", "3"),
-                    listOf("4", "5", "6"),
-                    listOf("7", "8", "9"),
-                    listOf("❌", "0", "⌫")
-                )
-
-                for (row in buttonRows) {
-                    Row(
-                        modifier = Modifier.fillMaxWidth(),
-                        horizontalArrangement = Arrangement.spacedBy(12.dp)
-                    ) {
-                        for (key in row) {
-                            PinKeyButton(
-                                key = key,
-                                isDark = isDark,
-                                textPrimary = textPrimary,
-                                textSecondary = textSecondary,
-                                onClick = {
-                                    showError = false
-                                    when (key) {
-                                        "❌" -> {
-                                            pinInput = ""
-                                        }
-                                        "⌫" -> {
-                                            if (pinInput.isNotEmpty()) {
-                                                pinInput = pinInput.dropLast(1)
-                                            }
-                                        }
-                                        else -> {
-                                            if (pinInput.length < 4) {
-                                                pinInput += key
-                                                if (pinInput.length == 4) {
-                                                    val unlocked = viewModel.unlockApp(pinInput)
-                                                    if (!unlocked) {
-                                                        showError = true
-                                                        pinInput = ""
-                                                    }
-                                                }
-                                             }
-                                         }
-                                     }
-                                 }
+                repeat(4) { idx ->
+                    val isFilled = idx < pinInput.length
+                    Box(
+                        modifier = Modifier
+                            .size(16.dp)
+                            .clip(CircleShape)
+                            .background(
+                                if (isFilled) Color(0xFFEC4899)
+                                else if (isDark) Color(0xFF334155) else Color(0xFFCBD5E1)
                             )
-                        }
-                    }
+                    )
                 }
             }
 
-            if (isBiometricAvailable && isBiometricEnabled) {
-                Spacer(modifier = Modifier.height(24.dp))
-                
-                Button(
-                    onClick = {
-                        activity?.let {
-                            showBiometricPrompt(
-                                activity = it,
-                                title = biometricTitle,
-                                subtitle = biometricSubtitle,
-                                onSuccess = {
-                                    viewModel.unlockWithBiometric()
-                                },
-                                onError = { _ ->
-                                    // Handle or show subtle feedback
+            // Grid of buttons
+            val keys = listOf(
+                listOf("1", "2", "3"),
+                listOf("4", "5", "6"),
+                listOf("7", "8", "9"),
+                listOf(if (shouldTriggerAutoBiometric) "🧬" else "", "0", "❌")
+            )
+
+            Column(
+                verticalArrangement = Arrangement.spacedBy(12.dp),
+                modifier = Modifier.widthIn(max = 280.dp)
+            ) {
+                keys.forEach { row ->
+                    Row(
+                        horizontalArrangement = Arrangement.spacedBy(12.dp),
+                        modifier = Modifier.fillMaxWidth()
+                    ) {
+                        row.forEach { key ->
+                            if (key.isNotEmpty()) {
+                                if (key == "🧬") {
+                                    // Custom Biometric Key inside RowScope
+                                    Box(
+                                        modifier = Modifier
+                                            .weight(1f)
+                                            .aspectRatio(1f)
+                                            .clip(CircleShape)
+                                            .background(if (isDark) Color(0xFF1E293B) else Color(0xFFE2E8F0))
+                                            .clickable {
+                                                if (activity != null) {
+                                                    showBiometricPrompt(
+                                                        activity = activity,
+                                                        title = biometricTitle,
+                                                        subtitle = biometricSubtitle,
+                                                        onSuccess = {
+                                                            viewModel.unlockWithBiometric()
+                                                        },
+                                                        onError = { _ -> }
+                                                    )
+                                                }
+                                            },
+                                        contentAlignment = Alignment.Center
+                                    ) {
+                                        Icon(
+                                            imageVector = Icons.Default.Fingerprint,
+                                            contentDescription = "Biometric",
+                                            tint = Color(0xFFEC4899),
+                                            modifier = Modifier.size(28.dp)
+                                        )
+                                    }
+                                } else {
+                                    PinKeyButton(
+                                        key = key,
+                                        isDark = isDark,
+                                        textPrimary = textPrimary,
+                                        textSecondary = textSecondary,
+                                        onClick = {
+                                            if (key == "❌" || key == "⌫") {
+                                                if (pinInput.isNotEmpty()) {
+                                                    pinInput = pinInput.dropLast(1)
+                                                }
+                                            } else {
+                                                if (pinInput.length < 4) {
+                                                    pinInput += key
+                                                    if (pinInput.length == 4) {
+                                                        val isCorrect = viewModel.unlockApp(pinInput)
+                                                        if (!isCorrect) {
+                                                            showError = true
+                                                            pinInput = ""
+                                                        } else {
+                                                            showError = false
+                                                        }
+                                                    }
+                                                }
+                                            }
+                                        }
+                                    )
                                 }
-                            )
+                            } else {
+                                Spacer(modifier = Modifier.weight(1f))
+                            }
                         }
-                    },
-                    colors = ButtonDefaults.buttonColors(
-                        containerColor = if (isDark) Color(0xFF1E293B) else Color(0xFFE2E8F0),
-                        contentColor = textPrimary
-                    ),
-                    modifier = Modifier
-                        .widthIn(max = 280.dp)
-                        .fillMaxWidth()
-                        .height(52.dp)
-                        .border(
-                            width = 1.dp,
-                            color = if (isDark) Color(0xFF334155) else Color(0xFFCBD5E1),
-                            shape = CircleShape
-                        )
-                        .testTag("biometric_unlock_button"),
-                    shape = CircleShape,
-                    contentPadding = PaddingValues(horizontal = 24.dp)
-                ) {
-                    Icon(
-                        imageVector = Icons.Default.Fingerprint,
-                        contentDescription = "Biometric Lock",
-                        tint = Color(0xFF10B981),
-                        modifier = Modifier.size(24.dp)
-                    )
-                    Spacer(modifier = Modifier.width(11.dp))
-                    Text(
-                        text = if (currentLanguage == "bn") "বায়োমেট্রিক আনলক" else "Biometric Unlock",
-                        fontWeight = FontWeight.ExtraBold,
-                        style = MaterialTheme.typography.labelLarge.copy(fontSize = 15.sp)
-                    )
+                    }
                 }
             }
         }
@@ -11551,6 +11475,7 @@ fun saveUserPictureInternal(context: android.content.Context, uri: android.net.U
     }
 }
 
+@OptIn(ExperimentalMaterial3Api::class)
 @Composable
 fun SaveMoneyDialog(
     viewModel: FinanceViewModel,
@@ -11560,7 +11485,11 @@ fun SaveMoneyDialog(
     val isDark = isAppDark()
     val personalSavings by viewModel.personalSavings.collectAsStateWithLifecycle()
     val savingsByTargets by viewModel.savingsByTargets.collectAsStateWithLifecycle()
+    val deletedTargets by viewModel.deletedSavingsTargets.collectAsStateWithLifecycle()
     val stats by viewModel.stats.collectAsStateWithLifecycle()
+    val allTransactions by viewModel.transactions.collectAsStateWithLifecycle()
+
+    var activeTab by remember { mutableStateOf(0) } // 0: Save/Withdraw, 1: Categories, 2: History
 
     var isWithdrawMode by remember { mutableStateOf(false) }
     var selectedTarget by remember { mutableStateOf("Personal Account") }
@@ -11570,428 +11499,875 @@ fun SaveMoneyDialog(
     var showError by remember { mutableStateOf(false) }
     var errorMessage by remember { mutableStateOf("") }
 
+    var targetToDelete by remember { mutableStateOf<String?>(null) }
+    var targetToEdit by remember { mutableStateOf<String?>(null) }
+    var newTargetNameInput by remember { mutableStateOf("") }
+    var expandedTarget by remember { mutableStateOf<String?>(null) }
+
     val context = LocalContext.current
 
-    val dialogBg = if (isDark) Color(0xFF0F172A) else Color.White
-    val cardBg = if (isDark) Color(0xFF1E293B) else Color(0xFFF1F5F9)
+    val surfaceBg = if (isDark) Color(0xFF0F172A) else Color(0xFFF8FAFC)
+    val cardBg = if (isDark) Color(0xFF1E293B) else Color.White
     val textPrimary = if (isDark) Color.White else Color(0xFF0F172A)
     val textSecondary = if (isDark) Color(0xFF94A3B8) else Color(0xFF64748B)
 
     val predefinedTargets = remember { listOf("Personal Account", "Wife", "Father") }
-    val allTargets = remember(savingsByTargets) {
-        val list = predefinedTargets.toMutableList()
+    val allTargets = remember(savingsByTargets, deletedTargets) {
+        val list = predefinedTargets.filter { it !in deletedTargets }.toMutableList()
         savingsByTargets.keys.forEach { key ->
-            if (key !in list && key.isNotBlank()) {
+            if (key !in list && key !in deletedTargets && key.isNotBlank()) {
                 list.add(key)
             }
+        }
+        if (selectedTarget !in list && list.isNotEmpty()) {
+            selectedTarget = list.first()
         }
         list
     }
 
-    androidx.compose.ui.window.Dialog(
+    val savingsHistory = remember(allTransactions) {
+        allTransactions.filter { tx ->
+            tx.category in listOf("সঞ্চয়", "Savings", "সঞ্চয় উঠানো", "Savings Withdrawal", "সঞ্চয় ফেরত", "Savings Refund")
+        }.sortedByDescending { it.dateLong }
+    }
+
+    Dialog(
         onDismissRequest = onDismiss,
-        properties = androidx.compose.ui.window.DialogProperties(
-            dismissOnBackPress = true,
-            dismissOnClickOutside = true
-        )
+        properties = androidx.compose.ui.window.DialogProperties(usePlatformDefaultWidth = false)
     ) {
-        Card(
-            modifier = Modifier
-                .fillMaxWidth()
-                .padding(vertical = 12.dp, horizontal = 8.dp)
-                .testTag("save_money_dialog_container"),
-            shape = RoundedCornerShape(28.dp),
-            colors = CardDefaults.cardColors(containerColor = dialogBg),
-            border = BorderStroke(1.dp, if (isDark) Color(0xFF334155) else Color(0xFFE2E8F0))
+        Surface(
+            modifier = Modifier.fillMaxSize(),
+            color = surfaceBg
         ) {
             Column(
                 modifier = Modifier
-                    .fillMaxWidth()
-                    .padding(20.dp)
-                    .verticalScroll(androidx.compose.foundation.rememberScrollState()),
-                horizontalAlignment = Alignment.CenterHorizontally,
-                verticalArrangement = Arrangement.spacedBy(14.dp)
+                    .fillMaxSize()
+                    .statusBarsPadding()
+                    .navigationBarsPadding()
+                    .padding(start = 16.dp, end = 16.dp, top = 16.dp, bottom = 48.dp)
             ) {
-                Box(
-                    modifier = Modifier
-                        .size(56.dp)
-                        .background(Color(0xFFEC4899).copy(alpha = 0.15f), CircleShape),
-                    contentAlignment = Alignment.Center
-                ) {
-                    Icon(
-                        imageVector = Icons.Default.Savings,
-                        contentDescription = null,
-                        tint = Color(0xFFEC4899),
-                        modifier = Modifier.size(32.dp)
-                    )
-                }
-
-                Text(
-                    text = if (currentLanguage == "bn") "ব্যক্তিগত ব্যাংকিং ও সঞ্চয়" else "Personal Savings Vault",
-                    style = MaterialTheme.typography.titleLarge,
-                    fontWeight = FontWeight.Black,
-                    color = textPrimary
-                )
-
-                // Mode Toggle (Deposit vs Withdraw)
+                // Header
                 Row(
-                    modifier = Modifier
-                        .fillMaxWidth()
-                        .background(if (isDark) Color(0xFF1E293B) else Color(0xFFF1F5F9), RoundedCornerShape(12.dp))
-                        .padding(4.dp),
-                    horizontalArrangement = Arrangement.spacedBy(4.dp)
+                    modifier = Modifier.fillMaxWidth(),
+                    horizontalArrangement = Arrangement.SpaceBetween,
+                    verticalAlignment = Alignment.CenterVertically
                 ) {
-                    listOf(false, true).forEach { mode ->
-                        val isSel = isWithdrawMode == mode
-                        val title = if (mode) {
-                            if (currentLanguage == "bn") "টাকা উঠান (Withdraw)" else "Withdraw"
-                        } else {
-                            if (currentLanguage == "bn") "টাকা জমান (Save)" else "Save Funds"
-                        }
-
-                        Box(
-                            modifier = Modifier
-                                .weight(1f)
-                                .background(
-                                    if (isSel) Color(0xFFEC4899) else Color.Transparent,
-                                    RoundedCornerShape(8.dp)
-                                )
-                                .clickable { 
-                                    isWithdrawMode = mode
-                                    showError = false
-                                }
-                                .padding(vertical = 8.dp),
-                            contentAlignment = Alignment.Center
-                        ) {
-                            Text(
-                                text = title,
-                                style = MaterialTheme.typography.labelMedium,
-                                fontWeight = FontWeight.Bold,
-                                color = if (isSel) Color.White else textSecondary
-                            )
-                        }
+                    Row(verticalAlignment = Alignment.CenterVertically) {
+                        Icon(
+                            imageVector = Icons.Default.Savings,
+                            contentDescription = null,
+                            tint = Color(0xFFEC4899),
+                            modifier = Modifier.size(28.dp).padding(end = 8.dp)
+                        )
+                        Text(
+                            text = if (currentLanguage == "bn") "ব্যক্তিগত ব্যাংকিং ও সঞ্চয়" else "Personal Savings Vault",
+                            style = MaterialTheme.typography.titleLarge,
+                            fontWeight = FontWeight.Bold,
+                            color = textPrimary
+                        )
+                    }
+                    IconButton(onClick = onDismiss, modifier = Modifier.testTag("savings_dismiss_icon_button")) {
+                        Icon(
+                            imageVector = Icons.Default.Close,
+                            contentDescription = "Close",
+                            tint = textSecondary
+                        )
                     }
                 }
 
-                Text(
-                    text = if (isWithdrawMode) {
-                        if (currentLanguage == "bn") "উত্তোলনকৃত অর্থ আপনার মেইন ব্যালেন্সে পুনরায় যোগ হবে।" else "Withdrawn funds will be added back to your wallet balance."
-                    } else {
-                        if (currentLanguage == "bn") "সঞ্চয়কৃত অর্থ আপনার মেইন ব্যালেন্স থেকে কর্তন করা হবে।" else "Saved funds will be deducted from your main balance wallet."
-                    },
-                    style = MaterialTheme.typography.bodySmall,
-                    color = textSecondary,
-                    textAlign = TextAlign.Center
-                )
+                Spacer(modifier = Modifier.height(16.dp))
 
-                // Cumulative balance card
+                // Hero Total Balance Card
                 Card(
                     modifier = Modifier.fillMaxWidth(),
-                    shape = RoundedCornerShape(16.dp),
+                    shape = RoundedCornerShape(20.dp),
                     colors = CardDefaults.cardColors(containerColor = cardBg),
-                    border = BorderStroke(1.dp, if (isDark) Color(0xFF334155).copy(alpha = 0.3f) else Color(0xFFE2E8F0))
+                    border = BorderStroke(1.dp, if (isDark) Color(0xFF334155) else Color(0xFFE2E8F0))
                 ) {
                     Column(
                         modifier = Modifier
                             .fillMaxWidth()
-                            .padding(12.dp),
-                        horizontalAlignment = Alignment.CenterHorizontally
+                            .padding(20.dp),
+                        horizontalAlignment = Alignment.CenterHorizontally,
+                        verticalArrangement = Arrangement.spacedBy(4.dp)
                     ) {
                         Text(
-                            text = if (currentLanguage == "bn") "মোট সঞ্চিত ব্যালেন্স" else "Cumulative Savings Wallet",
-                            style = MaterialTheme.typography.labelSmall,
+                            text = if (currentLanguage == "bn") "মোট সঞ্চিত ব্যালেন্স" else "Cumulative Savings Balance",
+                            style = MaterialTheme.typography.titleMedium,
+                            fontWeight = FontWeight.Medium,
                             color = textSecondary
                         )
                         Text(
                             text = String.format("%.2f ৳", personalSavings),
-                            style = MaterialTheme.typography.titleLarge,
-                            fontWeight = FontWeight.ExtraBold,
+                            style = MaterialTheme.typography.headlineLarge,
+                            fontWeight = FontWeight.Black,
                             color = Color(0xFFEC4899)
                         )
+                        Text(
+                            text = if (currentLanguage == "bn") "মেইন ব্যালেন্স: ৳${String.format("%.2f", stats.balance)}" else "Wallet Balance: ৳${String.format("%.2f", stats.balance)}",
+                            style = MaterialTheme.typography.bodyMedium,
+                            color = textSecondary
+                        )
                     }
                 }
 
-                // Target Selector Label
-                Row(
-                    modifier = Modifier.fillMaxWidth(),
-                    horizontalArrangement = Arrangement.Start
-                ) {
-                    Text(
-                        text = if (isWithdrawMode) {
-                            if (currentLanguage == "bn") "কার কাছ থেকে উঠাবেন?" else "Withdraw from whom?"
-                        } else {
-                            if (currentLanguage == "bn") "কার কাছে জমা রাখবেন?" else "Save/Keep with whom?"
-                        },
-                        style = MaterialTheme.typography.labelMedium,
-                        fontWeight = FontWeight.Bold,
-                        color = textPrimary
-                    )
-                }
+                Spacer(modifier = Modifier.height(16.dp))
 
-                // Horizontal Target Selector Carousel
+                // Tab Selector Buttons
                 Row(
                     modifier = Modifier
                         .fillMaxWidth()
-                        .horizontalScroll(androidx.compose.foundation.rememberScrollState()),
-                    horizontalArrangement = Arrangement.spacedBy(8.dp)
+                        .background(if (isDark) Color(0xFF1E293B) else Color(0xFFF1F5F9), RoundedCornerShape(14.dp))
+                        .padding(4.dp),
+                    horizontalArrangement = Arrangement.spacedBy(4.dp)
                 ) {
-                    val displayLoopTargets = allTargets + "Other"
-                    displayLoopTargets.forEach { targetKey ->
-                        val isOther = targetKey == "Other"
-                        val isSelected = if (isOther) {
-                            selectedTarget !in allTargets
-                        } else {
-                            selectedTarget == targetKey
-                        }
-
-                        val displayName = when (targetKey) {
-                            "Personal Account" -> if (currentLanguage == "bn") "ব্যক্তিগত ব্যাংক" else "Personal Bank"
-                            "Wife" -> if (currentLanguage == "bn") "বউ (স্ত্রী)" else "Wife"
-                            "Father" -> if (currentLanguage == "bn") "বাবা" else "Father"
-                            "Other" -> if (currentLanguage == "bn") "+ নতুন ব্যক্তি" else "+ New Person"
-                            else -> targetKey
-                        }
-
-                        val balance = if (isOther) 0.0 else (savingsByTargets[targetKey] ?: 0.0)
-
-                        val icon = when (targetKey) {
-                            "Personal Account" -> Icons.Default.Savings
-                            "Wife" -> Icons.Default.Favorite
-                            "Father" -> Icons.Default.Person
-                            "Other" -> Icons.Default.Add
-                            else -> Icons.Default.Face
-                        }
-
-                        val tintColor = when (targetKey) {
-                            "Personal Account" -> Color(0xFFF59E0B) // Amber
-                            "Wife" -> Color(0xFFEC4899) // Pink
-                            "Father" -> Color(0xFF10B981) // Emerald
-                            "Other" -> Color(0xFF6366F1) // Indigo
-                            else -> Color(0xFF06B6D4) // Cyan
-                        }
-
-                        Card(
+                    val tabs = listOf(
+                        if (currentLanguage == "bn") "লেনদেন" else "Transactions",
+                        if (currentLanguage == "bn") "ক্যাটাগরি" else "Categories",
+                        if (currentLanguage == "bn") "ইতিহাস" else "History"
+                    )
+                    tabs.forEachIndexed { index, label ->
+                        val isSelected = activeTab == index
+                        Box(
                             modifier = Modifier
-                                .width(115.dp)
-                                .clickable {
-                                    if (isOther) {
-                                        selectedTarget = ""
-                                    } else {
-                                        selectedTarget = targetKey
-                                    }
-                                    showError = false
-                                },
-                            shape = RoundedCornerShape(12.dp),
-                            colors = CardDefaults.cardColors(
-                                containerColor = if (isSelected) tintColor.copy(alpha = 0.15f) else cardBg
-                            ),
-                            border = BorderStroke(
-                                width = if (isSelected) 2.dp else 1.dp,
-                                color = if (isSelected) tintColor else if (isDark) Color(0xFF334155) else Color(0xFFE2E8F0)
-                            )
+                                .weight(1f)
+                                .clip(RoundedCornerShape(10.dp))
+                                .background(
+                                    if (isSelected) Color(0xFFEC4899) else Color.Transparent
+                                )
+                                .clickable { activeTab = index }
+                                .padding(vertical = 10.dp),
+                            contentAlignment = Alignment.Center
                         ) {
-                            Column(
+                            Text(
+                                text = label,
+                                style = MaterialTheme.typography.labelMedium,
+                                fontWeight = FontWeight.Bold,
+                                color = if (isSelected) Color.White else textSecondary
+                            )
+                        }
+                    }
+                }
+
+                Spacer(modifier = Modifier.height(16.dp))
+
+                // Tab Contents
+                when (activeTab) {
+                    0 -> {
+                        // Transactions Tab (Deposit & Withdraw)
+                        Column(
+                            modifier = Modifier
+                                .fillMaxWidth()
+                                .weight(1f)
+                                .verticalScroll(androidx.compose.foundation.rememberScrollState()),
+                            verticalArrangement = Arrangement.spacedBy(14.dp)
+                        ) {
+                            // Save vs Withdraw mode selector
+                            Row(
                                 modifier = Modifier
                                     .fillMaxWidth()
-                                    .padding(8.dp),
-                                horizontalAlignment = Alignment.CenterHorizontally,
-                                verticalArrangement = Arrangement.spacedBy(4.dp)
+                                    .background(if (isDark) Color(0xFF1E293B) else Color(0xFFE2E8F0).copy(alpha = 0.5f), RoundedCornerShape(12.dp))
+                                    .padding(4.dp),
+                                horizontalArrangement = Arrangement.spacedBy(4.dp)
                             ) {
-                                Icon(
-                                    imageVector = icon,
-                                    contentDescription = null,
-                                    tint = tintColor,
-                                    modifier = Modifier.size(24.dp)
+                                listOf(false, true).forEach { mode ->
+                                    val isSel = isWithdrawMode == mode
+                                    val title = if (mode) {
+                                        if (currentLanguage == "bn") "টাকা উঠান (Withdraw)" else "Withdraw"
+                                    } else {
+                                        if (currentLanguage == "bn") "টাকা জমান (Save)" else "Save Funds"
+                                    }
+
+                                    Box(
+                                        modifier = Modifier
+                                            .weight(1f)
+                                            .clip(RoundedCornerShape(8.dp))
+                                            .background(
+                                                if (isSel) Color(0xFFEC4899) else Color.Transparent
+                                            )
+                                            .clickable { 
+                                                isWithdrawMode = mode
+                                                showError = false
+                                            }
+                                            .padding(vertical = 8.dp),
+                                        contentAlignment = Alignment.Center
+                                    ) {
+                                        Text(
+                                            text = title,
+                                            style = MaterialTheme.typography.bodyMedium,
+                                            fontWeight = FontWeight.Bold,
+                                            color = if (isSel) Color.White else textSecondary
+                                        )
+                                    }
+                                }
+                            }
+
+                            // Subtitle description
+                            Text(
+                                text = if (isWithdrawMode) {
+                                    if (currentLanguage == "bn") "উত্তোলনকৃত অর্থ আপনার মেইন ব্যালেন্সে পুনরায় যোগ হবে।" else "Withdrawn funds will be added back to your wallet balance."
+                                } else {
+                                    if (currentLanguage == "bn") "সঞ্চয়কৃত অর্থ আপনার মেইন ব্যালেন্স থেকে কর্তন করা হবে।" else "Saved funds will be deducted from your main balance wallet."
+                                },
+                                style = MaterialTheme.typography.bodySmall,
+                                color = textSecondary,
+                                textAlign = TextAlign.Center,
+                                modifier = Modifier.fillMaxWidth()
+                            )
+
+                            // Carousel target list
+                            Text(
+                                text = if (isWithdrawMode) {
+                                    if (currentLanguage == "bn") "কার কাছ থেকে উঠাবেন?" else "Withdraw from whom?"
+                                } else {
+                                    if (currentLanguage == "bn") "কার কাছে জমা রাখবেন?" else "Save/Keep with whom?"
+                                },
+                                style = MaterialTheme.typography.labelMedium,
+                                fontWeight = FontWeight.Bold,
+                                color = textPrimary
+                            )
+
+                            // Carousel UI
+                            Row(
+                                modifier = Modifier
+                                    .fillMaxWidth()
+                                    .horizontalScroll(androidx.compose.foundation.rememberScrollState()),
+                                horizontalArrangement = Arrangement.spacedBy(8.dp)
+                            ) {
+                                val displayLoopTargets = allTargets + "Other"
+                                displayLoopTargets.forEach { targetKey ->
+                                    val isOther = targetKey == "Other"
+                                    val isSelected = if (isOther) {
+                                        selectedTarget !in allTargets
+                                    } else {
+                                        selectedTarget == targetKey
+                                    }
+
+                                    val displayName = when (targetKey) {
+                                        "Personal Account" -> if (currentLanguage == "bn") "ব্যক্তিগত ব্যাংক" else "Personal Bank"
+                                        "Wife" -> if (currentLanguage == "bn") "বউ (স্ত্রী)" else "Wife"
+                                        "Father" -> if (currentLanguage == "bn") "বাবা" else "Father"
+                                        "Other" -> if (currentLanguage == "bn") "+ নতুন ব্যক্তি" else "+ New Person"
+                                        else -> targetKey
+                                    }
+
+                                    val balance = if (isOther) 0.0 else (savingsByTargets[targetKey] ?: 0.0)
+
+                                    val tintColor = when (targetKey) {
+                                        "Personal Account" -> Color(0xFFF59E0B)
+                                        "Wife" -> Color(0xFFEC4899)
+                                        "Father" -> Color(0xFF10B981)
+                                        "Other" -> Color(0xFF6366F1)
+                                        else -> Color(0xFF06B6D4)
+                                    }
+
+                                    Card(
+                                        modifier = Modifier
+                                            .width(115.dp)
+                                            .clickable {
+                                                if (isOther) {
+                                                    selectedTarget = ""
+                                                } else {
+                                                    selectedTarget = targetKey
+                                                }
+                                                showError = false
+                                            },
+                                        shape = RoundedCornerShape(12.dp),
+                                        colors = CardDefaults.cardColors(
+                                            containerColor = if (isSelected) tintColor.copy(alpha = 0.15f) else cardBg
+                                        ),
+                                        border = BorderStroke(
+                                            width = if (isSelected) 2.dp else 1.dp,
+                                            color = if (isSelected) tintColor else if (isDark) Color(0xFF334155) else Color(0xFFE2E8F0)
+                                        )
+                                    ) {
+                                        Column(
+                                            modifier = Modifier
+                                                .fillMaxWidth()
+                                                .padding(vertical = 12.dp, horizontal = 8.dp),
+                                            horizontalAlignment = Alignment.CenterHorizontally,
+                                            verticalArrangement = Arrangement.spacedBy(4.dp)
+                                        ) {
+                                            Text(
+                                                text = displayName,
+                                                style = MaterialTheme.typography.labelSmall,
+                                                fontWeight = FontWeight.Bold,
+                                                color = textPrimary,
+                                                maxLines = 1,
+                                                overflow = TextOverflow.Ellipsis
+                                            )
+                                            if (!isOther) {
+                                                Text(
+                                                    text = String.format("%.0f ৳", balance),
+                                                    style = MaterialTheme.typography.bodySmall,
+                                                    fontWeight = FontWeight.Bold,
+                                                    color = Color(0xFFEC4899),
+                                                    maxLines = 1,
+                                                    overflow = TextOverflow.Ellipsis
+                                                )
+                                            } else {
+                                                Text(
+                                                    text = if (currentLanguage == "bn") "সংযোজন" else "Create",
+                                                    style = MaterialTheme.typography.bodySmall,
+                                                    color = textSecondary,
+                                                    maxLines = 1
+                                                )
+                                            }
+                                        }
+                                    }
+                                }
+                            }
+
+                            // Custom name field if "Other" is selected
+                            if (selectedTarget !in allTargets) {
+                                OutlinedTextField(
+                                    value = customTargetInput,
+                                    onValueChange = { 
+                                        customTargetInput = it 
+                                        showError = false
+                                    },
+                                    label = { Text(if (currentLanguage == "bn") "ব্যক্তির নাম লিখুন (উদা: মা, ভাই)" else "Enter Person's Name (e.g. Mother, Brother)") },
+                                    placeholder = { Text(if (currentLanguage == "bn") "নাম লিখুন..." else "Enter name...") },
+                                    singleLine = true,
+                                    shape = RoundedCornerShape(14.dp),
+                                    modifier = Modifier.fillMaxWidth().testTag("custom_target_name_input")
                                 )
+                            }
+
+                            // Amount and Note inputs
+                            OutlinedTextField(
+                                value = amountInput,
+                                onValueChange = {
+                                    if (it.isEmpty() || it.toDoubleOrNull() != null) {
+                                        amountInput = it
+                                        showError = false
+                                    }
+                                },
+                                label = { Text(if (currentLanguage == "bn") "কত টাকা?" else "Amount") },
+                                placeholder = { Text("0.00") },
+                                keyboardOptions = androidx.compose.foundation.text.KeyboardOptions(
+                                    keyboardType = androidx.compose.ui.text.input.KeyboardType.Number
+                                ),
+                                singleLine = true,
+                                shape = RoundedCornerShape(14.dp),
+                                modifier = Modifier.fillMaxWidth().testTag("save_money_amount_input")
+                            )
+
+                            OutlinedTextField(
+                                value = noteInput,
+                                onValueChange = { noteInput = it },
+                                label = { Text(if (currentLanguage == "bn") "মন্তব্য (ঐচ্ছিক)" else "Note (Optional)") },
+                                placeholder = { Text(if (currentLanguage == "bn") "উদা: ঘরের সঞ্চয়" else "e.g. House savings") },
+                                singleLine = true,
+                                shape = RoundedCornerShape(14.dp),
+                                modifier = Modifier.fillMaxWidth().testTag("save_money_note_input")
+                            )
+
+                            if (showError) {
                                 Text(
-                                    text = displayName,
-                                    style = MaterialTheme.typography.labelSmall,
-                                    fontWeight = FontWeight.Bold,
-                                    color = textPrimary,
-                                    maxLines = 1,
-                                    overflow = TextOverflow.Ellipsis
+                                    text = errorMessage,
+                                    style = MaterialTheme.typography.bodyMedium,
+                                    color = MaterialTheme.colorScheme.error,
+                                    textAlign = TextAlign.Center,
+                                    modifier = Modifier.fillMaxWidth()
                                 )
-                                if (!isOther) {
+                            }
+
+                            // Confirm Button
+                            Button(
+                                onClick = {
+                                    val amount = amountInput.toDoubleOrNull()
+                                    val finalTarget = if (selectedTarget.isNotEmpty()) selectedTarget else customTargetInput.trim()
+
+                                    if (finalTarget.isEmpty()) {
+                                        errorMessage = if (currentLanguage == "bn") "অনুগ্রহ করে একজন ব্যক্তি সিলেক্ট করুন বা নাম লিখুন!" else "Please select a target person or enter a name!"
+                                        showError = true
+                                    } else if (amount == null || amount <= 0) {
+                                        errorMessage = if (currentLanguage == "bn") "অনুগ্রহ করে একটি সঠিক টাকার পরিমাণ দিন!" else "Please write a valid amount!"
+                                        showError = true
+                                    } else {
+                                        if (!isWithdrawMode) {
+                                            // DEPOSIT
+                                            if (amount > stats.balance) {
+                                                errorMessage = if (currentLanguage == "bn") "আপনার মেইন ব্যালেন্সের চেয়ে বেশি জমানো সম্ভব নয়!" else "Insufficient Wallet Balance to perform savings deposit!"
+                                                showError = true
+                                            } else {
+                                                viewModel.saveMoneyToTarget(finalTarget, amount, noteInput, currentLanguage)
+                                                Toast.makeText(
+                                                    context,
+                                                    if (currentLanguage == "bn") "সাফল্যের সাথে টাকা জমা করা হয়েছে!" else "Fund saved successfully!",
+                                                    Toast.LENGTH_LONG
+                                                ).show()
+                                                amountInput = ""
+                                                noteInput = ""
+                                                customTargetInput = ""
+                                                showError = false
+                                            }
+                                        } else {
+                                            // WITHDRAW
+                                            val currentSavedBalance = savingsByTargets[finalTarget] ?: 0.0
+                                            if (amount > currentSavedBalance) {
+                                                errorMessage = if (currentLanguage == "bn") {
+                                                    "উনার কাছে এত টাকা নেই! (সর্বোচ্চ: ${String.format("%.2f", currentSavedBalance)} ৳)"
+                                                } else {
+                                                    "Insufficient target funds! (Max: ${String.format("%.2f", currentSavedBalance)} ৳)"
+                                                }
+                                                showError = true
+                                            } else {
+                                                val success = viewModel.withdrawMoneyFromTarget(finalTarget, amount, noteInput, currentLanguage)
+                                                if (success) {
+                                                    Toast.makeText(
+                                                        context,
+                                                        if (currentLanguage == "bn") "সাফল্যের সাথে সঞ্চয় উঠানো হয়েছে!" else "Fund withdrawn successfully!",
+                                                        Toast.LENGTH_LONG
+                                                    ).show()
+                                                    amountInput = ""
+                                                    noteInput = ""
+                                                    customTargetInput = ""
+                                                    showError = false
+                                                } else {
+                                                    errorMessage = if (currentLanguage == "bn") "অপারেশন ব্যর্থ হয়েছে!" else "Operation failed!"
+                                                    showError = true
+                                                }
+                                            }
+                                        }
+                                    }
+                                },
+                                shape = RoundedCornerShape(16.dp),
+                                modifier = Modifier.fillMaxWidth().height(52.dp).testTag("confirm_save_money_button"),
+                                colors = ButtonDefaults.buttonColors(containerColor = Color(0xFFEC4899))
+                            ) {
+                                Text(
+                                    text = if (isWithdrawMode) {
+                                        if (currentLanguage == "bn") "উত্তোলন করুন" else "Withdraw Funds"
+                                    } else {
+                                        if (currentLanguage == "bn") "জমা করুন" else "Save Funds"
+                                    },
+                                    style = MaterialTheme.typography.titleMedium,
+                                    fontWeight = FontWeight.Bold,
+                                    color = Color.White
+                                )
+                            }
+                        }
+                    }
+
+                    1 -> {
+                        // Categories Tab (Manage / Remove / Refund targets)
+                        Box(modifier = Modifier.fillMaxWidth().weight(1f)) {
+                            val activeTargetsList = remember(savingsByTargets, deletedTargets) {
+                                val baseList = listOf("Personal Account", "Wife", "Father")
+                                val active = baseList.filter { it !in deletedTargets }.toMutableList()
+                                savingsByTargets.keys.forEach { key ->
+                                    if (key !in active && key !in deletedTargets && key.isNotBlank()) {
+                                        active.add(key)
+                                    }
+                                }
+                                active
+                            }
+
+                            if (activeTargetsList.isEmpty()) {
+                                Box(modifier = Modifier.fillMaxSize(), contentAlignment = Alignment.Center) {
                                     Text(
-                                        text = String.format("%.0f ৳", balance),
-                                        style = MaterialTheme.typography.bodySmall,
-                                        fontWeight = FontWeight.Bold,
-                                        color = Color(0xFFEC4899),
-                                        maxLines = 1,
-                                        overflow = TextOverflow.Ellipsis
+                                        text = if (currentLanguage == "bn") "কোনো সক্রিয় ক্যাটাগরি নেই" else "No active categories",
+                                        style = MaterialTheme.typography.bodyMedium,
+                                        color = textSecondary
                                     )
-                                } else {
-                                    Text(
-                                        text = if (currentLanguage == "bn") "সংযোজন" else "Create",
-                                        style = MaterialTheme.typography.bodySmall,
-                                        color = textSecondary,
-                                        maxLines = 1
-                                    )
+                                }
+                            } else {
+                                LazyColumn(
+                                    modifier = Modifier.fillMaxSize(),
+                                    verticalArrangement = Arrangement.spacedBy(10.dp)
+                                ) {
+                                    items(activeTargetsList) { targetItem ->
+                                        val balance = savingsByTargets[targetItem] ?: 0.0
+                                        val displayItemName = when (targetItem) {
+                                            "Personal Account" -> if (currentLanguage == "bn") "ব্যক্তিগত ব্যাংক" else "Personal Account"
+                                            "Wife" -> if (currentLanguage == "bn") "বউ (স্ত্রী)" else "Wife"
+                                            "Father" -> if (currentLanguage == "bn") "বাবা" else "Father"
+                                            else -> targetItem
+                                        }
+
+                                        Card(
+                                            modifier = Modifier
+                                                .fillMaxWidth()
+                                                .clip(RoundedCornerShape(14.dp))
+                                                .clickable {
+                                                    expandedTarget = if (expandedTarget == targetItem) null else targetItem
+                                                },
+                                            shape = RoundedCornerShape(14.dp),
+                                            colors = CardDefaults.cardColors(containerColor = cardBg),
+                                            border = BorderStroke(
+                                                width = 1.dp,
+                                                color = if (expandedTarget == targetItem) Color(0xFFEC4899) else if (isDark) Color(0xFF334155).copy(alpha = 0.5f) else Color(0xFFE2E8F0)
+                                            )
+                                        ) {
+                                            Column(modifier = Modifier.fillMaxWidth().padding(14.dp)) {
+                                                Row(
+                                                    modifier = Modifier.fillMaxWidth(),
+                                                    verticalAlignment = Alignment.CenterVertically,
+                                                    horizontalArrangement = Arrangement.SpaceBetween
+                                                ) {
+                                                    Row(verticalAlignment = Alignment.CenterVertically, modifier = Modifier.weight(1f)) {
+                                                        Column {
+                                                    Text(
+                                                        text = displayItemName,
+                                                        style = MaterialTheme.typography.bodyLarge,
+                                                        fontWeight = FontWeight.Bold,
+                                                        color = textPrimary
+                                                    )
+                                                    Text(
+                                                        text = if (currentLanguage == "bn") "জমানো ব্যালেন্স: ৳$balance" else "Saved Balance: ৳$balance",
+                                                        style = MaterialTheme.typography.bodyMedium,
+                                                        color = Color(0xFFEC4899),
+                                                        fontWeight = FontWeight.Medium
+                                                    )
+                                                }
+                                            }
+                                                    Row(verticalAlignment = Alignment.CenterVertically, horizontalArrangement = Arrangement.spacedBy(8.dp)) {
+                                                        IconButton(
+                                                            onClick = {
+                                                                targetToEdit = targetItem
+                                                                newTargetNameInput = displayItemName
+                                                            },
+                                                            modifier = Modifier
+                                                                .size(36.dp)
+                                                                .background(Color(0x116366F1), CircleShape)
+                                                        ) {
+                                                            Icon(
+                                                                imageVector = Icons.Default.Edit,
+                                                                contentDescription = "Edit category name",
+                                                                tint = Color(0xFF6366F1),
+                                                                modifier = Modifier.size(18.dp)
+                                                            )
+                                                        }
+
+                                                        Icon(
+                                                            imageVector = if (expandedTarget == targetItem) Icons.Default.KeyboardArrowUp else Icons.Default.KeyboardArrowDown,
+                                                            contentDescription = "Expand details",
+                                                            tint = textSecondary,
+                                                            modifier = Modifier.size(24.dp)
+                                                        )
+
+                                                        IconButton(
+                                                            onClick = { targetToDelete = targetItem },
+                                                            modifier = Modifier
+                                                                .size(36.dp)
+                                                                .background(Color(0x11EF4444), CircleShape)
+                                                        ) {
+                                                            Icon(
+                                                                imageVector = Icons.Default.Delete,
+                                                                contentDescription = "Delete category",
+                                                                tint = Color(0xFFEF4444),
+                                                                modifier = Modifier.size(18.dp)
+                                                            )
+                                                        }
+                                                    }
+                                                }
+
+                                                if (expandedTarget == targetItem) {
+                                                    Spacer(modifier = Modifier.height(12.dp))
+                                                    HorizontalDivider(color = if (isDark) Color(0xFF334155).copy(alpha = 0.5f) else Color(0xFFE2E8F0))
+                                                    Spacer(modifier = Modifier.height(12.dp))
+
+                                                    Text(
+                                                        text = if (currentLanguage == "bn") "লেনদেনের ইতিহাস" else "Transaction History",
+                                                        style = MaterialTheme.typography.titleSmall,
+                                                        fontWeight = FontWeight.Bold,
+                                                        color = textPrimary
+                                                    )
+                                                    Spacer(modifier = Modifier.height(8.dp))
+
+                                                    val targetTransactions = remember(allTransactions, targetItem) {
+                                                        val targetEn = targetItem
+                                                        val targetBn = when (targetItem) {
+                                                            "Wife" -> "বউ (স্ত্রী)"
+                                                            "Father" -> "বাবা"
+                                                            "Personal Account" -> "ব্যক্তিগত ব্যাংক"
+                                                            else -> targetItem
+                                                        }
+                                                        allTransactions.filter { tx ->
+                                                            val isSavingsCategory = tx.category in listOf("সঞ্চয়", "Savings", "সঞ্চয় উঠানো", "Savings Withdrawal", "সঞ্চয় ফেরত", "Savings Refund")
+                                                            if (!isSavingsCategory) return@filter false
+                                                            
+                                                            val hasPrefix = tx.note.startsWith("[$targetEn] ")
+                                                            if (hasPrefix) return@filter true
+                                                            
+                                                            tx.note.contains(targetEn, ignoreCase = true) || 
+                                                            tx.note.contains(targetBn) || 
+                                                            (targetItem == "Personal Account" && (tx.note.contains("Personal Account") || tx.note.contains("ব্যক্তিগত")))
+                                                        }.sortedByDescending { it.dateLong }
+                                                    }
+
+                                                    if (targetTransactions.isEmpty()) {
+                                                        Text(
+                                                            text = if (currentLanguage == "bn") "কোনো লেনদেনের তথ্য পাওয়া যায়নি" else "No transactions recorded yet.",
+                                                            style = MaterialTheme.typography.bodyMedium,
+                                                            color = textSecondary,
+                                                            modifier = Modifier.padding(vertical = 8.dp)
+                                                        )
+                                                    } else {
+                                                        Column(
+                                                            verticalArrangement = Arrangement.spacedBy(8.dp),
+                                                            modifier = Modifier.fillMaxWidth()
+                                                        ) {
+                                                            targetTransactions.take(8).forEach { tx ->
+                                                                val isDeposit = tx.type == "EXPENSE"
+                                                                val isRefund = tx.category in listOf("সঞ্চয় ফেরত", "Savings Refund")
+                                                                
+                                                                val actionText = if (isDeposit) {
+                                                                    if (currentLanguage == "bn") "টাকা জমা" else "Deposit"
+                                                                } else if (isRefund) {
+                                                                    if (currentLanguage == "bn") "ফেরত আনা" else "Refund"
+                                                                } else {
+                                                                    if (currentLanguage == "bn") "টাকা উঠানো" else "Withdrawal"
+                                                                }
+
+                                                                val actionColor = if (isDeposit) Color(0xFFEC4899) else Color(0xFF10B981)
+                                                                val sign = if (isDeposit) "-" else "+"
+
+                                                                Row(
+                                                                    modifier = Modifier
+                                                                        .fillMaxWidth()
+                                                                        .background(if (isDark) Color(0xFF1E293B).copy(alpha = 0.5f) else Color(0xFFF1F5F9), RoundedCornerShape(10.dp))
+                                                                        .padding(10.dp),
+                                                                    verticalAlignment = Alignment.CenterVertically,
+                                                                    horizontalArrangement = Arrangement.SpaceBetween
+                                                                ) {
+                                                                    Row(
+                                                                        verticalAlignment = Alignment.CenterVertically,
+                                                                        modifier = Modifier.weight(1f)
+                                                                    ) {
+                                                                        Icon(
+                                                                            imageVector = if (isDeposit) Icons.Default.ArrowDownward else Icons.Default.ArrowUpward,
+                                                                            contentDescription = null,
+                                                                            tint = actionColor,
+                                                                            modifier = Modifier.size(16.dp)
+                                                                        )
+                                                                        Spacer(modifier = Modifier.width(6.dp))
+                                                                        Column {
+                                                                            val cleanedNote = tx.note.removePrefix("[$targetItem] ")
+                                                                            Text(
+                                                                                text = cleanedNote.ifBlank { actionText },
+                                                                                style = MaterialTheme.typography.bodyMedium,
+                                                                                fontWeight = FontWeight.Bold,
+                                                                                color = textPrimary,
+                                                                                maxLines = 1,
+                                                                                overflow = TextOverflow.Ellipsis
+                                                                            )
+                                                                            Text(
+                                                                                text = formatDate(tx.dateLong, currentLanguage),
+                                                                                style = MaterialTheme.typography.bodySmall,
+                                                                                color = textSecondary
+                                                                            )
+                                                                        }
+                                                                    }
+                                                                    Text(
+                                                                        text = "$sign ৳${String.format("%.2f", tx.amount)}",
+                                                                        style = MaterialTheme.typography.bodyMedium,
+                                                                        fontWeight = FontWeight.Bold,
+                                                                        color = actionColor
+                                                                    )
+                                                                }
+                                                            }
+                                                        }
+                                                    }
+                                                }
+                                            }
+                                        }
+                                    }
                                 }
                             }
                         }
                     }
-                }
 
-                // Custom Target input text field
-                if (selectedTarget !in allTargets) {
-                    OutlinedTextField(
-                        value = customTargetInput,
-                        onValueChange = { 
-                            customTargetInput = it 
-                            showError = false
-                        },
-                        label = { Text(if (currentLanguage == "bn") "ব্যক্তির নাম লিখুন (উদা: মা, ভাই)" else "Enter Person's Name (e.g. Mother, Brother)") },
-                        placeholder = { Text(if (currentLanguage == "bn") "নাম লিখুন..." else "Enter name...") },
-                        singleLine = true,
-                        shape = RoundedCornerShape(14.dp),
-                        modifier = Modifier
-                            .fillMaxWidth()
-                            .testTag("custom_target_name_input")
-                    )
-                }
-
-                if (showError) {
-                    Text(
-                        text = errorMessage,
-                        style = MaterialTheme.typography.labelMedium,
-                        color = MaterialTheme.colorScheme.error,
-                        textAlign = TextAlign.Center
-                    )
-                }
-
-                OutlinedTextField(
-                    value = amountInput,
-                    onValueChange = {
-                        if (it.isEmpty() || it.toDoubleOrNull() != null) {
-                            amountInput = it
-                            showError = false
-                        }
-                    },
-                    label = { Text(if (currentLanguage == "bn") "কত টাকা?" else "Amount") },
-                    placeholder = { Text("0.00") },
-                    keyboardOptions = androidx.compose.foundation.text.KeyboardOptions(
-                        keyboardType = androidx.compose.ui.text.input.KeyboardType.Number
-                    ),
-                    singleLine = true,
-                    shape = RoundedCornerShape(14.dp),
-                    modifier = Modifier
-                        .fillMaxWidth()
-                        .testTag("save_money_amount_input")
-                )
-
-                OutlinedTextField(
-                    value = noteInput,
-                    onValueChange = { noteInput = it },
-                    label = { Text(if (currentLanguage == "bn") "মন্তব্য (ঐচ্ছিক)" else "Note (Optional)") },
-                    placeholder = { Text(if (currentLanguage == "bn") "উদা: ঘরের সঞ্চয়" else "e.g. House savings") },
-                    singleLine = true,
-                    shape = RoundedCornerShape(14.dp),
-                    modifier = Modifier
-                        .fillMaxWidth()
-                        .testTag("save_money_note_input")
-                )
-
-                Row(
-                    modifier = Modifier.fillMaxWidth(),
-                    horizontalArrangement = Arrangement.spacedBy(8.dp)
-                ) {
-                    OutlinedButton(
-                        onClick = onDismiss,
-                        shape = RoundedCornerShape(16.dp),
-                        modifier = Modifier
-                            .weight(1f)
-                            .heightIn(min = 48.dp),
-                        contentPadding = PaddingValues(horizontal = 8.dp, vertical = 4.dp),
-                        colors = ButtonDefaults.outlinedButtonColors(
-                            contentColor = textSecondary
-                        ),
-                        border = BorderStroke(1.dp, if (isDark) Color(0xFF334155) else Color(0xFFCBD5E1))
-                    ) {
-                        Text(
-                            text = if (currentLanguage == "bn") "বাতিল" else "Cancel",
-                            maxLines = 1,
-                            overflow = TextOverflow.Ellipsis
-                        )
-                    }
-
-                    Button(
-                        onClick = {
-                            val amount = amountInput.toDoubleOrNull()
-                            val finalTarget = if (selectedTarget.isNotEmpty()) selectedTarget else customTargetInput.trim()
-
-                            if (finalTarget.isEmpty()) {
-                                errorMessage = if (currentLanguage == "bn") "অনুগ্রহ করে একজন ব্যক্তি সিলেক্ট করুন বা নাম লিখুন!" else "Please select a target person or enter a name!"
-                                showError = true
-                            } else if (amount == null || amount <= 0) {
-                                errorMessage = if (currentLanguage == "bn") "অনুগ্রহ করে একটি সঠিক টাকার পরিমাণ দিন!" else "Please write a valid amount!"
-                                showError = true
+                    2 -> {
+                        // History Tab (Searchable & List of savings transactions)
+                        Box(modifier = Modifier.fillMaxWidth().weight(1f)) {
+                            if (savingsHistory.isEmpty()) {
+                                Box(modifier = Modifier.fillMaxSize(), contentAlignment = Alignment.Center) {
+                                    Text(
+                                        text = if (currentLanguage == "bn") "কোনো সঞ্চয়ের ইতিহাস পাওয়া যায়নি" else "No savings history found",
+                                        style = MaterialTheme.typography.bodyMedium,
+                                        color = textSecondary
+                                    )
+                                }
                             } else {
-                                if (!isWithdrawMode) {
-                                    // DEPOSIT
-                                    if (amount > stats.balance) {
-                                        errorMessage = if (currentLanguage == "bn") "আপনার মেইন ব্যালেন্সের চেয়ে বেশি জমানো সম্ভব নয়!" else "Insufficient Wallet Balance to perform savings deposit!"
-                                        showError = true
-                                    } else {
-                                        viewModel.saveMoneyToTarget(finalTarget, amount, noteInput, currentLanguage)
-                                        Toast.makeText(
-                                            context,
-                                            if (currentLanguage == "bn") "সাফল্যের সাথে টাকা জমা করা হয়েছে!" else "Fund saved successfully!",
-                                            Toast.LENGTH_LONG
-                                        ).show()
-                                        onDismiss()
-                                    }
-                                } else {
-                                    // WITHDRAW
-                                    val currentSavedBalance = savingsByTargets[finalTarget] ?: 0.0
-                                    if (amount > currentSavedBalance) {
-                                        errorMessage = if (currentLanguage == "bn") {
-                                            "উনার কাছে এত টাকা নেই! (সর্বোচ্চ: ${String.format("%.2f", currentSavedBalance)} ৳)"
-                                        } else {
-                                            "Insufficient target funds! (Max: ${String.format("%.2f", currentSavedBalance)} ৳)"
-                                        }
-                                        showError = true
-                                    } else {
-                                        val success = viewModel.withdrawMoneyFromTarget(finalTarget, amount, noteInput, currentLanguage)
-                                        if (success) {
-                                            Toast.makeText(
-                                                context,
-                                                if (currentLanguage == "bn") "সাফল্যের সাথে সঞ্চয় উঠানো হয়েছে!" else "Fund withdrawn successfully!",
-                                                Toast.LENGTH_LONG
-                                            ).show()
-                                            onDismiss()
-                                        } else {
-                                            errorMessage = if (currentLanguage == "bn") "অপারেশন ব্যর্থ হয়েছে!" else "Operation failed!"
-                                            showError = true
+                                LazyColumn(
+                                    modifier = Modifier.fillMaxSize(),
+                                    verticalArrangement = Arrangement.spacedBy(10.dp)
+                                ) {
+                                    items(savingsHistory) { historyItem ->
+                                        val isDeposit = historyItem.type == "EXPENSE" // Deposit reduces wallet balance
+                                        val actionColor = if (isDeposit) Color(0xFFF59E0B) else Color(0xFF10B981)
+
+                                        Row(
+                                            modifier = Modifier
+                                                .fillMaxWidth()
+                                                .clip(RoundedCornerShape(14.dp))
+                                                .background(cardBg)
+                                                .border(1.dp, if (isDark) Color(0xFF334155).copy(alpha = 0.5f) else Color(0xFFE2E8F0), RoundedCornerShape(14.dp))
+                                                .padding(12.dp),
+                                            verticalAlignment = Alignment.CenterVertically,
+                                            horizontalArrangement = Arrangement.SpaceBetween
+                                        ) {
+                                            Row(verticalAlignment = Alignment.CenterVertically, modifier = Modifier.weight(1f)) {
+                                                Box(
+                                                    modifier = Modifier
+                                                        .size(36.dp)
+                                                        .background(actionColor.copy(alpha = 0.12f), CircleShape),
+                                                    contentAlignment = Alignment.Center
+                                                ) {
+                                                    Icon(
+                                                        imageVector = if (isDeposit) Icons.Default.ArrowUpward else Icons.Default.ArrowDownward,
+                                                        contentDescription = null,
+                                                        tint = actionColor,
+                                                        modifier = Modifier.size(16.dp)
+                                                    )
+                                                }
+                                                Spacer(modifier = Modifier.width(12.dp))
+                                                Column(modifier = Modifier.padding(end = 8.dp)) {
+                                                    Text(
+                                                        text = historyItem.note,
+                                                        style = MaterialTheme.typography.bodyMedium,
+                                                        fontWeight = FontWeight.Bold,
+                                                        color = textPrimary
+                                                    )
+                                                    Text(
+                                                        text = formatDate(historyItem.dateLong, currentLanguage),
+                                                        style = MaterialTheme.typography.labelSmall,
+                                                        color = textSecondary
+                                                    )
+                                                }
+                                            }
+
+                                            Text(
+                                                text = "${if (isDeposit) "-" else "+"} ${String.format("%.0f", historyItem.amount)} ৳",
+                                                style = MaterialTheme.typography.bodyLarge,
+                                                fontWeight = FontWeight.Black,
+                                                color = actionColor
+                                            )
                                         }
                                     }
                                 }
                             }
-                        },
-                        shape = RoundedCornerShape(16.dp),
-                        modifier = Modifier
-                            .weight(1f)
-                            .heightIn(min = 48.dp)
-                            .testTag("confirm_save_money_button"),
-                        contentPadding = PaddingValues(horizontal = 8.dp, vertical = 4.dp),
-                        colors = ButtonDefaults.buttonColors(
-                            containerColor = Color(0xFFEC4899),
-                            contentColor = Color.White
-                        )
-                    ) {
-                        Text(
-                            text = if (isWithdrawMode) {
-                                if (currentLanguage == "bn") "উত্তোলন করুন" else "Withdraw"
-                            } else {
-                                if (currentLanguage == "bn") "জমা করুন" else "Save Funds"
-                            },
-                            maxLines = 1,
-                            overflow = TextOverflow.Ellipsis
-                        )
+                        }
                     }
                 }
             }
         }
+    }
+
+    // Confirmation dialog before deleting category
+    if (targetToDelete != null) {
+        val target = targetToDelete!!
+        val balance = savingsByTargets[target] ?: 0.0
+        val targetDisplayName = when (target) {
+            "Personal Account" -> if (currentLanguage == "bn") "ব্যক্তিগত ব্যাংক" else "Personal Account"
+            "Wife" -> if (currentLanguage == "bn") "বউ (স্ত্রী)" else "Wife"
+            "Father" -> if (currentLanguage == "bn") "বাবা" else "Father"
+            else -> target
+        }
+
+        val deleteMsg = if (currentLanguage == "bn") {
+            "আপনি কি নিশ্চিত যে '$targetDisplayName' ক্যাটাগরি বা ব্যক্তিটি মুছে ফেলতে চান? যদি উনার কাছে কোনো জমানো টাকা (৳${String.format("%.2f", balance)}) থাকে, তবে তা ফেরত এনে আপনার মেইন ব্যালেন্সে যোগ করে দেয়া হবে।"
+        } else {
+            "Are you sure you want to delete the '$targetDisplayName' category? Any stored funds (৳${String.format("%.2f", balance)}) will be fully refunded and added to your wallet balance."
+        }
+
+        AlertDialog(
+            onDismissRequest = { targetToDelete = null },
+            title = {
+                Text(
+                    text = if (currentLanguage == "bn") "ক্যাটাগরি বা ব্যক্তি মুছে ফেলুন" else "Delete Savings Category",
+                    fontWeight = FontWeight.Bold
+                )
+            },
+            text = { Text(deleteMsg) },
+            confirmButton = {
+                Button(
+                    onClick = {
+                        viewModel.deleteSavingsTarget(target, currentLanguage)
+                        Toast.makeText(
+                            context,
+                            if (currentLanguage == "bn") "'$targetDisplayName' ক্যাটাগরি মুছে ফেলা হয়েছে এবং ব্যালেন্স সমন্বয় করা হয়েছে!" else "'$targetDisplayName' category deleted & balance updated!",
+                            Toast.LENGTH_LONG
+                        ).show()
+                        targetToDelete = null
+                    },
+                    colors = ButtonDefaults.buttonColors(containerColor = Color(0xFFEF4444))
+                ) {
+                    Text(text = if (currentLanguage == "bn") "মুছে ফেলুন" else "Delete", color = Color.White)
+                }
+            },
+            dismissButton = {
+                TextButton(onClick = { targetToDelete = null }) {
+                    Text(text = if (currentLanguage == "bn") "বাতিল" else "Cancel")
+                }
+            }
+        )
+    }
+
+    // Edit Category/Option Name Dialog
+    if (targetToEdit != null) {
+        val target = targetToEdit!!
+        val targetDisplayName = when (target) {
+            "Personal Account" -> if (currentLanguage == "bn") "ব্যক্তিগত ব্যাংক" else "Personal Account"
+            "Wife" -> if (currentLanguage == "bn") "বউ (স্ত্রী)" else "Wife"
+            "Father" -> if (currentLanguage == "bn") "বাবা" else "Father"
+            else -> target
+        }
+
+        AlertDialog(
+            onDismissRequest = { targetToEdit = null },
+            title = {
+                Text(
+                    text = if (currentLanguage == "bn") "অপশনের নাম পরিবর্তন" else "Edit Option Name",
+                    fontWeight = FontWeight.Bold
+                )
+            },
+            text = {
+                Column(verticalArrangement = Arrangement.spacedBy(8.dp)) {
+                    Text(
+                        text = if (currentLanguage == "bn") "'$targetDisplayName'-এর নতুন নাম লিখুন:" else "Enter new name for '$targetDisplayName':",
+                        style = MaterialTheme.typography.bodyMedium
+                    )
+                    OutlinedTextField(
+                        value = newTargetNameInput,
+                        onValueChange = { newTargetNameInput = it },
+                        singleLine = true,
+                        shape = RoundedCornerShape(12.dp),
+                        modifier = Modifier.fillMaxWidth().testTag("edit_target_name_input")
+                    )
+                }
+            },
+            confirmButton = {
+                Button(
+                    onClick = {
+                        val newName = newTargetNameInput.trim()
+                        if (newName.isNotEmpty() && newName != target) {
+                            viewModel.renameSavingsTarget(target, newName)
+                            if (selectedTarget == target) {
+                                selectedTarget = newName
+                            }
+                            Toast.makeText(
+                                context,
+                                if (currentLanguage == "bn") "অপশনের নাম পরিবর্তন করা হয়েছে!" else "Option name updated successfully!",
+                                Toast.LENGTH_SHORT
+                            ).show()
+                        }
+                        targetToEdit = null
+                    },
+                    colors = ButtonDefaults.buttonColors(containerColor = Color(0xFFEC4899))
+                ) {
+                    Text(text = if (currentLanguage == "bn") "সংরক্ষণ" else "Save", color = Color.White)
+                }
+            },
+            dismissButton = {
+                TextButton(onClick = { targetToEdit = null }) {
+                    Text(text = if (currentLanguage == "bn") "বাতিল" else "Cancel")
+                }
+            }
+        )
     }
 }
 

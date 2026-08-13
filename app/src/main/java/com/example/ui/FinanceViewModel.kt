@@ -88,6 +88,24 @@ class FinanceViewModel(application: Application) : AndroidViewModel(application)
     private val _savingsByTargets = MutableStateFlow<Map<String, Double>>(loadSavingsByTargets())
     val savingsByTargets: StateFlow<Map<String, Double>> = _savingsByTargets.asStateFlow()
 
+    private val _deletedSavingsTargets = MutableStateFlow<Set<String>>(prefs.getStringSet("deleted_savings_targets", emptySet()) ?: emptySet())
+    val deletedSavingsTargets: StateFlow<Set<String>> = _deletedSavingsTargets.asStateFlow()
+
+    fun markSavingsTargetDeleted(target: String) {
+        val currentSet = _deletedSavingsTargets.value.toMutableSet()
+        currentSet.add(target)
+        _deletedSavingsTargets.value = currentSet
+        prefs.edit().putStringSet("deleted_savings_targets", currentSet).apply()
+    }
+
+    fun restoreSavingsTarget(target: String) {
+        val currentSet = _deletedSavingsTargets.value.toMutableSet()
+        if (currentSet.remove(target)) {
+            _deletedSavingsTargets.value = currentSet
+            prefs.edit().putStringSet("deleted_savings_targets", currentSet).apply()
+        }
+    }
+
     private fun loadSavingsByTargets(): Map<String, Double> {
         val jsonStr = prefs.getString("savings_by_targets", null)
         if (jsonStr.isNullOrBlank()) {
@@ -114,6 +132,7 @@ class FinanceViewModel(application: Application) : AndroidViewModel(application)
     }
 
     fun saveMoneyToTarget(target: String, amount: Double, note: String, currentLanguage: String) {
+        restoreSavingsTarget(target)
         val updatedMap = _savingsByTargets.value.toMutableMap()
         val currentVal = updatedMap[target] ?: 0.0
         updatedMap[target] = currentVal + amount
@@ -131,7 +150,9 @@ class FinanceViewModel(application: Application) : AndroidViewModel(application)
 
         val categoryName = if (currentLanguage == "bn") "সঞ্চয়" else "Savings"
         val displayTarget = getLocalizedTargetName(target, currentLanguage)
-        val noteContent = note.ifBlank {
+        val displayTargetEn = getLocalizedTargetName(target, "en")
+        val notePrefix = "[$displayTargetEn] "
+        val noteContent = notePrefix + note.ifBlank {
             if (currentLanguage == "bn") {
                 "$displayTarget-এর কাছে জমা করা হয়েছে"
             } else {
@@ -167,7 +188,9 @@ class FinanceViewModel(application: Application) : AndroidViewModel(application)
 
         val categoryName = if (currentLanguage == "bn") "সঞ্চয় উঠানো" else "Savings Withdrawal"
         val displayTarget = getLocalizedTargetName(target, currentLanguage)
-        val noteContent = note.ifBlank {
+        val displayTargetEn = getLocalizedTargetName(target, "en")
+        val notePrefix = "[$displayTargetEn] "
+        val noteContent = notePrefix + note.ifBlank {
             if (currentLanguage == "bn") {
                 "$displayTarget-এর কাছ থেকে উঠানো হয়েছে"
             } else {
@@ -182,6 +205,76 @@ class FinanceViewModel(application: Application) : AndroidViewModel(application)
             dateLong = System.currentTimeMillis()
         )
         return true
+    }
+
+    fun deleteSavingsTarget(target: String, currentLanguage: String) {
+        val updatedMap = _savingsByTargets.value.toMutableMap()
+        val currentVal = updatedMap[target] ?: 0.0
+
+        if (currentVal > 0.0) {
+            val categoryName = if (currentLanguage == "bn") "সঞ্চয় ফেরত" else "Savings Refund"
+            val displayTarget = getLocalizedTargetName(target, currentLanguage)
+            val displayTargetEn = getLocalizedTargetName(target, "en")
+            val notePrefix = "[$displayTargetEn] "
+            val noteContent = notePrefix + if (currentLanguage == "bn") {
+                "$displayTarget-এর সঞ্চয় সম্পূর্ণ ফেরত আনা হয়েছে"
+            } else {
+                "Full savings refunded from $displayTarget"
+            }
+            addTransaction(
+                amount = currentVal,
+                category = categoryName,
+                type = "INCOME",
+                note = noteContent,
+                dateLong = System.currentTimeMillis()
+            )
+        }
+
+        updatedMap.remove(target)
+        _savingsByTargets.value = updatedMap
+
+        val json = JSONObject()
+        updatedMap.forEach { (key, value) ->
+            json.put(key, value)
+        }
+        prefs.edit().putString("savings_by_targets", json.toString()).apply()
+
+        val total = updatedMap.values.sum()
+        _personalSavings.value = total
+        prefs.edit().putFloat("personal_savings_amount", total.toFloat()).apply()
+        
+        markSavingsTargetDeleted(target)
+    }
+
+    fun renameSavingsTarget(oldTarget: String, newTarget: String) {
+        val trimmedNew = newTarget.trim()
+        if (oldTarget == trimmedNew || trimmedNew.isBlank()) return
+
+        markSavingsTargetDeleted(oldTarget)
+        restoreSavingsTarget(trimmedNew)
+
+        val updatedMap = _savingsByTargets.value.toMutableMap()
+        val balance = updatedMap[oldTarget] ?: 0.0
+        updatedMap.remove(oldTarget)
+        updatedMap[trimmedNew] = balance
+        _savingsByTargets.value = updatedMap
+
+        val json = JSONObject()
+        updatedMap.forEach { (key, value) ->
+            json.put(key, value)
+        }
+        prefs.edit().putString("savings_by_targets", json.toString()).apply()
+
+        viewModelScope.launch {
+            val currentTx = transactions.value
+            currentTx.forEach { tx ->
+                val isSavings = tx.category in listOf("সঞ্চয়", "Savings", "সঞ্চয় উঠানো", "Savings Withdrawal", "সঞ্চয় ফেরত", "Savings Refund")
+                if (isSavings && tx.note.contains(oldTarget)) {
+                    val updatedNote = tx.note.replace("[$oldTarget]", "[$trimmedNew]").replace(oldTarget, trimmedNew)
+                    repository.insert(tx.copy(note = updatedNote))
+                }
+            }
+        }
     }
 
     private fun getLocalizedTargetName(target: String, lang: String): String {

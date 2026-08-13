@@ -2,5 +2,5 @@
   "versionCode": 7,
   "versionName": "5.0",
   "changelog": "• ব্যক্তিগত ব্যাংকিংয়ের আওতায় বউ (স্ত্রী), বাবা ও নতুন কাস্টম ব্যক্তি/টার্গেট এড করার সুবিধা যুক্ত করা হয়েছে।\n• টাকা জমা দেওয়া (Deposit) এবং সঞ্চয় উঠানোর (Withdraw) সুবিধা ও মেইন ব্যালেন্সের সাথে সঠিক রিফ্লেকশন।\n• ইন্টারফেসের চমৎকার রি-ডিজাইন ও কালার প্যালেট অপ্টিমাইজেশন।\n\n• Added Support for saving targets (Wife, Father, or Custom names) in Personal Banking Vault.\n• Added deposit and withdrawal options with automated wallet balance adjustments.\n• Visual refinements, touch target improvements, and performance layout updates.",
-  "downloadUrl": "https://github.com/sakib9221/Mobile-Wallet/releases/download/v2/Mobile.Wallet.v5.0.apk"
+  "downloadUrl": "https://github.com/sakib9221/Mobile-Wallet/releases/download/v5.0/app-release.apk"
 }

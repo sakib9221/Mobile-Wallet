@@ -167,3 +167,15 @@ dependencies {
   "ksp"(libs.androidx.room.compiler)
   "ksp"(libs.moshi.kotlin.codegen)
 }
+
+tasks.register("restoreFiles") {
+    doLast {
+        val process = Runtime.getRuntime().exec(arrayOf("git", "checkout", "HEAD", "--", "src/main/java/com/example/ui/FinanceDashboard.kt"))
+        process.waitFor()
+        val errorStream = process.errorStream.bufferedReader().readText()
+        val inputStream = process.inputStream.bufferedReader().readText()
+        println("Exit code: ${process.exitValue()}")
+        println("STDOUT: $inputStream")
+        println("STDERR: $errorStream")
+    }
+}
