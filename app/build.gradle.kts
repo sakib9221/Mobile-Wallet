@@ -14,8 +14,8 @@ android {
     applicationId = "com.aistudio.financetracker.vqyhm"
     minSdk = 24
     targetSdk = 36
-    versionCode = 7
-    versionName = "5.0"
+    versionCode = 8
+    versionName = "6.0"
 
     testInstrumentationRunner = "androidx.test.runner.AndroidJUnitRunner"
 
