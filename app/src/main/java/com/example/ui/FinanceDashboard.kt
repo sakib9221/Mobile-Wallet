@@ -313,6 +313,7 @@ fun FinanceDashboardScreen(
     var transactionToDelete by remember { mutableStateOf<Transaction?>(null) }
     val bItems by viewModel.bajarItems.collectAsStateWithLifecycle()
     val debtRecords by viewModel.debtRecords.collectAsStateWithLifecycle()
+    val householdBajarRecords by viewModel.householdBajarRecords.collectAsStateWithLifecycle()
 
     // Optimize listener callbacks with remember to prevent parent-induced child recompositions at 120Hz
     val onLanguageToggle = remember { { showLanguageDialog = true } }
@@ -1105,15 +1106,26 @@ fun FinanceDashboardScreen(
 
     // Active action menus are now displayed as a beautiful, smooth anchored dropdown directly above the FAB to avoid layout overlap issues.
 
-    // Dialog 3: Bajar List Dialog
+    // Dialog 3: Household Monthly Bajar & Monitoring Dialog
     if (showBajarListDialog) {
-        BajarListDialog(
+        HouseholdBajarDialog(
+            records = householdBajarRecords,
             bajarItems = bItems,
+            userSavedName = userSavedName,
             lang = currentLanguage,
-            onAdd = { name, quantity -> viewModel.addBajarItem(name, quantity) },
-            onToggle = { item, isChecked -> viewModel.toggleBajarItemCompletion(item, isChecked) },
-            onDelete = { item -> viewModel.deleteBajarItem(item) },
-            onFinishShopping = { totalCost, completedList ->
+            onAddRecord = { itemName, quantity, buyerName, cost, dateLong, note, addToMain ->
+                viewModel.addHouseholdBajarRecord(itemName, quantity, buyerName, cost, dateLong, note, addToMain)
+            },
+            onUpdateRecord = { record ->
+                viewModel.updateHouseholdBajarRecord(record)
+            },
+            onDeleteRecord = { record ->
+                viewModel.deleteHouseholdBajarRecord(record)
+            },
+            onAddChecklistItem = { name, quantity -> viewModel.addBajarItem(name, quantity) },
+            onToggleChecklistItem = { item, isChecked -> viewModel.toggleBajarItemCompletion(item, isChecked) },
+            onDeleteChecklistItem = { item -> viewModel.deleteBajarItem(item) },
+            onFinishChecklistShopping = { totalCost, completedList ->
                 viewModel.finishBajarShopping(totalCost, completedList)
                 showBajarListDialog = false
             },
@@ -2613,7 +2625,7 @@ private data class CalendarDay(
 
 @OptIn(ExperimentalAnimationApi::class)
 @Composable
-private fun BeautifulInteractiveCalendarDialog(
+fun BeautifulInteractiveCalendarDialog(
     initialSelectedDateMillis: Long,
     lang: String,
     onDismissRequest: () -> Unit,
@@ -9099,8 +9111,8 @@ fun DashboardActionsGrid(
             DropdownItem(
                 icon = Icons.Default.ShoppingBasket,
                 iconBg = Color(0xFF10B981),
-                title = if (currentLanguage == "bn") "বাজারের তালিকা" else "Bajar (Shopping list)",
-                desc = if (currentLanguage == "bn") "কেনাকাটার প্রয়োজনীয় তালিকা" else "Manage items to scan/buy",
+                title = if (currentLanguage == "bn") "ঘরের মাসিক বাজার" else "Household Monthly Bazar",
+                desc = if (currentLanguage == "bn") "মাসিক বাজার খাতা ও কে কি কিনলো পর্যবেক্ষণ" else "Grocery diary & buyer monitoring",
                 isDark = isDark,
                 onClick = onBajarList
             )

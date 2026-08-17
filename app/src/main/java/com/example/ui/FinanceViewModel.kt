@@ -407,7 +407,7 @@ class FinanceViewModel(application: Application) : AndroidViewModel(application)
 
     init {
         val db = AppDatabase.getDatabase(application)
-        repository = TransactionRepository(db.transactionDao(), db.bajarItemDao(), db.debtRecordDao())
+        repository = TransactionRepository(db.transactionDao(), db.bajarItemDao(), db.debtRecordDao(), db.householdBajarDao())
         _selectedLanguage.value = prefs.getString("selected_lang", "en") ?: "en"
         val savedTheme = prefs.getString("selected_theme", "system") ?: "system"
         _selectedTheme.value = if (savedTheme == "liquid_glass") "system" else savedTheme
@@ -422,6 +422,7 @@ class FinanceViewModel(application: Application) : AndroidViewModel(application)
                 repository.deleteAll()
                 repository.clearBajarItemsForUser("local_guest")
                 repository.clearDebtsForUser("local_guest")
+                repository.clearHouseholdBajarForUser("local_guest")
                 prefs.edit().putBoolean("db_reset_zero_v5", true).apply()
                 
                 // Try to find if there is an existing backup in Download to restore from
@@ -466,6 +467,18 @@ class FinanceViewModel(application: Application) : AndroidViewModel(application)
     val debtRecords: StateFlow<List<com.example.data.DebtRecord>> = activeUserId
         .flatMapLatest { userId ->
             repository.getAllDebts(userId)
+        }
+        .stateIn(
+            scope = viewModelScope,
+            started = SharingStarted.Eagerly,
+            initialValue = emptyList()
+        )
+
+    // Retrieve Household Bajar items reactively
+    @OptIn(ExperimentalCoroutinesApi::class)
+    val householdBajarRecords: StateFlow<List<com.example.data.HouseholdBajarRecord>> = activeUserId
+        .flatMapLatest { userId ->
+            repository.getAllHouseholdBajar(userId)
         }
         .stateIn(
             scope = viewModelScope,
@@ -623,6 +636,59 @@ class FinanceViewModel(application: Application) : AndroidViewModel(application)
         }
     }
 
+    // Household Monthly Bajar Diary & Monitoring
+    fun addHouseholdBajarRecord(
+        itemName: String,
+        quantity: String,
+        buyerName: String,
+        cost: Double,
+        dateLong: Long,
+        note: String,
+        addToMainExpense: Boolean = false
+    ) {
+        viewModelScope.launch {
+            val record = com.example.data.HouseholdBajarRecord(
+                itemName = itemName.trim(),
+                quantity = if (quantity.isBlank()) "1" else quantity.trim(),
+                buyerName = if (buyerName.isBlank()) "আমি" else buyerName.trim(),
+                cost = cost,
+                dateLong = dateLong,
+                note = note.trim(),
+                userId = "local_guest"
+            )
+            repository.insertHouseholdBajar(record)
+
+            if (addToMainExpense && cost > 0) {
+                val expenseNote = "বাজার: ${record.itemName} (${record.quantity}) - ক্রেতা: ${record.buyerName}${if (record.note.isNotBlank()) " [${record.note}]" else ""}"
+                val transaction = Transaction(
+                    amount = cost,
+                    category = com.example.R.string.category_groceries.toString(),
+                    type = "EXPENSE",
+                    dateLong = dateLong,
+                    note = expenseNote,
+                    userId = "local_guest"
+                )
+                repository.insert(transaction)
+            }
+
+            autoBackupData()
+        }
+    }
+
+    fun updateHouseholdBajarRecord(record: com.example.data.HouseholdBajarRecord) {
+        viewModelScope.launch {
+            repository.updateHouseholdBajar(record)
+            autoBackupData()
+        }
+    }
+
+    fun deleteHouseholdBajarRecord(record: com.example.data.HouseholdBajarRecord) {
+        viewModelScope.launch {
+            repository.deleteHouseholdBajar(record)
+            autoBackupData()
+        }
+    }
+
     fun addDebtRecord(personName: String, amount: Double, direction: String, note: String) {
         viewModelScope.launch {
             val record = com.example.data.DebtRecord(
@@ -698,7 +764,8 @@ class FinanceViewModel(application: Application) : AndroidViewModel(application)
     fun serializeFullBackup(
         transactions: List<Transaction>,
         bajarItems: List<com.example.data.BajarItem>,
-        debtRecords: List<com.example.data.DebtRecord>
+        debtRecords: List<com.example.data.DebtRecord>,
+        householdBajarRecords: List<com.example.data.HouseholdBajarRecord> = emptyList()
     ): String {
         val rootObj = JSONObject().apply {
             put("saved_name", prefs.getString("user_saved_name", "") ?: "")
@@ -753,6 +820,22 @@ class FinanceViewModel(application: Application) : AndroidViewModel(application)
         }
         rootObj.put("debt_records", debtArray)
 
+        // 4. Household Bajar Records
+        val householdBajarArray = JSONArray()
+        for (h in householdBajarRecords) {
+            val obj = JSONObject().apply {
+                put("itemName", h.itemName)
+                put("quantity", h.quantity)
+                put("buyerName", h.buyerName)
+                put("cost", h.cost)
+                put("dateLong", h.dateLong)
+                put("note", h.note)
+                put("userId", h.userId)
+            }
+            householdBajarArray.put(obj)
+        }
+        rootObj.put("household_bajar_records", householdBajarArray)
+
         return rootObj.toString(2)
     }
 
@@ -763,8 +846,9 @@ class FinanceViewModel(application: Application) : AndroidViewModel(application)
                 val transList = repository.getAllTransactions("local_guest").first()
                 val bajarList = repository.getAllBajarItems("local_guest").first()
                 val debtsList = repository.getAllDebts("local_guest").first()
+                val householdBajarList = repository.getAllHouseholdBajar("local_guest").first()
 
-                val jsonContent = serializeFullBackup(transList, bajarList, debtsList)
+                val jsonContent = serializeFullBackup(transList, bajarList, debtsList, householdBajarList)
                 saveBackupToDownloadsFolder(jsonContent)
             } catch (e: Exception) {
                 android.util.Log.e("FinanceViewModel", "Error fetching DB for autoBackup: ${e.message}")
@@ -1042,15 +1126,37 @@ class FinanceViewModel(application: Application) : AndroidViewModel(application)
                     }
                 }
 
+                val householdBajarList = mutableListOf<com.example.data.HouseholdBajarRecord>()
+                if (rootObj.has("household_bajar_records")) {
+                    val arr = rootObj.getJSONArray("household_bajar_records")
+                    for (i in 0 until arr.length()) {
+                        val json = arr.getJSONObject(i)
+                        householdBajarList.add(
+                            com.example.data.HouseholdBajarRecord(
+                                id = 0,
+                                itemName = json.getString("itemName"),
+                                quantity = json.optString("quantity", "1"),
+                                buyerName = json.getString("buyerName"),
+                                cost = json.getDouble("cost"),
+                                dateLong = json.optLong("dateLong", System.currentTimeMillis()),
+                                note = json.optString("note", ""),
+                                userId = "local_guest"
+                            )
+                        )
+                    }
+                }
+
                 // 1. Clear existing database for the local guest user to prevent double count/merging clashes
                 repository.clearAllForUser("local_guest")
                 repository.clearBajarItemsForUser("local_guest")
                 repository.clearDebtsForUser("local_guest")
+                repository.clearHouseholdBajarForUser("local_guest")
 
                 // 2. Insert all deserialized items safely
                 transactionsList.forEach { repository.insert(it) }
                 bajarList.forEach { repository.insertBajarItem(it) }
                 debtList.forEach { repository.insertDebt(it) }
+                householdBajarList.forEach { repository.insertHouseholdBajar(it) }
 
                 val restoredDob = rootObj.optString("user_dob", "")
                 val restoredGender = rootObj.optString("user_gender", "")
@@ -1088,8 +1194,9 @@ class FinanceViewModel(application: Application) : AndroidViewModel(application)
                 val existingTxs = repository.getAllTransactions("local_guest").first()
                 val existingBajar = repository.getAllBajarItems("local_guest").first()
                 val existingDebts = repository.getAllDebts("local_guest").first()
+                val existingHouseholdBajar = repository.getAllHouseholdBajar("local_guest").first()
 
-                if (existingTxs.isNotEmpty() || existingBajar.isNotEmpty() || existingDebts.isNotEmpty()) {
+                if (existingTxs.isNotEmpty() || existingBajar.isNotEmpty() || existingDebts.isNotEmpty() || existingHouseholdBajar.isNotEmpty()) {
                     prefs.edit().putBoolean("auto_restore_checked_v12", true).apply()
                     return@launch
                 }

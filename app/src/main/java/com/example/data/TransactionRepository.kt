@@ -5,7 +5,8 @@ import kotlinx.coroutines.flow.Flow
 class TransactionRepository(
     private val transactionDao: TransactionDao,
     private val bajarItemDao: BajarItemDao,
-    private val debtRecordDao: DebtRecordDao
+    private val debtRecordDao: DebtRecordDao,
+    private val householdBajarDao: HouseholdBajarDao
 ) {
     fun getAllTransactions(userId: String): Flow<List<Transaction>> = 
         transactionDao.getAllTransactions(userId)
@@ -68,5 +69,24 @@ class TransactionRepository(
 
     suspend fun clearDebtsForUser(userId: String) {
         debtRecordDao.clearDebtsForUser(userId)
+    }
+
+    // Household Bajar Records
+    fun getAllHouseholdBajar(userId: String): Flow<List<HouseholdBajarRecord>> =
+        householdBajarDao.getAllHouseholdBajar(userId)
+
+    suspend fun insertHouseholdBajar(record: HouseholdBajarRecord): Long =
+        householdBajarDao.insertHouseholdBajar(record)
+
+    suspend fun updateHouseholdBajar(record: HouseholdBajarRecord) {
+        householdBajarDao.updateHouseholdBajar(record)
+    }
+
+    suspend fun deleteHouseholdBajar(record: HouseholdBajarRecord) {
+        householdBajarDao.deleteHouseholdBajar(record)
+    }
+
+    suspend fun clearHouseholdBajarForUser(userId: String) {
+        householdBajarDao.clearHouseholdBajarForUser(userId)
     }
 }
